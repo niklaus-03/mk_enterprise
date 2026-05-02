@@ -1,0 +1,165 @@
+import axios from 'axios';
+
+const baseURL =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000/api"
+    : "http://192.168.1.39:5000/api";
+
+const api = axios.create({
+  baseURL,
+  timeout: 15000,
+});
+
+// Attach JWT token to every request
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('shopbill_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// Handle 401 — redirect to login
+api.interceptors.response.use(
+  res => res.data,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('shopbill_token');
+      window.location.href = '/login';
+    }
+    const msg = err.response?.data?.error || err.message || 'Network error';
+    return Promise.reject(new Error(msg));
+  }
+);
+
+// ── Auth ──────────────────────────────────────────────────────────────────────────────
+export const authApi = {
+  login: (data) => api.post('/auth/login', data),
+  me: () => api.get('/auth/me'),
+  changePassword: (data) => api.put('/auth/change-password', data),
+  forgotPassword: (identifier) => api.post('/auth/forgot-password', { identifier }),
+};
+
+// ── Manager Admin (Supervisor only) ──────────────────────────────────────────────────
+export const managerApi = {
+  getAll: () => api.get('/auth/managers'),
+  create: (data) => api.post('/auth/managers', data),
+  update: (id, data) => api.put(`/auth/managers/${id}`, data),
+  resetPassword: (id, new_password) => api.put(`/auth/managers/${id}/reset-password`, { new_password }),
+  delete: (id) => api.delete(`/auth/managers/${id}`),
+};
+
+// ── Recovery Requests (Supervisor only) ─────────────────────────────────────────────
+export const recoveryApi = {
+  getAll: () => api.get('/auth/recovery-requests'),
+  resolve: (id, new_password) => api.put(`/auth/recovery-requests/${id}/resolve`, { new_password }),
+};
+
+// ── Products ──────────────────────────────────────────────────────────────────
+export const productApi = {
+  getAll: (params) => api.get('/products', { params }),
+  getById: (id) => api.get(`/products/${id}`),
+  autocomplete: (q) => api.get('/products/autocomplete', { params: { q } }),
+  getLowStock: () => api.get('/products/low-stock'),
+  get: (id) => api.get(`/products/${id}`),
+  create: (data) => api.post('/products', data),
+  update: (id, data) => api.put(`/products/${id}`, data),
+  delete: (id) => api.delete(`/products/${id}`),
+  adjustStock: (id, data) => api.patch(`/products/${id}/stock`, data),
+};
+
+// ── Customers ─────────────────────────────────────────────────────────────────
+export const customerApi = {
+  getAll: (params) => api.get('/customers', { params }),
+  getPendingDues: () => api.get('/customers/pending-dues'),
+  get: (id) => api.get(`/customers/${id}`),
+  getInvoices: (id) => api.get(`/customers/${id}/invoices`),
+  create: (data) => api.post('/customers', data),
+  update: (id, data) => api.put(`/customers/${id}`, data),
+  delete: (id) => api.delete(`/customers/${id}`),
+};
+
+// ── Invoices ──────────────────────────────────────────────────────────────────
+export const invoiceApi = {
+  getAll: (params) => api.get('/invoices', { params }),
+  get: (id) => api.get(`/invoices/${id}`),
+  create: (data) => api.post('/invoices', data),
+  update: (id, data) => api.put(`/invoices/${id}`, data),
+  delete: (id) => api.delete(`/invoices/${id}`),
+  sendEmail: (id, email) => api.post(`/invoices/${id}/send-email`, { email }),
+};
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+export const dashboardApi = {
+  get: (date) => api.get('/dashboard', { params: date ? { date } : {} }),
+  recordPayment: (data) => api.post('/dashboard/record-payment', data),
+  createWalkinDue: (data) => api.post('/dashboard/walkin-due', data),
+};
+
+// ── Deliveries ────────────────────────────────────────────────────────────────
+export const deliveryApi = {
+  getById: (id) => api.get(`/deliveries/${id}`),
+  getAll: (params = {}) => api.get('/deliveries', {
+    params: {
+      ...(params.date ? { date: params.date } : {}),
+      ...(params.all ? { all: 'true' } : {}),
+      ...(params.status ? { status: params.status } : {}),
+    }
+  }),
+  create: (data) => api.post('/deliveries', data),
+  updateStatus: (id, status) => api.patch(`/deliveries/${id}/status`, { status }),
+  updatePayment: (id, payment_status, payment_mode) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode }),
+  update: (id, data) => api.put(`/deliveries/${id}`, data),
+  delete: (id) => api.delete(`/deliveries/${id}`),
+};
+
+// ── Orders ────────────────────────────────────────────────────────────────────
+export const orderApi = {
+  getAll: (params) => api.get('/orders', { params }),
+  getById: (id) => api.get(`/orders/${id}`),
+  create: (data) => api.post('/orders', data),
+  complete: (id) => api.patch(`/orders/${id}/complete`),
+  delete: (id) => api.delete(`/orders/${id}`),
+};
+
+// ── Suppliers ─────────────────────────────────────────────────────────────────
+export const supplierApi = {
+  getAll: (q) => api.get('/suppliers', { params: q ? { q } : {} }),
+  getHistory: (id, params = {}) => api.get(`/suppliers/${id}/history`, { params }),
+  create: (data) => api.post('/suppliers', data),
+  update: (id, data) => api.put(`/suppliers/${id}`, data),
+  delete: (id) => api.delete(`/suppliers/${id}`),
+};
+
+// ── Settlements ───────────────────────────────────────────────────────────────
+export const settlementApi = {
+  get: (params = {}) => api.get('/settlements', {
+    params: {
+      ...(params.date ? { date: params.date } : {}),
+      ...(params.all ? { all: 'true' } : {}),
+      ...(params.party ? { party: params.party } : {}),
+      ...(params.sort_amount ? { sort_amount: params.sort_amount } : {}),
+      ...(params.sort_date ? { sort_date: params.sort_date } : {}),
+    }
+  }),
+  create: (data) => api.post('/settlements', data),
+  delete: (id) => api.delete(`/settlements/${id}`),
+};
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+export const settingsApi = {
+  get: () => api.get('/settings'),
+  update: (data) => api.put('/settings', data),
+};
+
+// ── Stock Movements ───────────────────────────────────────────────────────────
+export const stockApi = {
+  getAll: (params) => api.get('/stock-movements', { params }),
+  getToday: () => api.get('/stock-movements/today'),
+  create: (data) => api.post('/stock-movements', data),
+};
+
+// ── Seed ──────────────────────────────────────────────────────────────────────
+export const seedApi = {
+  run: () => api.post('/seed'),
+};
+
+export default api;
