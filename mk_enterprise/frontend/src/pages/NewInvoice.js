@@ -7,7 +7,7 @@ import { formatCurrency } from '../utils/helpers';
 import { useLocation } from 'react-router-dom';
 import { orderApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
-import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet, Play, CheckCircle, AlertTriangle, Plus, Trash2, Monitor, Check, ArrowLeft } from 'lucide-react';
+import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet, Play, CheckCircle, AlertTriangle, Plus, Trash2, Monitor, Check, ArrowLeft, Maximize2, Receipt, FolderOpen, Inbox, Clock, Tag, Wallet, Smartphone, Globe, CreditCard, PenTool, Save } from 'lucide-react';
 
 const newItem = () => ({
   _key: Date.now() + Math.random(),
@@ -149,7 +149,7 @@ function ProductAutocomplete({ value, onSelect, onNameChange, inputRef, onEnter 
                     background: '#fff', border: '1.5px solid #bfdbfe',
                     padding: '3px 10px', borderRadius: 8, whiteSpace: 'nowrap', flexShrink: 0,
                   }}>
-                    ➕ Add as new
+                    <Plus size={12} style={{ marginRight: 3, display: 'inline-block', verticalAlign: 'middle' }} /> Add as new
                   </span>
                 </div>
               ) : (
@@ -194,6 +194,7 @@ export default function NewInvoice() {
   const [customers, setCustomers] = useState([]);
   const createInitialItems = () => Array.from({ length: 2 }, () => newItem());
   const [items, setItems] = useState(createInitialItems());
+  const [isItemsExpanded, setIsItemsExpanded] = useState(false);
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const orderId = params.get('orderId');
@@ -611,9 +612,17 @@ export default function NewInvoice() {
         {/* LEFT */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>🧾 New Bill</div>
+            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
+              <Receipt size={17} style={{ marginRight: 6 }} /> New Bill
+            </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
-              {isManualBill ? '📝 Manual Bill Entry' : 'Create a new sales invoice'}
+              {isManualBill ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <FileText size={12} /> Manual Bill Entry
+                </span>
+              ) : (
+                'Create a new sales invoice'
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -631,7 +640,7 @@ export default function NewInvoice() {
                 transition: 'all 0.15s',
               }}
             >
-              📂 Drafts
+              <FolderOpen size={12.5} style={{ marginRight: 4 }} /> Drafts
               {drafts.length > 0 && (
                 <span style={{
                   background: showDrafts ? 'rgba(255,255,255,0.3)' : 'var(--primary)',
@@ -655,7 +664,7 @@ export default function NewInvoice() {
               onMouseEnter={e => { e.currentTarget.style.background = '#e5e7eb'; e.currentTarget.style.color = 'var(--text)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = 'var(--text-muted)'; }}
             >
-              📦 Orders
+              <FileSpreadsheet size={12.5} style={{ marginRight: 4 }} /> Orders
             </button>
           </div>
         </div>
@@ -675,7 +684,7 @@ export default function NewInvoice() {
             onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#9ca3af'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
           >
-            📦 New Order
+            <FileSpreadsheet size={14} /> New Order
           </button>
           <button
             type="button"
@@ -692,7 +701,7 @@ export default function NewInvoice() {
             onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(22,163,74,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
             onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(22,163,74,0.35)'; e.currentTarget.style.transform = 'none'; }}
           >
-            💾 Save Invoice
+            <Save size={14} /> Save Invoice
           </button>
         </div>
       </div>
@@ -701,8 +710,8 @@ export default function NewInvoice() {
       {showDrafts && (
         <div className="card mb-3" style={{ border: '1.5px solid var(--border)', borderRadius: 12 }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 14.5 }}>
-              📂 Saved Drafts
+            <div style={{ fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
+              <FolderOpen size={14.5} style={{ marginRight: 6 }} /> Saved Drafts
               {drafts.length > 0 && (
                 <span style={{ marginLeft: 8, background: 'var(--primary)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
                   {drafts.length}
@@ -714,8 +723,8 @@ export default function NewInvoice() {
           <div style={{ padding: drafts.length === 0 ? 24 : '8px 12px' }}>
             {drafts.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>
-                No drafts saved yet. Click "Save Invoice" to save one.
+                <Inbox size={28} className="text-muted" style={{ marginBottom: 8 }} />
+                <div>No drafts saved yet. Click "Save Invoice" to save one.</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -742,18 +751,18 @@ export default function NewInvoice() {
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 700, fontSize: 14 }}>{d.customerName || 'Walk-in Customer'}</span>
-                          <span style={{ background: '#eff6ff', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
+                           <span style={{ fontWeight: 700, fontSize: 14 }}>{d.customerName || 'Walk-in Customer'}</span>
+                           <span style={{ background: '#eff6ff', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
                         </div>
-                        <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>🕐 {savedDate}</span>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>📦 {d.itemCount || 0} item{d.itemCount !== 1 ? 's' : ''}</span>
+                        <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {savedDate}</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileSpreadsheet size={12} /> {d.itemCount || 0} item{d.itemCount !== 1 ? 's' : ''}</span>
                           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>₹{(d.totalAmount || 0).toFixed(2)}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                        <button className="btn btn-primary btn-sm" style={{ fontSize: 12 }} onClick={() => loadDraft(d)}>📂 Load</button>
-                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)', fontSize: 12 }} onClick={() => deleteDraft(d.id)}>🗑️</button>
+                        <button className="btn btn-primary btn-sm" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => loadDraft(d)}><FolderOpen size={12} /> Load</button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)', fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => deleteDraft(d.id)}><Trash2 size={12} /></button>
                       </div>
                     </div>
                   );
@@ -854,7 +863,7 @@ export default function NewInvoice() {
                             >
                               <div>
                                 <div style={{ fontWeight: 700, fontSize: 13.5, color: '#111827' }}>{c.name}</div>
-                                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>📞 {c.phone || 'No phone'}</div>
+                                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {c.phone || 'No phone'}</div>
                               </div>
                               {c.balance > 0.01 && (
                                 <span style={{ fontSize: 11, fontWeight: 700, background: '#fef2f2', color: '#dc2626', padding: '2px 8px', borderRadius: 8 }}>
@@ -912,9 +921,9 @@ export default function NewInvoice() {
                         gap: 0,
                       }}>
                         {[
-                          { label: '📞 Phone', value: selectedCustomer.phone ? `+91 ${selectedCustomer.phone}` : '—' },
-                          { label: '📍 Address', value: selectedCustomer.address || '—' },
-                          ...(prevBalance !== 0 ? [{ label: prevBalance > 0 ? '⚠️ Due' : '✅ Advance', value: `₹${Math.abs(prevBalance).toFixed(2)}`, color: prevBalance > 0 ? '#dc2626' : '#16a34a' }] : []),
+                          { label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={10} /> Phone</span>, value: selectedCustomer.phone ? `+91 ${selectedCustomer.phone}` : '—' },
+                          { label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><MapPin size={10} /> Address</span>, value: selectedCustomer.address || '—' },
+                          ...(prevBalance !== 0 ? [{ label: prevBalance > 0 ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={10} /> Due</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={10} /> Advance</span>, value: `₹${Math.abs(prevBalance).toFixed(2)}`, color: prevBalance > 0 ? '#dc2626' : '#16a34a' }] : []),
                         ].map((infoItem, i, arr) => (
                           <div key={i} style={{ padding: '9px 14px', borderRight: i < arr.length - 1 ? '1px solid #e5e7eb' : 'none' }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>{infoItem.label}</div>
@@ -1057,10 +1066,9 @@ export default function NewInvoice() {
             </div>
           </div>
 
-          {/* Items */}
           <div className="card mb-5">
             <div className="card-header">
-              <div className="card-title">📋 Items</div>
+              <div className="card-title d-flex align-items-center gap-2"><FileSpreadsheet size={18} className="text-secondary" /> Items</div>
               <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Row</button>
             </div>
             <div className="card-body" style={{ padding: '12px 16px' }}>
@@ -1104,8 +1112,8 @@ export default function NewInvoice() {
                           />
                           {item._isNew && item.product_name && (
                             <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '1px 7px', borderRadius: 8 }}>
-                                🆕 New Product
+                              <span style={{ fontSize: 10, fontWeight: 700, background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '1px 7px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                <Plus size={10} /> New Product
                               </span>
                               <select
                                 style={{ fontSize: 11, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 5, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
@@ -1279,14 +1287,27 @@ export default function NewInvoice() {
                   </tbody>
                 </table>
               </div>
-              <button className="btn btn-outline btn-sm mt-3" onClick={addItem}>+ Add Another Item</button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+                <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Another Item</button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm d-flex align-items-center gap-1"
+                  onClick={() => setIsItemsExpanded(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '6px 12px', border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary-light)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                  title="Expand items view for easier data entry"
+                >
+                  <Maximize2 size={13} style={{ color: 'var(--primary)' }} /> Expand Items View
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Payments */}
           <div className="card mb-5">
             <div className="card-header">
-              <div className="card-title">💳 Payment Received</div>
+              <div className="card-title d-flex align-items-center gap-2"><CreditCard size={18} className="text-secondary" /> Payment Received</div>
               <button className="btn btn-outline btn-sm" onClick={addPayment}>+ Add Mode</button>
             </div>
             <div className="card-body">
@@ -1306,14 +1327,20 @@ export default function NewInvoice() {
                           boxShadow: p.mode === m ? '0 2px 6px rgba(37,99,235,0.3)' : 'none',
                         }}
                       >
-                        {m === 'cash' ? '💵' : m === 'upi' ? '📱' : m === 'online' ? '🌐' : '💳'} {m.toUpperCase()}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          {m === 'cash' ? <Wallet size={13} /> : m === 'upi' ? <Smartphone size={13} /> : m === 'online' ? <Globe size={13} /> : <CreditCard size={13} />}
+                          {m.toUpperCase()}
+                        </span>
                       </button>
                     ))}
                     <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ marginLeft: 'auto', color: 'var(--danger)', fontSize: 12 }}
+                      type="button"
+                      className="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1"
+                      style={{ marginLeft: 'auto', color: 'var(--danger)', fontSize: 12, fontWeight: 700 }}
                       onClick={() => removePayment(idx)}
-                    >✕ Remove</button>
+                    >
+                      <Trash2 size={12} /> Remove
+                    </button>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div>
@@ -1338,7 +1365,7 @@ export default function NewInvoice() {
           {/* Discount */}
           <div className="card mb-5">
             <div className="card-header">
-              <div className="card-title">🏷️ Discount / Concession</div>
+              <div className="card-title d-flex align-items-center gap-2"><Tag size={18} className="text-secondary" /> Discount / Concession</div>
               {dis > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>− {fc(dis)} applied</span>}
             </div>
             <div className="card-body">
@@ -1349,7 +1376,7 @@ export default function NewInvoice() {
                     className="form-control" type="number" min="0" step="0.01"
                     value={discount} onChange={e => setDiscount(e.target.value)} placeholder="0.00"
                   />
-                  {dis > 0 && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>✅ Discount of {fc(dis)} will be deducted from the total</div>}
+                  {dis > 0 && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--success)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} /> Discount of {fc(dis)} will be deducted from the total</div>}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Concession Reason <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
@@ -1393,7 +1420,7 @@ export default function NewInvoice() {
         <div className="col-md-5 col-lg-4 order-md-last">
           <div className="position-sticky" style={{ top: '24px' }}>
             <h4 className="d-flex justify-content-between align-items-center mb-3">
-              <span className="text-primary fw-bold" style={{ fontSize: '18px' }}>💰 Billing Summary</span>
+              <span className="text-primary fw-bold d-flex align-items-center gap-2" style={{ fontSize: '18px' }}><Wallet size={18} /> Billing Summary</span>
               <span className="badge bg-primary rounded-pill text-white" style={{ fontSize: '12px', padding: '4px 8px' }}>
                 {items.filter(i => i.product_name && parseFloat(i.qty) > 0).length} Items
               </span>
@@ -1451,7 +1478,7 @@ export default function NewInvoice() {
               {dis > 0 && (
                 <li className="list-group-item d-flex justify-content-between bg-light text-success py-2">
                   <div className="text-success">
-                    <h6 className="my-0 fw-bold">🏷️ Discount Applied</h6>
+                    <h6 className="my-0 fw-bold d-flex align-items-center gap-1"><Tag size={13} /> Discount Applied</h6>
                     {concessionReason && <small className="text-success d-block">{concessionReason}</small>}
                   </div>
                   <strong className="font-monospace">- {fc(dis)}</strong>
@@ -1466,7 +1493,13 @@ export default function NewInvoice() {
               {prevBalance !== 0 && (
                 <>
                   <li className="list-group-item d-flex justify-content-between bg-light py-2">
-                    <span className="text-muted">{prevBalance > 0 ? '⚠️ Previous Due' : '✅ Previous Advance'}</span>
+                    <span className="text-muted d-inline-flex align-items-center gap-1">
+                      {prevBalance > 0 ? (
+                        <><AlertTriangle size={13} className="text-danger" /> Previous Due</>
+                      ) : (
+                        <><CheckCircle size={13} className="text-success" /> Previous Advance</>
+                      )}
+                    </span>
                     <strong className={`font-monospace ${prevBalance > 0 ? 'text-danger' : 'text-success'}`}>{fc(prevBalance)}</strong>
                   </li>
                   <li className="list-group-item d-flex justify-content-between bg-white py-3">
@@ -1482,7 +1515,15 @@ export default function NewInvoice() {
               </li>
 
               <li className={`list-group-item d-flex justify-content-between ${balanceDue > 0.01 ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} py-3`}>
-                <span className="fw-bold">{balanceDue > 0.01 ? '⚠️ Balance Due' : balanceDue < -0.01 ? '💰 Excess Paid' : '✅ Fully Paid'}</span>
+                <span className="fw-bold d-inline-flex align-items-center gap-1">
+                  {balanceDue > 0.01 ? (
+                    <><AlertTriangle size={13} /> Balance Due</>
+                  ) : balanceDue < -0.01 ? (
+                    <><Wallet size={13} /> Excess Paid</>
+                  ) : (
+                    <><CheckCircle size={13} /> Fully Paid</>
+                  )}
+                </span>
                 <strong className="h5 font-monospace mb-0">{fc(Math.abs(balanceDue))}</strong>
               </li>
             </ul>
@@ -1490,7 +1531,7 @@ export default function NewInvoice() {
             {/* Authorised Signature Canvas */}
             <div className="card shadow-sm mb-3">
               <div className="card-header bg-white py-2">
-                <span className="fw-bold text-dark" style={{ fontSize: '13px' }}>✍️ Authorised Signature</span>
+                <span className="fw-bold text-dark d-flex align-items-center gap-1" style={{ fontSize: '13px' }}><PenTool size={13} /> Authorised Signature</span>
               </div>
               <div className="card-body p-3 text-center">
                 <div className="text-muted mb-2" style={{ fontSize: '11px' }}>Authorized person can sign here before generating invoice</div>
@@ -1506,7 +1547,7 @@ export default function NewInvoice() {
                 </div>
                 <div className="mt-2 text-start">
                   <button type="button" className="btn btn-outline btn-sm py-1 px-2" style={{ fontSize: '11px' }} onClick={() => sigRef.current.clear()}>
-                    🧹 Clear Signature
+                    <span className="d-flex align-items-center gap-1"><Trash2 size={11} /> Clear Signature</span>
                   </button>
                 </div>
               </div>
@@ -1524,7 +1565,7 @@ export default function NewInvoice() {
                   Finalizing...
                 </>
               ) : (
-                <>✅ Finalize & Create Invoice</>
+                <span className="d-flex align-items-center gap-2"><CheckCircle size={18} /> Finalize & Create Invoice</span>
               )}
             </button>
             <button className="btn btn-outline w-100 py-2 fw-bold" onClick={() => navigate(-1)}>
@@ -1533,6 +1574,226 @@ export default function NewInvoice() {
           </div>
         </div>
       </div>
+      {isItemsExpanded && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)',
+          zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 1200,
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            overflow: 'hidden', border: '1px solid var(--border)'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 24px', borderBottom: '1.5px solid var(--border)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              background: '#f8fafc'
+            }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Maximize2 size={18} className="text-primary" /> Spacious Item Entry Mode
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  A wider layout specifically designed for rapid and comfortable item data entry.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm px-4"
+                onClick={() => setIsItemsExpanded(false)}
+                style={{ borderRadius: 8, fontWeight: 700 }}
+              >
+                Done & Apply
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              <div className="items-table-wrap" style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+                <table className="items-table">
+                  <thead>
+                    <tr>
+                      <th style={{ minWidth: 260 }}>Product</th>
+                      <th style={{ width: 80 }}>Qty</th>
+                      <th style={{ width: 120 }}>Rate ₹</th>
+                      {gstEnabled && (
+                        <>
+                          <th style={{ width: 90 }}>GST %</th>
+                          <th style={{ width: 100 }}>Taxable</th>
+                          <th style={{ width: 90 }}>CGST</th>
+                          <th style={{ width: 90 }}>SGST</th>
+                        </>
+                      )}
+                      <th style={{ width: 120 }}>Total ₹</th>
+                      <th style={{ width: 40 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={item._key}>
+                        <td>
+                          <ProductAutocomplete
+                            value={item.product_name}
+                            onSelect={p => onProductSelect(idx, p)}
+                            onNameChange={v => updateItem(idx, { product_id: '', product_name: v, _isNew: false, qty: v ? 1 : '' })}
+                            placeholder="Type product name..."
+                          />
+                          {item._isNew && item.product_name && (
+                            <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '1px 7px', borderRadius: 8 }}>
+                                🆕 New Product
+                              </span>
+                              <select
+                                style={{ fontSize: 11, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 5, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
+                                value={item.unit || 'bag'}
+                                onChange={e => updateItem(idx, { unit: e.target.value })}
+                              >
+                                {['bag', 'kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'quintal', 'ton', 'mtr', 'dozen', 'pkt', 'strip'].map(u => (
+                                  <option key={u} value={u}>{u}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <input
+                            className="form-control"
+                            type="text"
+                            inputMode="decimal"
+                            value={item.qty}
+                            placeholder="Qty"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
+                                updateItem(idx, { qty: val });
+                              }
+                            }}
+                            onBlur={() => {
+                              setItems(prev => {
+                                const next = [...prev];
+                                next[idx] = calcItem(next[idx], gstEnabled);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="form-control"
+                            type="text"
+                            inputMode="decimal"
+                            value={item._priceEdit !== undefined ? item._priceEdit : (item.price || '')}
+                            placeholder="0.00"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
+                                setItems(prev => {
+                                  const next = [...prev];
+                                  next[idx] = { ...next[idx], _priceEdit: val };
+                                  return next;
+                                });
+                              }
+                            }}
+                            onBlur={() => {
+                              setItems(prev => {
+                                const next = [...prev];
+                                const rawVal = next[idx]._priceEdit;
+                                if (rawVal !== undefined) {
+                                  next[idx] = calcItem({ ...next[idx], price: rawVal, _priceEdit: undefined }, gstEnabled);
+                                } else {
+                                  next[idx] = calcItem(next[idx], gstEnabled);
+                                }
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        {gstEnabled && (
+                          <>
+                            <td>
+                              <select className="form-control" value={item.gst} onChange={e => updateItem(idx, { gst: e.target.value })}>
+                                {[0, 0.25, 1, 3, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
+                              </select>
+                            </td>
+                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 13 }}>{fc(item.taxable_amount)}</td>
+                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 13 }}>{fc(item.cgst)}</td>
+                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 13 }}>{fc(item.sgst)}</td>
+                          </>
+                        )}
+                        <td style={{ textAlign: 'right' }}>
+                          {gstEnabled && parseFloat(item.gst) > 0 ? (
+                            <input
+                              className="form-control"
+                              type="text"
+                              inputMode="decimal"
+                              value={item._totalEdit !== undefined ? item._totalEdit : (item.total || '0')}
+                              style={{
+                                textAlign: 'right', fontFamily: 'monospace',
+                                fontWeight: 700, fontSize: 13,
+                                border: '1.5px solid #bfdbfe',
+                                background: '#eff6ff',
+                                width: '100%',
+                              }}
+                              onChange={e => {
+                                const val = e.target.value;
+                                if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
+                                  setItems(prev => {
+                                    const next = [...prev];
+                                    next[idx] = { ...next[idx], _totalEdit: val };
+                                    if (val !== '' && parseFloat(val) >= 0) {
+                                      const recalced = calcItemFromTotal(next[idx], gstEnabled, val);
+                                      next[idx] = { ...recalced, _totalEdit: val };
+                                    }
+                                    return next;
+                                  });
+                                }
+                              }}
+                              onBlur={() => {
+                                setItems(prev => {
+                                  const next = [...prev];
+                                  next[idx] = { ...next[idx], _totalEdit: undefined };
+                                  return next;
+                                });
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13 }}>{fc(item.total)}</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => removeItem(idx)}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: '#d1d5db', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              padding: '4px', lineHeight: 1, transition: 'color 0.15s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
+                            onMouseLeave={e => e.currentTarget.style.color = '#d1d5db'}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Row</button>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>
+                  Total Items: {items.filter(i => i.product_name && parseFloat(i.qty) > 0).length} · Subtotal: <span style={{ color: 'var(--success)' }}>{fc(subtotal)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

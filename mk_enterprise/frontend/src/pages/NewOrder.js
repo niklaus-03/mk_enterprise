@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { orderApi, productApi, settlementApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/helpers';
+import { FileSpreadsheet, ArrowLeft, User, Trash2, CreditCard, Wallet, Smartphone, Globe, CheckCircle, Info, Save } from 'lucide-react';
 
 // Title-case helper — first letter of each word capitalized
 const titleCase = (str) =>
@@ -163,11 +164,11 @@ export default function NewOrder() {
       {/* Page Header */}
       <div className="page-header">
         <div>
-          <div className="page-title">📦 New Order</div>
+          <div className="page-title d-flex align-items-center gap-2"><FileSpreadsheet size={22} className="text-primary" /> New Order</div>
           <div className="page-subtitle">Create a new customer order</div>
         </div>
-        <button className="btn btn-outline" onClick={() => navigate(-1)}>
-          ← Back
+        <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => navigate(-1)}>
+          <ArrowLeft size={14} /> Back
         </button>
       </div>
 
@@ -176,7 +177,7 @@ export default function NewOrder() {
         {/* ── Customer Info ─────────────────────────────── */}
         <div className="card" style={{ marginBottom: 16, border: '1.5px solid #e5e7eb', borderRadius: 12 }}>
           <div className="card-header" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 14, marginBottom: 0 }}>
-            <div className="card-title">👤 Customer Details</div>
+            <div className="card-title d-flex align-items-center gap-2"><User size={18} className="text-secondary" /> Customer Details</div>
           </div>
           <div className="card-body">
             <div className="form-row">
@@ -244,7 +245,7 @@ export default function NewOrder() {
         {/* ── Items ─────────────────────────────────────── */}
         <div className="card" style={{ marginBottom: 16, border: '1.5px solid #e5e7eb', borderRadius: 12 }}>
           <div className="card-header" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 14 }}>
-            <div className="card-title">📋 Order Items</div>
+            <div className="card-title d-flex align-items-center gap-2"><FileSpreadsheet size={18} className="text-secondary" /> Order Items</div>
             <button
               className="btn btn-outline btn-sm"
               onClick={() => setItems(prev => [...prev, emptyItem()])}
@@ -353,7 +354,9 @@ export default function NewOrder() {
                   }}
                   onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
                   onMouseLeave={e => e.currentTarget.style.color = '#d1d5db'}
-                >🗑️</button>
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
 
@@ -370,7 +373,7 @@ export default function NewOrder() {
         {/* ── Advance Payment ───────────────────────────── */}
         <div className="card" style={{ marginBottom: 20, border: '1.5px solid #e5e7eb', borderRadius: 12 }}>
           <div className="card-header" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 14 }}>
-            <div className="card-title">💳 Advance Payment</div>
+            <div className="card-title d-flex align-items-center gap-2"><CreditCard size={18} className="text-secondary" /> Advance Payment</div>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Optional — will appear in Settlement → Received</span>
           </div>
           <div className="card-body">
@@ -398,7 +401,10 @@ export default function NewOrder() {
                       className={`btn btn-sm ${advanceMode === m ? 'btn-primary' : 'btn-outline'}`}
                       onClick={() => setAdvanceMode(m)}
                     >
-                      {m === 'cash' ? '💵' : m === 'upi' ? '📱' : m === 'online' ? '🌐' : '💳'} {m.toUpperCase()}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        {m === 'cash' ? <Wallet size={13} /> : m === 'upi' ? <Smartphone size={13} /> : m === 'online' ? <Globe size={13} /> : <CreditCard size={13} />}
+                        {m.toUpperCase()}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -414,8 +420,8 @@ export default function NewOrder() {
                 </div>
                 {advance > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 13.5 }}>
-                    <span style={{ color: 'var(--success)', fontWeight: 600 }}>
-                      ✅ Advance Paid ({advanceMode.toUpperCase()})
+                    <span style={{ color: 'var(--success)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <CheckCircle size={14} /> Advance Paid ({advanceMode.toUpperCase()})
                     </span>
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--success)' }}>−{fc(advance)}</span>
                   </div>
@@ -423,12 +429,12 @@ export default function NewOrder() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, marginTop: 6, borderTop: '2px solid var(--border)', fontSize: 16 }}>
                   <span style={{ fontWeight: 800 }}>Balance Due on Delivery</span>
                   <span style={{ fontFamily: 'monospace', fontWeight: 800, color: balance > 0 ? 'var(--danger)' : 'var(--success)' }}>
-                    {balance > 0 ? fc(balance) : '✓ Fully Paid'}
+                    {balance > 0 ? fc(balance) : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} /> Fully Paid</span>}
                   </span>
                 </div>
                 {advance > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-muted)', background: '#eff6ff', borderRadius: 6, padding: '6px 10px' }}>
-                    ℹ️ Advance of {fc(advance)} via {advanceMode.toUpperCase()} will be recorded in Settlement as Received → Advance Payment
+                  <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-muted)', background: '#eff6ff', borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Info size={13} /> <span>Advance of {fc(advance)} via {advanceMode.toUpperCase()} will be recorded in Settlement as Received → Advance Payment</span>
                   </div>
                 )}
               </div>
@@ -442,13 +448,13 @@ export default function NewOrder() {
             Cancel
           </button>
           <button
-            className="btn btn-primary btn-lg"
+            className="btn btn-primary btn-lg d-inline-flex align-items-center gap-2"
             onClick={handleSubmit}
             disabled={saving}
           >
             {saving
               ? <><span className="spinner"></span> Saving...</>
-              : '💾 Create Order'}
+              : <><Save size={16} /> Create Order</>}
           </button>
         </div>
       </div>

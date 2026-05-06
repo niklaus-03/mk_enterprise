@@ -7,6 +7,7 @@ import { supabase } from '../utils/supabase';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, numToWords, formatIST } from '../utils/helpers';
+import { FileText, ArrowLeft, AlertTriangle, Edit, Share2, Trash2, Printer, Phone, Mail, CheckCircle, Wallet, Smartphone, Globe, CreditCard, MessageSquare, Info, Truck, User, Tag, Download } from 'lucide-react';
 
 
 const uploadPDF = async (pdfBlob, invoiceNumber) => {
@@ -244,27 +245,32 @@ Thank you! 🙏`
     : (settings.business_phone || 'ShopBill Pro');
   const istDisplay = invoice.ist_formatted || formatIST(invoice.date);
   const hasBankDetails = settings.bank_account && settings.bank_ifsc;
-  const paymentModeBadge = { cash: '💵', upi: '📱', online: '🌐', others: '💳' };
+  const paymentModeBadge = {
+    cash: <Wallet size={12} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />,
+    upi: <Smartphone size={12} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />,
+    online: <Globe size={12} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />,
+    others: <CreditCard size={12} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+  };
 
   return (
     <div>
       {/* Action bar */}
       <div className="page-header no-print" style={{ marginBottom: 20 }}>
         <div>
-          <div className="page-title">🧾 {invoice.invoice_number}</div>
+          <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> {invoice.invoice_number}</div>
           <div className="page-subtitle">{istDisplay} · <span style={{ textTransform: 'capitalize' }}>{invoice.status}</span></div>
         </div>
         <div className="page-actions">
-          <Link to="/invoices" className="btn btn-outline">← All Invoices</Link>
+          <Link to="/invoices" className="btn btn-outline d-inline-flex align-items-center gap-1"><ArrowLeft size={14} /> All Invoices</Link>
           {isManager && (
-            <button className="btn btn-outline" style={{ borderColor: 'var(--warning)', color: 'var(--warning)' }} onClick={handleEscalate}>
-              ⚠️ Escalate to Admin
+            <button className="btn btn-outline d-inline-flex align-items-center gap-1" style={{ borderColor: 'var(--warning)', color: 'var(--warning)' }} onClick={handleEscalate}>
+              <AlertTriangle size={14} /> Escalate to Admin
             </button>
           )}
-          <Link to={`/invoices/${id}/edit`} className="btn btn-warning">✏️ Edit</Link>
-          <button className="btn btn-outline" onClick={() => setShowShareModal(true)}>📤 Share</button>
-          <button className="btn btn-danger" onClick={handleDelete}>🗑️ Cancel</button>
-          <button className="btn btn-primary btn-lg" onClick={handlePrint}>🖨️ Print / PDF</button>
+          <Link to={`/invoices/${id}/edit`} className="btn btn-warning d-inline-flex align-items-center gap-1"><Edit size={14} /> Edit</Link>
+          <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => setShowShareModal(true)}><Share2 size={14} /> Share</button>
+          <button className="btn btn-danger d-inline-flex align-items-center gap-1" onClick={handleDelete}><Trash2 size={14} /> Cancel</button>
+          <button className="btn btn-primary btn-lg d-inline-flex align-items-center gap-1" onClick={handlePrint}><Printer size={14} /> Print / PDF</button>
         </div>
       </div>
 
@@ -275,8 +281,8 @@ Thank you! 🙏`
           <div>
             <div className="inv-biz-name">{settings.business_name || 'My Shop'}</div>
             <div style={{ color: '#6b7280', fontSize: 13, maxWidth: 320, marginTop: 4 }}>{settings.business_address}</div>
-            {settings.business_phone && <div style={{ fontSize: 13, marginTop: 2 }}>📞 {settings.business_phone}</div>}
-            {settings.business_email && <div style={{ fontSize: 12, color: '#6b7280' }}>✉️ {settings.business_email}</div>}
+            {settings.business_phone && <div style={{ fontSize: 13, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {settings.business_phone}</div>}
+            {settings.business_email && <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}><Mail size={11} /> {settings.business_email}</div>}
             {settings.business_gstin && <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>GSTIN: {settings.business_gstin}</div>}
             {settings.business_state && <div style={{ fontSize: 12, color: '#6b7280' }}>State: {settings.business_state}</div>}
           </div>
@@ -300,7 +306,7 @@ Thank you! 🙏`
             <div className="inv-section-title">Bill To</div>
             <div className="inv-bill-to">
               <div style={{ fontWeight: 700, fontSize: 15 }}>{invoice.customer_name}</div>
-              {invoice.customer_phone && <div style={{ fontSize: 13, marginTop: 3 }}>📞 {invoice.customer_phone}</div>}
+              {invoice.customer_phone && <div style={{ fontSize: 13, marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {invoice.customer_phone}</div>}
               {invoice.customer_address && <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{invoice.customer_address}</div>}
             </div>
           </div>
@@ -313,7 +319,7 @@ Thank you! 🙏`
             ) : (
               <div style={{ background: 'var(--success-light)', border: '1.5px solid #86efac', borderRadius: 10, padding: '12px 18px', textAlign: 'center' }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>Status</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)' }}>✅ PAID</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><CheckCircle size={16} /> PAID</div>
               </div>
             )}
           </div>
@@ -321,8 +327,8 @@ Thank you! 🙏`
 
         {/* Previous balance note */}
         {invoice.previous_balance > 0 && (
-          <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '8px 14px', marginBottom: 14, fontSize: 13 }}>
-            ⚠️ Previous balance of <strong>{fc(invoice.previous_balance)}</strong> included in total.
+          <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '8px 14px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <AlertTriangle size={14} className="text-warning" /> <span>Previous balance of <strong>{fc(invoice.previous_balance)}</strong> included in total.</span>
           </div>
         )}
 
@@ -391,13 +397,13 @@ Thank you! 🙏`
             {/* Enhancement 5: vehicle charge line */}
             {invoice.vehicle_charge > 0 && (
               <div className="inv-total-row text-warning">
-                <span>🚛 Vehicle Charge</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} /> Vehicle Charge</span>
                 <span className="mono">+ {fc(invoice.vehicle_charge)}</span>
               </div>
             )}
             {invoice.labour_charge > 0 && (
               <div className="inv-total-row" style={{ color: '#7c3aed', fontWeight: 600 }}>
-                <span>👷 Labour Charge</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><User size={12} /> Labour Charge</span>
                 <span className="mono">+ {fc(invoice.labour_charge)}</span>
               </div>
             )}
@@ -421,7 +427,7 @@ Thank you! 🙏`
             <div className="inv-section-title" style={{ marginBottom: 6 }}>Payment Received Via</div>
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
               {invoice.payments.map((p, i) => (
-                <span key={i} className="badge badge-gray" style={{ fontSize: 12 }}>
+                <span key={i} className="badge badge-gray" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center' }}>
                   {paymentModeBadge[p.mode]} {p.mode.toUpperCase()}: {fc(p.amount)} {p.reference ? `(${p.reference})` : ''}
                 </span>
               ))}
@@ -432,13 +438,13 @@ Thank you! 🙏`
         {(invoice.notes || invoice.concession_reason) && (
           <div style={{ marginBottom: 14, fontSize: 13, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px' }}>
             {invoice.notes && (
-              <div style={{ color: '#374151' }}>
-                <strong>📝 Notes:</strong> {invoice.notes}
+              <div style={{ color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <strong><FileText size={12} /> Notes:</strong> <span>{invoice.notes}</span>
               </div>
             )}
             {invoice.concession_reason && (
-              <div style={{ color: '#374151', marginTop: invoice.notes ? 6 : 0 }}>
-                <strong>🏷️ Concession Reason:</strong> {invoice.concession_reason}
+              <div style={{ color: '#374151', marginTop: invoice.notes ? 6 : 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <strong><Tag size={12} /> Concession Reason:</strong> <span>{invoice.concession_reason}</span>
               </div>
             )}
           </div>
@@ -466,7 +472,7 @@ Thank you! 🙏`
           </div>
           <div style={{ textAlign: 'center', flex: 1, fontSize: 11.5, color: '#9ca3af' }}>
             <div>This is a computer generated invoice.</div>
-            <div>Thank you for your business! 🙏</div>
+            <div>Thank you for your business!</div>
           </div>
           <div className="inv-sign">
             {invoice.signature && (
@@ -491,25 +497,25 @@ Thank you! 🙏`
         <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <div className="modal-header">
-              <div className="modal-title">📤 Share Invoice {invoice.invoice_number}</div>
+              <div className="modal-title d-flex align-items-center gap-2"><Share2 size={18} /> Share Invoice {invoice.invoice_number}</div>
               <button className="modal-close" onClick={() => setShowShareModal(false)}>✕</button>
             </div>
             <div className="modal-body">
 
               {/* ── WhatsApp ── */}
               <div style={{ marginBottom: 18 }}>
-                <label className="form-label">💬 WhatsApp</label>
+                <label className="form-label d-flex align-items-center gap-1"><MessageSquare size={14} /> WhatsApp</label>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
                   {invoice.customer_phone
                     ? `Sends PDF link to +91 ${invoice.customer_phone}`
                     : 'No phone on file — opens WhatsApp with message ready'}
                 </p>
                 <button
-                  className="btn btn-success btn-block"
+                  className="btn btn-success btn-block d-inline-flex align-items-center gap-2"
                   style={{ justifyContent: 'center' }}
                   onClick={() => { handleWhatsApp(); setShowShareModal(false); }}
                 >
-                  💬 Send via WhatsApp
+                  <MessageSquare size={14} /> Send via WhatsApp
                 </button>
               </div>
 
@@ -517,19 +523,19 @@ Thank you! 🙏`
 
               {/* ── SMS ── */}
               <div style={{ marginBottom: 18 }}>
-                <label className="form-label">📱 Send via SMS</label>
+                <label className="form-label d-flex align-items-center gap-1"><Smartphone size={14} /> Send via SMS</label>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
                   {invoice.customer_phone
                     ? `Opens SMS app for ${invoice.customer_phone} with invoice summary`
-                    : <span style={{ color: 'var(--danger)' }}>⚠️ No phone number on file</span>}
+                    : <span style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> No phone number on file</span>}
                 </p>
                 <button
-                  className="btn btn-outline btn-block"
+                  className="btn btn-outline btn-block d-inline-flex align-items-center gap-2"
                   style={{ justifyContent: 'center', borderColor: '#6b7280' }}
                   onClick={() => { handleSMS(); setShowShareModal(false); }}
                   disabled={!invoice.customer_phone}
                 >
-                  📱 Send SMS
+                  <Smartphone size={14} /> Send SMS
                 </button>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>
                   Opens your phone's native SMS app with message pre-filled
@@ -540,7 +546,7 @@ Thank you! 🙏`
 
               {/* ── Email ── */}
               <div style={{ marginBottom: 18 }}>
-                <label className="form-label">📧 Send via Email</label>
+                <label className="form-label d-flex align-items-center gap-1"><Mail size={14} /> Send via Email</label>
                 <input
                   className="form-control"
                   type="email"
@@ -551,14 +557,14 @@ Thank you! 🙏`
                   onKeyDown={e => { if (e.key === 'Enter') handleSendEmail(); }}
                 />
                 <button
-                  className="btn btn-primary btn-block"
+                  className="btn btn-primary btn-block d-inline-flex align-items-center gap-2"
                   style={{ justifyContent: 'center' }}
                   onClick={handleSendEmail}
                   disabled={emailSending || !emailTo}
                 >
                   {emailSending
                     ? <><span className="spinner"></span> Sending...</>
-                    : '📧 Send Email'}
+                    : <><Mail size={14} /> Send Email</>}
                 </button>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>
                   If backend email is unavailable, opens your email client as fallback
@@ -569,16 +575,16 @@ Thank you! 🙏`
 
               {/* ── PDF ── */}
               <div>
-                <label className="form-label">📄 Save as PDF</label>
+                <label className="form-label d-flex align-items-center gap-1"><FileText size={14} /> Save as PDF</label>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
                   Opens browser print dialog — choose "Save as PDF"
                 </p>
                 <button
-                  className="btn btn-outline btn-block"
+                  className="btn btn-outline btn-block d-inline-flex align-items-center gap-2"
                   style={{ justifyContent: 'center' }}
                   onClick={() => { handlePrint(); setShowShareModal(false); }}
                 >
-                  📥 Download PDF
+                  <Download size={14} /> Download PDF
                 </button>
               </div>
 

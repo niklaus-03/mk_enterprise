@@ -341,8 +341,12 @@ router.post('/record-payment', async (req, res) => {
         ? `Due cleared. ₹${advance.toFixed(2)} stored as advance for this customer.`
         : `₹${paid.toFixed(2)} recorded successfully.`,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-        // POST /api/dashboard/walkin-due — create a walk-in due without an invoice
+// POST /api/dashboard/walkin-due — create a walk-in due without an invoice
 router.post('/walkin-due', async (req, res) => {
   try {
     const { name, amount, phone, notes } = req.body;
@@ -389,12 +393,6 @@ router.post('/walkin-due', async (req, res) => {
       invoice_number: invoice.invoice_number,
       message: `Due of ₹${parseFloat(amount).toFixed(2)} created for ${name}`,
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

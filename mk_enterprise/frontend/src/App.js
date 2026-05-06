@@ -80,7 +80,6 @@ function Sidebar({ open, onClose, onLock }) {
             inset: 0,
             background: 'rgba(0,0,0,0.5)',
             zIndex: 998,
-            backdropFilter: 'blur(1px)',
           }}
         />
       )}
@@ -389,19 +388,6 @@ function AppLayout() {
       )}
 
       <Sidebar open={isOpen} onClose={() => setSidebarOpen(false)} onLock={() => setIsLocked(true)} />
-
-      {/* Overlay — click outside closes sidebar on mobile */}
-      {isOpen && (
-        <div
-          onClick={() => setSidebarOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 998,
-            background: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(2px)',
-            animation: 'fadeIn 0.22s ease',
-          }}
-        />
-      )}
 
       <div className="app-main">
         {/* Mobile topbar — Premium Centered Instagram-Style Layout */}

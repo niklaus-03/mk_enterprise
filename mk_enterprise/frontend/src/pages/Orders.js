@@ -3,6 +3,7 @@ import { orderApi } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../utils/helpers';
+import { FileSpreadsheet, Phone, AlertTriangle, Calendar, CreditCard, Trash2, Plus, FileText, Inbox } from 'lucide-react';
 
 const fc = formatCurrency;
 
@@ -72,17 +73,17 @@ export default function OrdersPage() {
         marginBottom: 20, flexWrap: 'wrap', gap: 12,
       }}>
         <div>
-          <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: -0.3 }}>📦 Orders</div>
+          <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 6 }}><FileSpreadsheet size={22} className="text-primary" /> Orders</div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
             Track and manage customer orders
           </div>
         </div>
         <button
-          className="btn btn-primary"
+          className="btn btn-primary d-inline-flex align-items-center gap-1"
           style={{ boxShadow: '0 2px 8px rgba(37,99,235,0.3)' }}
           onClick={() => navigate('/orders/new')}
         >
-          + Create Order
+          <Plus size={14} /> Create Order
         </button>
       </div>
 
@@ -93,9 +94,9 @@ export default function OrdersPage() {
         width: 'fit-content',
       }}>
         {[
-          { key: 'today', label: "📅 Today", count: counts.today },
-          { key: 'upcoming', label: "📆 Upcoming", count: counts.upcoming },
-          { key: 'all', label: "📚 All", count: counts.all },
+          { key: 'today', label: "Today", icon: <Calendar size={13} />, count: counts.today },
+          { key: 'upcoming', label: "Upcoming", icon: <Calendar size={13} />, count: counts.upcoming },
+          { key: 'all', label: "All", icon: <FileSpreadsheet size={13} />, count: counts.all },
         ].map(tab => (
           <button
             key={tab.key}
@@ -110,6 +111,7 @@ export default function OrdersPage() {
               transition: 'all 0.15s',
             }}
           >
+            {tab.icon}
             {tab.label}
             {tab.count > 0 && (
               <span style={{
@@ -130,17 +132,17 @@ export default function OrdersPage() {
           textAlign: 'center', padding: '48px 20px',
           background: '#fff', borderRadius: 14, border: '1.5px dashed #d1d5db',
         }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
+          <Inbox size={40} className="text-muted" style={{ marginBottom: 12 }} />
           <div style={{ fontWeight: 700, fontSize: 16 }}>No orders found</div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             {filter === 'today' ? "No orders due today" : filter === 'upcoming' ? "No upcoming orders" : "No orders yet"}
           </div>
           <button
-            className="btn btn-primary"
+            className="btn btn-primary d-inline-flex align-items-center gap-1"
             style={{ marginTop: 16 }}
             onClick={() => navigate('/orders/new')}
           >
-            + Create First Order
+            <Plus size={14} /> Create First Order
           </button>
         </div>
       ) : (
@@ -180,7 +182,9 @@ export default function OrdersPage() {
                         {order.customer_name}
                       </div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
-                        📞 {order.customer_phone || '—'}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Phone size={11} /> {order.customer_phone || '—'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -191,23 +195,29 @@ export default function OrdersPage() {
                         background: '#fef2f2', color: '#dc2626',
                         fontSize: 11, fontWeight: 700, padding: '3px 9px',
                         borderRadius: 8, border: '1px solid #fca5a5',
-                      }}>⚠️ Overdue</span>
+                        display: 'inline-flex', alignItems: 'center', gap: 4
+                      }}><AlertTriangle size={11} /> Overdue</span>
                     )}
                     {isToday && (
                       <span style={{
                         background: '#eff6ff', color: 'var(--primary)',
                         fontSize: 11, fontWeight: 700, padding: '3px 9px',
                         borderRadius: 8, border: '1px solid #bfdbfe',
-                      }}>📅 Due Today</span>
+                        display: 'inline-flex', alignItems: 'center', gap: 4
+                      }}><Calendar size={11} /> Due Today</span>
                     )}
                     <span style={{
                       fontSize: 12, fontWeight: 600, color: '#374151',
                       background: '#f3f4f6', padding: '3px 10px', borderRadius: 8,
                     }}>
-                      🗓 {order.delivery_date
-                        ? new Date(order.delivery_date + 'T00:00:00').toLocaleDateString('en-IN', {
-                            day: '2-digit', month: 'short', year: 'numeric'
-                          })
+                      {order.delivery_date
+                        ? (() => {
+                            const cleanDate = order.delivery_date.substring(0, 10);
+                            const parsed = new Date(cleanDate + 'T00:00:00');
+                            return isNaN(parsed.getTime())
+                              ? '—'
+                              : parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                          })()
                         : '—'}
                     </span>
                   </div>
@@ -248,14 +258,15 @@ export default function OrdersPage() {
                           fontSize: 12, fontWeight: 600,
                           background: '#f0fdf4', color: '#16a34a',
                           padding: '4px 10px', borderRadius: 8, border: '1px solid #86efac',
+                          display: 'inline-flex', alignItems: 'center', gap: 4
                         }}>
-                          💳 Advance: ₹{advanceTotal.toFixed(2)}
+                          <CreditCard size={12} /> Advance: ₹{advanceTotal.toFixed(2)}
                           {order.advance_mode && ` (${order.advance_mode.toUpperCase()})`}
                         </div>
                       )}
                       {order.notes && (
-                        <div style={{ fontSize: 12, color: '#6b7280', alignSelf: 'center' }}>
-                          📝 {order.notes}
+                        <div style={{ fontSize: 12, color: '#6b7280', alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <FileText size={12} /> {order.notes}
                         </div>
                       )}
                     </div>
@@ -269,18 +280,18 @@ export default function OrdersPage() {
                   background: '#fafafa',
                 }}>
                   <button
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-primary btn-sm d-inline-flex align-items-center justify-content-center gap-1"
                     onClick={() => navigate(`/invoices/new?orderId=${order._id}`)}
-                    style={{ flex: 1, justifyContent: 'center', minWidth: 140 }}
+                    style={{ flex: 1, minWidth: 140 }}
                   >
-                    🧾 Generate Invoice
+                    <FileText size={13} /> Generate Invoice
                   </button>
                   <button
-                    className="btn btn-outline btn-sm"
+                    className="btn btn-outline btn-sm d-inline-flex align-items-center justify-content-center gap-1"
                     onClick={() => handleDelete(order._id)}
                     style={{ color: 'var(--danger)', borderColor: '#fca5a5' }}
                   >
-                    🗑️ Delete
+                    <Trash2 size={13} /> Delete
                   </button>
                 </div>
               </div>

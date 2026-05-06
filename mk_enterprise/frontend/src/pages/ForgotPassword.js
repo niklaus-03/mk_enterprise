@@ -33,7 +33,7 @@ export default function ForgotPassword() {
       padding: 16, fontFamily: "'Inter', 'Segoe UI', sans-serif",
     }}>
       <div style={{
-        background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)',
+        background: 'rgba(255,255,255,0.12)',
         border: '1px solid rgba(255,255,255,0.1)', borderRadius: 24,
         padding: '40px 36px', width: '100%', maxWidth: 400,
         boxShadow: '0 25px 60px rgba(0,0,0,0.4)',

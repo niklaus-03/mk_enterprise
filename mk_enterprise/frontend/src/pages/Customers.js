@@ -138,7 +138,6 @@ export default function Customers() {
           )}
         </div>
       </div>
-
       {showModal && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>

@@ -5,7 +5,7 @@ import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, custom
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck } from 'lucide-react';
+import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare } from 'lucide-react';
 
 
 const PAYMENT_MODES = ['cash', 'upi', 'online', 'others'];
@@ -456,7 +456,7 @@ export default function Dashboard() {
   const handleDeliveryStatus = async (id, status) => {
     try {
       await deliveryApi.updateStatus(id, status);
-      if (status === 'delivered') toast.success('✅ Marked delivered — stock updated automatically');
+      if (status === 'delivered') toast.success('Marked delivered — stock updated automatically');
       else toast.success('Status updated');
       // Use deliveryDateFilter if set, otherwise today
       const refreshDate = deliveryDateFilter || getTodayIST();
@@ -469,7 +469,7 @@ export default function Dashboard() {
   const handleMarkWalkinPaid = async (id, mode) => {
     try {
       await deliveryApi.updatePayment(id, 'paid', mode || 'cash');
-      toast.success('✅ Walk-in delivery marked as paid');
+      toast.success('Walk-in delivery marked as paid');
       loadDeliveries(deliveryDateFilter || getTodayIST());
     } catch (err) { toast.error(err.message); }
   };
@@ -624,9 +624,7 @@ export default function Dashboard() {
         reference: payForm.reference,
       });
       toast.success(res.message || `₹${payForm.amount} recorded via ${payForm.mode.toUpperCase()}`);
-      if (res.advance_stored > 0) {
-        toast(`₹${res.advance_stored.toFixed(2)} stored as advance credit for customer`, { icon: '💳', duration: 4000 });
-      }
+        toast(`₹${res.advance_stored.toFixed(2)} stored as advance credit for customer`, { icon: '✓', duration: 4000 });
       setPayModal(null);
       setPayForm({ amount: '', mode: 'cash', reference: '' });
       // Refresh dashboard with current selected date
@@ -703,7 +701,7 @@ export default function Dashboard() {
   );
   if (!data) return (
     <div className="empty-state">
-      <div className="empty-icon">⚠️</div>
+      <div className="empty-icon"><AlertTriangle size={36} className="text-warning" /></div>
       <div className="empty-text">Could not load dashboard</div>
       <div className="empty-sub">Make sure the backend server is running and MongoDB is connected.</div>
     </div>
@@ -739,7 +737,7 @@ export default function Dashboard() {
         <div style="display:flex;justify-content:space-between;padding-bottom:14px;border-bottom:2px solid #1a1f2e;margin-bottom:18px">
           <div><h2 style="margin:0;font-size:20px;font-weight:800">${settings?.business_name || 'My Shop'}</h2>
           <p style="margin:4px 0;color:#6b7280">Low Stock Report — ${today}</p></div>
-          <div style="text-align:right;font-size:12px;color:#6b7280">${settings?.business_phone ? '📞 ' + settings?.business_phone : ''}</div>
+          <div style="text-align:right;font-size:12px;color:#6b7280">${settings?.business_phone ? 'Phone: ' + settings?.business_phone : ''}</div>
         </div>
         <table><thead><tr><th>#</th><th>Product</th><th>Unit</th>
           <th style="text-align:right">Current Stock</th>
@@ -763,7 +761,7 @@ export default function Dashboard() {
       return `  • ${p.name}: Current ${p.stock} ${p.unit} → *Please send ${toOrder} ${p.unit}*`;
     }).join('\n');
     const msg = encodeURIComponent(
-      `⚠️ *Low Stock Alert — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n` +
+      `*Low Stock Alert — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n` +
       `━━━━━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━━━━━\n` +
       `Total items needing restock: *${data.lowStockProducts.length}*\nPlease arrange stock at the earliest.`
     );
@@ -806,9 +804,8 @@ export default function Dashboard() {
           {/* Glassmorphic Live Clock & Date */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 16,
-            background: 'rgba(255,255,255,0.03)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: 16, padding: '10px 18px',
             boxShadow: 'inset 0 0 12px rgba(255,255,255,0.02)',
           }}>
@@ -917,8 +914,8 @@ export default function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Truck size={18} style={{ color: '#f59e0b' }} />
             <div>
-              <div style={{ fontWeight: 700, fontSize: 13.5 }}>
-                {arrivingSoon.length} vehicle{arrivingSoon.length > 1 ? 's' : ''} arriving soon!
+              <div style={{ fontWeight: 700, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <AlertTriangle size={16} style={{ color: '#f59e0b' }} /> {arrivingSoon.length} vehicle{arrivingSoon.length > 1 ? 's' : ''} arriving soon!
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {arrivingSoon.map(d => `${d.vehicle_number} (${d.expected_arrival_ist})`).join(' · ')}
@@ -941,7 +938,7 @@ export default function Dashboard() {
           marginBottom: 14
         }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            📦 Orders Due Today: {orders.length}
+            <Package size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Orders Due Today: {orders.length}
           </div>
 
           {orders.map(o => (
@@ -1128,7 +1125,7 @@ export default function Dashboard() {
             {t('Departures / Incoming', 'डिलीवरी')}
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>
               {arrivingSoon.length > 0
-                ? `⚠️ ${arrivingSoon.length} arriving soon`
+                ? `${arrivingSoon.length} arriving soon`
                 : showDeparture ? '▲ Hide' : '▼ View Vehicles'}
             </div>
           </div>
@@ -1141,7 +1138,7 @@ export default function Dashboard() {
         <div className="card" style={{ marginBottom: 20 }} ref={productsPanelRef}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div className="card-title">
-              📦 Products
+              <Package size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Products
               {data.allProducts?.length > 0 && (
                 <span className="badge badge-primary" style={{ marginLeft: 8, fontSize: 11 }}>{data.allProducts.length}</span>
               )}
@@ -1188,17 +1185,17 @@ export default function Dashboard() {
                     <tbody>${rows}</tbody></table></body></html>`);
                 win.document.close();
                 win.onload = () => { win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
-              }}>📄 PDF</button>
+              }}><FileText size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> PDF</button>
               {/* WhatsApp share of product list */}
               <button className="btn btn-outline btn-sm" onClick={() => {
                 const lines = (data.allProducts || []).map(p =>
                   `  • ${p.name}: *${p.stock} ${p.unit}* @ ₹${p.price}`
                 ).join('\n');
                 const msg = encodeURIComponent(
-                  `📦 *Product Stock — ${settings?.business_name || 'My Shop'}*\nDate: ${getTodayIST()}\n━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━\nTotal: ${data.allProducts?.length} products`
+                  `*Product Stock — ${settings?.business_name || 'My Shop'}*\nDate: ${getTodayIST()}\n━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━\nTotal: ${data.allProducts?.length} products`
                 );
                 window.open(`https://wa.me/?text=${msg}`, '_blank');
-              }}>💬 WhatsApp</button>
+              }}><MessageSquare size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> WhatsApp</button>
               <Link to="/products?action=add" className="btn btn-primary btn-sm">+ Add Product</Link>
               <button className="btn btn-outline btn-sm" onClick={() => { setShowProducts(false); setProductSearch(''); }}>✕ Close</button>
             </div>
@@ -1209,7 +1206,7 @@ export default function Dashboard() {
             <div style={{ position: 'relative', marginBottom: 12 }}>
               <input
                 className="form-control"
-                placeholder="🔍 Search product... (e.g. cement, rice)"
+                placeholder="Search product... (e.g. cement, rice)"
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
                 style={{ paddingLeft: 14 }}
@@ -1289,7 +1286,7 @@ export default function Dashboard() {
         <div className="card" style={{ marginBottom: 20 }} ref={customersPanelRef}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div className="card-title">
-              👥 All Customers
+              <Users size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> All Customers
               {allCustomers.length > 0 && (
                 <span className="badge badge-primary" style={{ marginLeft: 8, fontSize: 11 }}>{allCustomers.length}</span>
               )}
@@ -1321,7 +1318,7 @@ export default function Dashboard() {
             <div style={{ position: 'relative', marginBottom: 14 }}>
               <input
                 className="form-control"
-                placeholder="🔍 Search by name or phone..."
+                placeholder="Search by name or phone..."
                 value={customerSearch}
                 onChange={e => setCustomerSearch(e.target.value)}
                 style={{ paddingLeft: 14 }}
@@ -1400,7 +1397,7 @@ export default function Dashboard() {
                                     rel="noreferrer"
                                     style={{ color: '#25d366', fontWeight: 600, fontSize: 13, textDecoration: 'none' }}
                                   >
-                                    💬 {c.phone}
+                                    <><MessageSquare size={14} style={{ marginRight: 4, color: '#25d366', display: 'inline-block', verticalAlign: 'middle' }} /> {c.phone}</>
                                   </a>
                                 ) : (
                                   <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{c.phone}</span>
@@ -1532,7 +1529,7 @@ export default function Dashboard() {
             {/* Walk-in Delivery Form */}
             {showWalkinDelivery && (
               <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '16px 18px', marginBottom: 18 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>🚶 Walk-in Delivery (No Vehicle Required)</div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}><><User size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Walk-in Delivery (No Vehicle Required)</></div>
                 <div className="form-row">
                   <div className="form-group" style={{ position: 'relative' }}>
                     <label className="form-label">Supplier / Party Name *</label>
@@ -1582,7 +1579,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Items — same dynamic logic as Incoming Vehicle, Type removed */}
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>📦 Items</div>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}><Package size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Items</div>
                 {walkinDeliveryForm.items.map((item, idx) => (
                   <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.8fr 0.8fr auto', gap: 8, marginBottom: 8, alignItems: 'flex-end' }}>
                     {/* Item Name with product suggestions */}
@@ -1701,7 +1698,7 @@ export default function Dashboard() {
                         {/* Fix 5: Unpaid indicator */}
                         {!walkinDeliveryForm.paid && (
                           <span style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: 11, padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
-                            ⚠️ Unpaid
+                            <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={12} /> Unpaid</span>
                           </span>
                         )}
                       </div>
@@ -1715,9 +1712,9 @@ export default function Dashboard() {
                           <select className="form-control" style={{ width: 'auto', fontSize: 12 }}
                             value={walkinDeliveryForm.mode}
                             onChange={e => setWalkinDeliveryForm(f => ({ ...f, mode: e.target.value }))}>
-                            <option value="cash">💵 Cash</option>
-                            <option value="upi">📱 UPI</option>
-                            <option value="online">🌐 Online</option>
+                            <option value="cash">Cash</option>
+                            <option value="upi">UPI</option>
+                            <option value="online">Online</option>
                           </select>
                         )}
                       </div>
@@ -1728,7 +1725,7 @@ export default function Dashboard() {
                 <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
                   <button className="btn btn-outline" onClick={() => setShowWalkinDelivery(false)}>Cancel</button>
                   <button className="btn btn-warning" onClick={handleWalkinDelivery} disabled={walkinDeliverySaving}>
-                    {walkinDeliverySaving ? <><span className="spinner"></span> Saving...</> : '💾 Save Walk-in Delivery'}
+                    {walkinDeliverySaving ? <><span className="spinner"></span> Saving...</> : '<><Check size={14} style={{ marginRight: 4 }} /> Save Walk-in Delivery</>'}
                   </button>
                 </div>
               </div>
@@ -1738,7 +1735,7 @@ export default function Dashboard() {
             {showDeliveryForm && (
               <div style={{ background: '#f8fafc', border: '1.5px solid var(--border)', borderRadius: 10, padding: '16px 18px', marginBottom: 18 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>
-                  {editDeliveryId ? '✏️ Edit Delivery Entry' : '➕ New Incoming Vehicle'}
+                  {editDeliveryId ? '<><Edit2 size={14} style={{ marginRight: 4 }} /> Edit Delivery Entry</>' : '<><Plus size={14} style={{ marginRight: 4 }} /> New Incoming Vehicle</>'}
                 </div>
 
                 <div className="form-row">
@@ -1822,9 +1819,8 @@ export default function Dashboard() {
                         >✓ OK</button>
                       )}
                     </div>
-                    {deliveryForm.expected_arrival && (
-                      <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 4, fontWeight: 600 }}>
-                        📅 {new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                      <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Calendar size={13} /> {new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
                       </div>
                     )}
                   </div>
@@ -1832,7 +1828,7 @@ export default function Dashboard() {
 
                 {/* Fix 4: Items — product suggestions + auto-new row */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>📦 Items</div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}><Package size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Items</div>
                   {/* Fetch from Low Stock — always visible, not conditional */}
                   <button
                     className="btn btn-warning btn-sm"
@@ -1842,7 +1838,7 @@ export default function Dashboard() {
                       const lowItems = data?.lowStockProducts || [];
 
                       if (!lowItems.length) {
-                        toast('No low stock items found. All products adequately stocked.', { icon: '✅' });
+                        toast('No low stock items found. All products adequately stocked.', { icon: '✓' });
                         return;
                       }
 
@@ -1870,7 +1866,7 @@ export default function Dashboard() {
                       toast.success(`${mapped.length} low stock item${mapped.length !== 1 ? 's' : ''} imported`);
                     }}
                   >
-                    ⚠️ Fetch from Low Stock
+                    Fetch from Low Stock
                   </button>
                 </div>
 
@@ -1973,7 +1969,7 @@ export default function Dashboard() {
                       {/* New item badge */}
                       {item.is_new_item && item.item_name && (
                         <div style={{ fontSize: 10, color: '#92400e', background: '#fffbeb', padding: '1px 6px', borderRadius: 6, marginTop: 3, display: 'inline-block' }}>
-                          🆕 New — will be created on delivery
+                          New — will be created on delivery
                         </div>
                       )}
                     </div>
@@ -2062,7 +2058,7 @@ export default function Dashboard() {
                 <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
                   <button className="btn btn-outline" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>Cancel</button>
                   <button className="btn btn-primary" onClick={handleSaveDelivery} disabled={deliverySaving}>
-                    {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? '💾 Update' : '💾 Save Entry'}
+                    {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? 'Update' : '<><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>'}
                   </button>
                 </div>
               </div>
@@ -2102,11 +2098,11 @@ export default function Dashboard() {
                           not_delivered: 'badge-danger',
                         };
                         const statusLabels = {
-                          pending: '⏳ Pending',
-                          on_the_way: '🚛 On the Way',
-                          arriving_soon: '⚠️ Arriving Soon',
-                          delivered: '✅ Delivered',
-                          not_delivered: '❌ Not Delivered',
+                          pending: 'Pending',
+                          on_the_way: 'On the Way',
+                          arriving_soon: 'Arriving Soon',
+                          delivered: 'Delivered',
+                          not_delivered: 'Not Delivered',
                         };
                         return (
                           <tr key={d._id} style={{
@@ -2128,12 +2124,12 @@ export default function Dashboard() {
                               </Link>
                               {d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid' && (
                                 <div style={{ fontSize: 10, background: '#fef08a', color: '#92400e', padding: '1px 6px', borderRadius: 8, marginTop: 2, display: 'inline-block', fontWeight: 700 }}>
-                                  ⚠️ Unpaid
+                                  <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={12} /> Unpaid</span>
                                 </div>
                               )}
                               {d.vehicle_number === 'WALK-IN' && d.payment_status === 'paid' && (
                                 <div style={{ fontSize: 10, background: '#f0fdf4', color: '#16a34a', padding: '1px 6px', borderRadius: 8, marginTop: 2, display: 'inline-block', fontWeight: 700 }}>
-                                  ✅ Paid{d.payment_mode ? ` · ${d.payment_mode}` : ''}
+                                  <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={12} /> Paid</span>{d.payment_mode ? ` · ${d.payment_mode}` : ''}
                                 </div>
                               )}
                             </td>
@@ -2236,7 +2232,7 @@ export default function Dashboard() {
         <div className="card" style={{ marginBottom: 20 }} ref={statementPanelRef}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
             <div className="card-title">
-              📋 Settlement
+              <><ClipboardList size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Settlement</>
               {/* Fix 3 & 4: Show which date/mode is active */}
               <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>
                 {settlementViewMode === 'all'
@@ -2276,7 +2272,7 @@ export default function Dashboard() {
               }}>
                 {showAddSettlement ? '✕ Cancel' : '+ Add Entry'}
               </button>
-              <Link to="/suppliers" className="btn btn-outline btn-sm">🏭 Suppliers</Link>
+              <Link to="/suppliers" className="btn btn-outline btn-sm"><><Users size={14} style={{ marginRight: 4 }} /> Suppliers</></Link>
               <button className="btn btn-outline btn-sm" onClick={() => setShowStatement(false)}>✕ Close</button>
             </div>
           </div>
@@ -2300,9 +2296,8 @@ export default function Dashboard() {
               {/* Yesterday — loads yesterday's settlements only */}
               {/* Yesterday removed — use calendar instead */}
 
-              {/* Fix 4: Calendar input — changes only settlement view, not global dashboard */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px' }}>
-                <span style={{ fontSize: 13 }}>📅</span>
+                <Calendar size={13} className="text-muted" />
                 <input
                   type="date"
                   value={settlementCardDate}
@@ -2328,7 +2323,7 @@ export default function Dashboard() {
                   loadSettlements(selectedDate, newMode, settlementSearch, settlementSortDate, settlementSortAmount);
                 }}
               >
-                {settlementViewMode === 'all' ? '▲ Hide Full History' : '📚 Full History'}
+                {settlementViewMode === 'all' ? '▲ Hide Full History' : '<><FileText size={14} style={{ marginRight: 4 }} /> Full History</>'}
               </button>
             </div>
 
@@ -2383,7 +2378,7 @@ export default function Dashboard() {
                           onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                          <span style={{ fontSize: 14 }}>🏭</span>
+                           <Users size={14} className="text-muted" />
                           <span style={{ fontWeight: 600 }}>{p}</span>
                         </div>
                       ))}
@@ -2478,7 +2473,7 @@ export default function Dashboard() {
                   {/* Fix 2: Paid Out detail panel */}
                   {showPaidOutDetail && (
                     <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--danger)' }}>💸 Paid Out — Details</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={16} /> Paid Out — Details</div>
                       {paidOutEntries.length === 0 ? (
                         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No paid-out entries for this date.</div>
                       ) : paidOutEntries.map((s, i) => (
@@ -2499,7 +2494,7 @@ export default function Dashboard() {
                   {/* Fix 2: Received detail panel */}
                   {showReceivedDetail && (
                     <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--success)' }}>📥 Received — Details</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 6 }}><ArrowUpDown size={16} /> Received — Details</div>
                       {receivedEntries.length === 0 ? (
                         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No received entries for this date.</div>
                       ) : receivedEntries.map((r, i) => (
@@ -2524,15 +2519,15 @@ export default function Dashboard() {
             {/* Add Entry Form */}
             {showAddSettlement && (
               <div ref={addSettlementRef} style={{ background: '#f8fafc', border: '1.5px solid var(--border)', borderRadius: 10, padding: '16px 18px', marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 14 }}>➕ New Settlement Entry</div>
+                <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}><Plus size={16} /> New Settlement Entry</div>
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label">Type</label>
                     <select className="form-control" value={settlementForm.type}
                       onChange={e => setSettlementForm({ ...settlementForm, type: e.target.value })}>
-                      <option value="paid_to_supplier">💸 Paid to Supplier/Company</option>
-                      <option value="other_expense">📤 Other Expense</option>
-                      <option value="other_income">📥 Other Income</option>
+                      <option value="paid_to_supplier">Paid to Supplier/Company</option>
+                      <option value="other_expense">Other Expense</option>
+                      <option value="other_income">Other Income</option>
                     </select>
                   </div>
                   {/* Category — only for other_income */}
@@ -2541,9 +2536,9 @@ export default function Dashboard() {
                       <label className="form-label">Received Category</label>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {[
-                          { key: 'today_invoice', label: '📄 Today Invoice' },
-                          { key: 'due_cleared', label: '✅ Clear Due' },
-                          { key: 'advance_payment', label: '💳 Advance' },
+                          { key: 'today_invoice', label: 'Today Invoice' },
+                          { key: 'due_cleared', label: 'Clear Due' },
+                          { key: 'advance_payment', label: 'Advance' },
                           { key: 'not_applicable', label: '— Other' },
                         ].map(cat => (
                           <button
@@ -2584,10 +2579,10 @@ export default function Dashboard() {
                     <label className="form-label">Payment Mode</label>
                     <select className="form-control" value={settlementForm.mode}
                       onChange={e => setSettlementForm({ ...settlementForm, mode: e.target.value })}>
-                      <option value="cash">💵 Cash</option>
-                      <option value="upi">📱 UPI</option>
-                      <option value="online">🌐 Online</option>
-                      <option value="others">💳 Others</option>
+                      <option value="cash">Cash</option>
+                      <option value="upi">UPI</option>
+                      <option value="online">Online</option>
+                      <option value="others">Others</option>
                     </select>
                   </div>
                 </div>
@@ -2608,7 +2603,7 @@ export default function Dashboard() {
                 <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
                   <button className="btn btn-outline" onClick={() => setShowAddSettlement(false)}>Cancel</button>
                   <button className="btn btn-primary" onClick={handleAddSettlement} disabled={settlementSaving}>
-                    {settlementSaving ? <><span className="spinner"></span> Saving...</> : '💾 Save Entry'}
+                    {settlementSaving ? <><span className="spinner"></span> Saving...</> : '<><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>'}
                   </button>
                 </div>
               </div>
@@ -2653,12 +2648,12 @@ export default function Dashboard() {
                         </td>
                         <td style={{ padding: '9px 12px' }}>
                           <span className={`badge ${s.type === 'other_income' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: 10 }}>
-                            {s.type === 'paid_to_supplier' ? '💸 Supplier' : s.type === 'other_expense' ? '📤 Expense' : '📥 Income'}
+                            {s.type === 'paid_to_supplier' ? 'Supplier' : s.type === 'other_expense' ? 'Expense' : 'Income'}
                           </span>
                         </td>
                         <td style={{ padding: '9px 12px', fontWeight: 600 }}>{s.party_name || '—'}</td>
                         <td style={{ padding: '9px 12px', textTransform: 'uppercase', fontSize: 12, whiteSpace: 'nowrap' }}>
-                          {s.mode === 'cash' ? '💵' : s.mode === 'upi' ? '📱' : s.mode === 'online' ? '🌐' : '💳'} {s.mode}
+                          {''} {s.mode}
                           {s.reference && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.reference}</div>}
                         </td>
                         <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: s.type === 'other_income' ? 'var(--success)' : 'var(--danger)' }}>
@@ -2667,9 +2662,9 @@ export default function Dashboard() {
                         <td style={{ padding: '9px 12px', fontSize: 12 }}>
                           {s.type === 'other_income' && s.received_category && s.received_category !== 'not_applicable' && (
                             <span style={{ display: 'inline-block', fontSize: 10, background: '#f0fdf4', color: '#16a34a', padding: '1px 6px', borderRadius: 8, fontWeight: 700, marginRight: 5 }}>
-                              {s.received_category === 'today_invoice' ? '📄 Invoice'
-                                : s.received_category === 'due_cleared' ? '✅ Due'
-                                  : s.received_category === 'advance_payment' ? '💳 Advance'
+                              {s.received_category === 'today_invoice' ? 'Invoice'
+                                : s.received_category === 'due_cleared' ? 'Due'
+                                  : s.received_category === 'advance_payment' ? 'Advance'
                                     : ''}
                             </span>
                           )}
@@ -2680,7 +2675,7 @@ export default function Dashboard() {
                             className="btn btn-ghost btn-sm"
                             style={{ color: 'var(--danger)' }}
                             onClick={() => handleDeleteSettlement(s._id)}
-                          >🗑️</button>
+                          ><Trash2 size={14} /></button>
                         </td>
                       </tr>
                     ))}
@@ -2696,7 +2691,7 @@ export default function Dashboard() {
         <div className="card" style={{ marginBottom: 20 }} ref={duesPanelRef}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
             <div className="card-title">
-              ⏳ Pending Dues
+              <><Clock size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Pending Dues</>
               <span className="badge badge-danger" style={{ marginLeft: 8, fontSize: 11 }}>
                 {data.pendingCustomers?.length || 0}
               </span>
@@ -2734,7 +2729,7 @@ export default function Dashboard() {
             {/* Fix 6: Walk-in due form */}
             {showWalkinDueForm && (
               <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
-                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>➕ Add Walk-in Due (No Invoice)</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}><><Plus size={14} style={{ marginRight: 6 }} /> Add Walk-in Due (No Invoice)</></div>
                 <div className="form-row">
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Customer Name *</label>
@@ -2765,7 +2760,7 @@ export default function Dashboard() {
                 <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 10 }}>
                   <button className="btn btn-outline btn-sm" onClick={() => setShowWalkinDueForm(false)}>Cancel</button>
                   <button className="btn btn-warning btn-sm" onClick={handleCreateWalkinDue} disabled={walkinDueSaving}>
-                    {walkinDueSaving ? <><span className="spinner"></span></> : '💾 Save Due'}
+                    {walkinDueSaving ? <><span className="spinner"></span></> : '<><Check size={14} style={{ marginRight: 4 }} /> Save Due</>'}
                   </button>
                 </div>
               </div>
@@ -2784,7 +2779,7 @@ export default function Dashboard() {
                     onChange={e => setDuesSearch(e.target.value)}
                     style={{ paddingLeft: 32 }}
                   />
-                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>🔍</span>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} className="text-muted" />
                   {duesSearch && (
                     <button style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
                       onClick={() => setDuesSearch('')}>✕</button>
@@ -2854,7 +2849,7 @@ export default function Dashboard() {
 
               if (!filtered.length) return (
                 <div className="empty-state" style={{ padding: 24 }}>
-                  {duesSearch || duesCardDate ? `No matching dues found.` : '✅ No pending dues'}
+                  {duesSearch || duesCardDate ? `No matching dues found.` : 'No pending dues'}
                 </div>
               );
 
@@ -2895,7 +2890,7 @@ export default function Dashboard() {
 
               if (!displayDues.length) return (
                 <div className="empty-state" style={{ padding: 24 }}>
-                  {duesSearch || duesCardDate ? 'No matching dues found.' : '✅ No pending dues'}
+                  {duesSearch || duesCardDate ? 'No matching dues found.' : 'No pending dues'}
                 </div>
               );
 
@@ -2926,7 +2921,7 @@ export default function Dashboard() {
                                 <strong>{c.name}</strong>
                                 {paid && (
                                   <span style={{ background: '#16a34a', color: '#fff', fontSize: 9, padding: '1px 6px', borderRadius: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                                    ✓ Cleared
+                                    Cleared
                                   </span>
                                 )}
                               </div>
@@ -2961,7 +2956,7 @@ export default function Dashboard() {
                                       textDecoration: 'none'
                                     }}
                                   >
-                                    💬 {c.phone}
+                                    <><MessageSquare size={14} style={{ marginRight: 4, color: '#25d366', display: 'inline-block', verticalAlign: 'middle' }} /> {c.phone}</>
                                   </a>
                                 ) : (
                                   <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
@@ -2982,7 +2977,7 @@ export default function Dashboard() {
                             </td>
                             <td style={{ padding: '10px 14px' }}>
                               {paid ? (
-                                <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>✅ Paid</span>
+                                <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}><span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={12} /> Paid</span></span>
                               ) : (
                                 <button className="btn btn-success btn-sm"
                                   onClick={() => {
@@ -2996,7 +2991,7 @@ export default function Dashboard() {
                                     });
                                     setPayForm({ amount: c.balance.toFixed(2), mode: 'cash', reference: '' });
                                   }}
-                                >💰 Collect</button>
+                                ><CreditCard size={14} style={{ marginRight: 4 }} /> Collect</button>
                               )}
                             </td>
                           </tr>
@@ -3021,7 +3016,7 @@ export default function Dashboard() {
         <div className="card mb-5" style={{ marginBottom: 20 }} ref={salesPanelRef}>
           <div className="card-header">
             <div className="card-title">
-              📅 {todaySalesCardDate === getTodayIST() ? "Today's" : new Date(todaySalesCardDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} Invoices
+              <><Calendar size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> {todaySalesCardDate === getTodayIST() ? "Today's" : new Date(todaySalesCardDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} Invoices</>
               {/* Fix 1: Show actual sum of invoices shown in this dropdown */}
               {(() => {
                 const src = cardSalesData?.todayInvoices || data.todayInvoices || [];
@@ -3121,10 +3116,9 @@ export default function Dashboard() {
                 <>
 
 
-                  {/* Dynamic search box with auto-suggestion */}
                   <div style={{ position: 'relative', marginBottom: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 12px' }}>
-                      <span style={{ fontSize: 15, color: 'var(--text-muted)' }}>🔍</span>
+                      <Search size={14} className="text-muted" />
                       <input
                         type="text"
                         placeholder="Search by invoice number, customer name, or phone..."
@@ -3266,7 +3260,7 @@ export default function Dashboard() {
                                 <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                                   {inv.balance_due > 0.01
                                     ? <span className="badge badge-danger">{fc(inv.balance_due)} due</span>
-                                    : <span className="badge badge-success">Paid ✓</span>}
+                                    : <span className="badge badge-success">Paid</span>}
                                 </td>
                               </tr>
                             );
@@ -3288,7 +3282,7 @@ export default function Dashboard() {
         <div className="card">
           <div className="card-header">
             <div className="card-title">
-              ⏳ {t("Today's Pending Dues", 'आज का बकाया')}
+              {t("Today's Pending Dues", 'आज का बकाया')}
               {data.todayPendingDues?.length > 0 && (
                 <span className="badge badge-danger" style={{ marginLeft: 8, fontSize: 11 }}>
                   {data.todayPendingDues.length}
@@ -3299,7 +3293,7 @@ export default function Dashboard() {
           </div>
           <div className="card-body no-pad">
             {!data.todayPendingDues?.length ? (
-              <div className="empty-state" style={{ padding: 24 }}>✅ No pending dues today</div>
+              <div className="empty-state" style={{ padding: 24 }}>No pending dues today</div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
@@ -3364,7 +3358,7 @@ export default function Dashboard() {
         {/* Low Stock */}
         <div className="card">
           <div className="card-header">
-            <div className="card-title">⚠️ {t('Low Stock Alerts', 'कम स्टॉक')}</div>
+            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={18} className="text-warning" /> {t('Low Stock Alerts', 'कम स्टॉक')}</div>
             <div className="flex gap-2">
               {data.lowStockProducts?.length > 0 && (
                 <>
@@ -3377,7 +3371,7 @@ export default function Dashboard() {
                         : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
                     })));
                     setShowLowStockEditor(true);
-                  }}>✏️ Edit & Send</button>
+                  }}><><Edit2 size={14} style={{ marginRight: 4 }} /> Edit & Send</></button>
                   {/* Quick WhatsApp send using current order quantities */}
                   <button className="btn btn-success btn-sm" onClick={() => {
                     const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -3385,10 +3379,10 @@ export default function Dashboard() {
                       .map(p => `  • ${p.name}: *${getOrderQty(p)} ${p.unit}*`)
                       .join('\n');
                     const msg = encodeURIComponent(
-                      `⚠️ *Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${data.lowStockProducts.length} items`
+                      `*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${data.lowStockProducts.length} items`
                     );
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
-                  }}>💬 Send Order</button>
+                  }}><><Phone size={14} style={{ marginRight: 4 }} /> Send Order</></button>
                 </>
               )}
               <Link to="/products" className="btn btn-outline btn-sm">{t('Manage', 'प्रबंधन')}</Link>
@@ -3396,7 +3390,7 @@ export default function Dashboard() {
           </div>
           <div className="card-body no-pad">
             {!data.lowStockProducts?.length ? (
-              <div className="empty-state" style={{ padding: 24 }}>✅ All products adequately stocked</div>
+              <div className="empty-state" style={{ padding: 24 }}>All products adequately stocked</div>
             ) : (
               <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
                 {/* One item per row — clean layout, no overflow */}
@@ -3457,7 +3451,7 @@ export default function Dashboard() {
         {/* Today's Stock Movements */}
         <div className="card">
           <div className="card-header">
-            <div className="card-title">📦 {t("Today's Stock Movements", 'आज का स्टॉक')}</div>
+            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Package size={18} className="text-primary" /> {t("Today's Stock Movements", 'आज का स्टॉक')}</div>
             <Link to="/stock-movements" className="btn btn-outline btn-sm">{t('All Movements', 'सभी')}</Link>
           </div>
           <div className="card-body no-pad">
@@ -3486,7 +3480,7 @@ export default function Dashboard() {
                           {m.vehicle_number ? (
                             /* Vehicle reference */
                             <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-muted)' }}>
-                              🚛 {m.vehicle_number}
+                              <><Truck size={14} style={{ marginRight: 4 }} /> {m.vehicle_number}</>
                             </span>
                           ) : m.invoice_id ? (
                             /* Fallback: link to invoice */
@@ -3521,7 +3515,7 @@ export default function Dashboard() {
         {/* Sales last 7 days */}
         <div className="card span-2">
           <div className="card-header">
-            <div className="card-title">📈 {t('Sales — Last 7 Days', 'पिछले 7 दिन')}</div>
+            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={18} className="text-success" /> {t('Sales — Last 7 Days', 'पिछले 7 दिन')}</div>
             <button className="btn btn-outline btn-sm" onClick={() => setSalesSortDesc(d => !d)}>
               {salesSortDesc ? '↓ Newest First' : '↑ Oldest First'}
             </button>
@@ -3590,7 +3584,7 @@ export default function Dashboard() {
 
         {/* Top Products */}
         <div className="card span-2">
-          <div className="card-header"><div className="card-title">🏆 {t('Top Selling Products', 'टॉप उत्पाद')}</div></div>
+          <div className="card-header"><div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle size={18} className="text-warning" /> {t('Top Selling Products', 'टॉप उत्पाद')}</div></div>
           <div className="card-body no-pad">
             {!data.topProducts?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No sales data yet</div>
@@ -3632,7 +3626,7 @@ export default function Dashboard() {
         <div className="modal-overlay" onClick={() => setShowLowStockEditor(false)}>
           <div className="modal" style={{ maxWidth: 680, width: '96vw' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title">⚠️ Edit Order List — Low Stock</div>
+              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={18} className="text-warning" /> Edit Order List — Low Stock</div>
               <button className="modal-close" onClick={() => setShowLowStockEditor(false)}>✕</button>
             </div>
             <div className="modal-body">
@@ -3724,7 +3718,7 @@ export default function Dashboard() {
                   win.document.write(html);
                   win.document.close();
                   win.onload = () => { win.focus(); win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
-                }}>📄 PDF</button>
+                }}><FileText size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> PDF</button>
               </div>
             </div>
           </div>
@@ -3737,7 +3731,7 @@ export default function Dashboard() {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
             <div className="modal-header">
               <div className="modal-title">
-                {walkinMatch.type === 'customer' ? '👥 Customer Already Exists' : '⏳ Pending Due Found'}
+                {walkinMatch.type === 'customer' ? 'Customer Already Exists' : 'Pending Due Found'}
               </div>
               <button className="modal-close" onClick={() => setShowWalkinMatchModal(false)}>✕</button>
             </div>
@@ -3746,7 +3740,7 @@ export default function Dashboard() {
                 <>
                   <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{walkinMatch.data.name}</div>
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>📞 {walkinMatch.data.phone}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}><><Phone size={14} style={{ marginRight: 4 }} /> {walkinMatch.data.phone}</></div>
                     {walkinMatch.data.balance > 0 && (
                       <div style={{ marginTop: 6, color: 'var(--danger)', fontWeight: 700 }}>
                         Previous Due: ₹{walkinMatch.data.balance?.toFixed(2)}
@@ -3785,7 +3779,7 @@ export default function Dashboard() {
         <div className="modal-overlay" onClick={() => setPayModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title">💰 Collect Payment</div>
+              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={18} /> Collect Payment</div>
               <button className="modal-close" onClick={() => setPayModal(null)}>✕</button>
             </div>
             <div className="modal-body">
@@ -3822,7 +3816,7 @@ export default function Dashboard() {
                 </div>
                 {parseFloat(payForm.amount) > payModal.balance && parseFloat(payForm.amount) > 0 && (
                   <div style={{ marginTop: 6, padding: '7px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 12.5, color: '#1d4ed8' }}>
-                    💳 Extra <strong>{fc(parseFloat(payForm.amount) - payModal.balance)}</strong> will be stored as advance credit for this customer.
+                    Extra <strong>{fc(parseFloat(payForm.amount) - payModal.balance)}</strong> will be stored as advance credit for this customer.
                   </div>
                 )}
               </div>
@@ -3837,7 +3831,7 @@ export default function Dashboard() {
                       className={`btn btn-sm ${payForm.mode === m ? 'btn-primary' : 'btn-outline'}`}
                       onClick={() => setPayForm({ ...payForm, mode: m })}
                     >
-                      {m === 'cash' ? '💵' : m === 'upi' ? '📱' : m === 'online' ? '🌐' : '💳'} {m.toUpperCase()}
+                      {''} {m.toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -3856,7 +3850,7 @@ export default function Dashboard() {
               <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
                 <button className="btn btn-outline" onClick={() => setPayModal(null)}>Cancel</button>
                 <button className="btn btn-success" onClick={handleRecordPayment} disabled={paying}>
-                  {paying ? <><span className="spinner"></span> Saving...</> : '✅ Record Payment'}
+                  {paying ? <><span className="spinner"></span> Saving...</> : 'Record Payment'}
                 </button>
               </div>
             </div>
