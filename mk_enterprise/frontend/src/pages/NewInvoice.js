@@ -7,6 +7,7 @@ import { formatCurrency } from '../utils/helpers';
 import { useLocation } from 'react-router-dom';
 import { orderApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
+import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet, Play, CheckCircle, AlertTriangle, Plus, Trash2, Monitor, Check, ArrowLeft } from 'lucide-react';
 
 const newItem = () => ({
   _key: Date.now() + Math.random(),
@@ -763,15 +764,18 @@ export default function NewInvoice() {
         </div>
       )}
 
-      <div className="billing-layout">
-        <div>
+      <div className="row g-4 mt-1">
+        <div className="col-md-7 col-lg-8">
           {/* Customer + Bill Type */}
           <div className="card mb-5" style={{ overflow: 'visible' }}>
-            <div className="card-header"><div className="card-title">👤 Customer & Bill Details</div></div>
+            <div className="card-header"><div className="card-title d-flex align-items-center gap-2"><User size={18} className="text-secondary" /> Customer & Bill Details</div></div>
             <div className="card-body" style={{ overflow: 'visible' }}>
               <div className="flex gap-2 mb-3" style={{ flexWrap: 'wrap' }}>
-                {[['walkin', '🚶 Walk-in'], ['existing', '👥 Existing Customer']].map(([v, l]) => (
-                  <button key={v} className={`btn ${customerMode === v ? 'btn-primary' : 'btn-outline'}`} onClick={() => setCustomerMode(v)}>{l}</button>
+                {[['walkin', 'Walk-in'], ['existing', 'Existing Customer']].map(([v, label]) => (
+                  <button key={v} className={`btn ${customerMode === v ? 'btn-primary' : 'btn-outline'} d-inline-flex align-items-center`} onClick={() => setCustomerMode(v)}>
+                    {v === 'walkin' ? <User size={14} className="me-1" /> : <Users size={14} className="me-1" />}
+                    {label}
+                  </button>
                 ))}
               </div>
 
@@ -1009,12 +1013,12 @@ export default function NewInvoice() {
                 <div className="form-group">
                   <label className="form-label">Bill Type</label>
                   <div className="flex gap-2">
-                    <button type="button" className={`btn btn-sm ${!isManualBill ? 'btn-primary' : 'btn-outline'}`} onClick={() => setIsManualBill(false)}>🖥️ Digital</button>
-                    <button type="button" className={`btn btn-sm ${isManualBill ? 'btn-warning' : 'btn-outline'}`} onClick={() => setIsManualBill(true)}>📝 Manual Entry</button>
+                    <button type="button" className={`btn btn-sm ${!isManualBill ? 'btn-primary' : 'btn-outline'} d-inline-flex align-items-center gap-1`} onClick={() => setIsManualBill(false)}><Monitor size={12} /> Digital</button>
+                    <button type="button" className={`btn btn-sm ${isManualBill ? 'btn-warning' : 'btn-outline'} d-inline-flex align-items-center gap-1`} onClick={() => setIsManualBill(true)}><FileText size={12} /> Manual Entry</button>
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">{isManualBill ? '📅 Backdated Bill Date' : '📅 Bill Date'}</label>
+                  <label className="form-label d-inline-flex align-items-center gap-1"><Calendar size={13} /> {isManualBill ? 'Backdated Bill Date' : 'Bill Date'}</label>
                   <input className="form-control" type="datetime-local" value={billDate} max={new Date().toISOString().slice(0, 16)} onChange={e => setBillDate(e.target.value)} />
                 </div>
                 {isManualBill && (
@@ -1028,7 +1032,7 @@ export default function NewInvoice() {
               {/* Driver & Vehicle */}
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">🚛 Vehicle Number</label>
+                  <label className="form-label d-inline-flex align-items-center gap-1"><Truck size={13} /> Vehicle Number</label>
                   <input
                     className="form-control"
                     value={vehicleNumber}
@@ -1038,7 +1042,7 @@ export default function NewInvoice() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">👤 Driver Name</label>
+                  <label className="form-label d-inline-flex align-items-center gap-1"><User size={13} /> Driver Name</label>
                   <input
                     className="form-control"
                     value={driverName}
@@ -1385,98 +1389,147 @@ export default function NewInvoice() {
           </div>
         </div>
 
-        {/* RIGHT — Summary */}
-        <div>
-          <div className="summary-box">
-            <div className="summary-title">💰 Invoice Summary</div>
-            <div className="summary-row"><span className="text-muted">Subtotal</span><span className="mono">{fc(subtotal)}</span></div>
-            {gstEnabled && (
-              <>
-                <div className="summary-row"><span className="text-muted">CGST</span><span className="mono">{fc(gstTotal / 2)}</span></div>
-                <div className="summary-row"><span className="text-muted">SGST</span><span className="mono">{fc(gstTotal / 2)}</span></div>
-              </>
-            )}
-
-            {/* Vehicle + Labour in one row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-              <div>
-                <label style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>🚛 Vehicle ₹</label>
-                <input className="form-control" type="number" min="0" step="0.01" value={vehicleCharge} onChange={e => setVehicleCharge(e.target.value)} placeholder="0.00" style={{ fontSize: 13 }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>👷 Labour ₹</label>
-                <input className="form-control" type="number" min="0" step="0.01" value={labourCharge} onChange={e => setLabourCharge(e.target.value)} placeholder="0.00" style={{ fontSize: 13 }} />
-              </div>
-            </div>
-            {(vc > 0 || lc > 0) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5 }}>
-                {vc > 0 && <span style={{ color: 'var(--warning)', fontWeight: 600 }}>🚛 +{fc(vc)}</span>}
-                {lc > 0 && <span style={{ color: '#7c3aed', fontWeight: 600 }}>👷 +{fc(lc)}</span>}
-              </div>
-            )}
-
-            {orderId && amtReceived > 0 && (
-              <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 7, padding: '8px 12px', marginTop: 8, fontSize: 12.5 }}>
-                <span style={{ color: 'var(--success)', fontWeight: 700 }}>✅ Advance Included: {fc(amtReceived)}</span>
-                <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>(from order)</span>
-              </div>
-            )}
-
-            {dis > 0 && (
-              <div className="summary-row text-success" style={{ marginTop: 4 }}>
-                <span>🏷️ Discount</span>
-                <span className="mono">- {fc(dis)}</span>
-              </div>
-            )}
-
-            <div className="summary-row total"><span>Grand Total</span><span className="mono">{fc(total)}</span></div>
-            {prevBalance > 0 && <div className="summary-row prev"><span>+ Prev. Balance</span><span className="mono">{fc(prevBalance)}</span></div>}
-            {prevBalance > 0 && <div className="summary-row total" style={{ fontSize: 15 }}><span>Net Payable</span><span className="mono">{fc(totalWithPrev)}</span></div>}
-            <hr className="divider" />
-            <div className="summary-row paid"><span>Amount Received</span><span className="mono">{fc(amtReceived)}</span></div>
-            <div className={`summary-row ${balanceDue > 0.01 ? 'due' : 'paid'}`}>
-              <span>
-                {balanceDue > 0.01 ? '⚠️ Balance Due' : balanceDue < -0.01 ? '💰 Excess Paid (Advance)' : '✅ Fully Paid'}
+        {/* RIGHT COLUMN - Summary (Bootstrap Checkout style) */}
+        <div className="col-md-5 col-lg-4 order-md-last">
+          <div className="position-sticky" style={{ top: '24px' }}>
+            <h4 className="d-flex justify-content-between align-items-center mb-3">
+              <span className="text-primary fw-bold" style={{ fontSize: '18px' }}>💰 Billing Summary</span>
+              <span className="badge bg-primary rounded-pill text-white" style={{ fontSize: '12px', padding: '4px 8px' }}>
+                {items.filter(i => i.product_name && parseFloat(i.qty) > 0).length} Items
               </span>
-              {Math.abs(balanceDue) > 0.01 && <span className="mono">{fc(Math.abs(balanceDue))}</span>}
-            </div>
+            </h4>
 
-            {/* Signature */}
-            <div className="card mb-4" style={{ marginTop: 16 }}>
-              <div className="card-header">
-                <div className="card-title">✍️ Authorised Signature</div>
+            <ul className="list-group mb-3 shadow-sm">
+              <li className="list-group-item d-flex justify-content-between lh-sm py-3">
+                <div>
+                  <h6 className="my-0 fw-bold text-dark">Subtotal</h6>
+                  <small className="text-muted">Value of items before taxes</small>
+                </div>
+                <strong className="text-dark font-monospace">{fc(subtotal)}</strong>
+              </li>
+
+              {gstEnabled && (
+                <>
+                  <li className="list-group-item d-flex justify-content-between lh-sm">
+                    <div>
+                      <h6 className="my-0">CGST</h6>
+                      <small className="text-muted">Central GST (half rate)</small>
+                    </div>
+                    <span className="text-muted font-monospace">{fc(gstTotal / 2)}</span>
+                  </li>
+                  <li className="list-group-item d-flex justify-content-between lh-sm">
+                    <div>
+                      <h6 className="my-0">SGST</h6>
+                      <small className="text-muted">State GST (half rate)</small>
+                    </div>
+                    <span className="text-muted font-monospace">{fc(gstTotal / 2)}</span>
+                  </li>
+                </>
+              )}
+
+              {/* Extra charges */}
+              <li className="list-group-item bg-light p-3">
+                <h6 className="mb-2 fw-bold text-secondary text-uppercase" style={{ fontSize: '10px', letterSpacing: '0.5px' }}>Transportation & Labour</h6>
+                <div className="row g-2">
+                  <div className="col-6">
+                    <label className="form-label" style={{ fontSize: '10px', fontWeight: 'bold' }}>Vehicle ₹</label>
+                    <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={vehicleCharge} onChange={e => setVehicleCharge(e.target.value)} placeholder="0.00" />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label" style={{ fontSize: '10px', fontWeight: 'bold' }}>Labour ₹</label>
+                    <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={labourCharge} onChange={e => setLabourCharge(e.target.value)} placeholder="0.00" />
+                  </div>
+                </div>
+                {(vc > 0 || lc > 0) && (
+                  <div className="d-flex justify-content-between mt-2" style={{ fontSize: '11.5px' }}>
+                    {vc > 0 && <span className="text-warning fw-bold">Vehicle: +{fc(vc)}</span>}
+                    {lc > 0 && <span className="text-info fw-bold">Labour: +{fc(lc)}</span>}
+                  </div>
+                )}
+              </li>
+
+              {dis > 0 && (
+                <li className="list-group-item d-flex justify-content-between bg-light text-success py-2">
+                  <div className="text-success">
+                    <h6 className="my-0 fw-bold">🏷️ Discount Applied</h6>
+                    {concessionReason && <small className="text-success d-block">{concessionReason}</small>}
+                  </div>
+                  <strong className="font-monospace">- {fc(dis)}</strong>
+                </li>
+              )}
+
+              <li className="list-group-item d-flex justify-content-between bg-white py-3">
+                <span className="h6 fw-bold mb-0 text-dark">Grand Total</span>
+                <strong className="h5 text-primary font-monospace mb-0">{fc(total)}</strong>
+              </li>
+
+              {prevBalance !== 0 && (
+                <>
+                  <li className="list-group-item d-flex justify-content-between bg-light py-2">
+                    <span className="text-muted">{prevBalance > 0 ? '⚠️ Previous Due' : '✅ Previous Advance'}</span>
+                    <strong className={`font-monospace ${prevBalance > 0 ? 'text-danger' : 'text-success'}`}>{fc(prevBalance)}</strong>
+                  </li>
+                  <li className="list-group-item d-flex justify-content-between bg-white py-3">
+                    <span className="h6 fw-bold mb-0 text-dark">Net Payable</span>
+                    <strong className="h5 text-dark font-monospace mb-0">{fc(totalWithPrev)}</strong>
+                  </li>
+                </>
+              )}
+
+              <li className="list-group-item d-flex justify-content-between bg-light py-2">
+                <span className="text-muted">Amount Received</span>
+                <strong className="text-success font-monospace">{fc(amtReceived)}</strong>
+              </li>
+
+              <li className={`list-group-item d-flex justify-content-between ${balanceDue > 0.01 ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} py-3`}>
+                <span className="fw-bold">{balanceDue > 0.01 ? '⚠️ Balance Due' : balanceDue < -0.01 ? '💰 Excess Paid' : '✅ Fully Paid'}</span>
+                <strong className="h5 font-monospace mb-0">{fc(Math.abs(balanceDue))}</strong>
+              </li>
+            </ul>
+
+            {/* Authorised Signature Canvas */}
+            <div className="card shadow-sm mb-3">
+              <div className="card-header bg-white py-2">
+                <span className="fw-bold text-dark" style={{ fontSize: '13px' }}>✍️ Authorised Signature</span>
               </div>
-              <div className="card-body">
-                <div className="form-hint mb-2">Authorised person can sign here before generating invoice</div>
-                <SignatureCanvas
-                  ref={sigRef}
-                  penColor="#111827"
-                  minWidth={1}
-                  maxWidth={2.5}
-                  throttle={16}
-                  velocityFilterWeight={0.7}
-                  canvasProps={{ width: 400, height: 150, className: "sigCanvas" }}
-                />
-                <div className="mt-2">
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => sigRef.current.clear()}>
-                    Clear Signature
+              <div className="card-body p-3 text-center">
+                <div className="text-muted mb-2" style={{ fontSize: '11px' }}>Authorized person can sign here before generating invoice</div>
+                <div className="bg-light rounded p-1 border">
+                  <SignatureCanvas
+                    ref={sigRef}
+                    penColor="#0f172a"
+                    minWidth={1.5}
+                    maxWidth={3}
+                    throttle={16}
+                    canvasProps={{ width: 340, height: 110, className: "sigCanvas w-100" }}
+                  />
+                </div>
+                <div className="mt-2 text-start">
+                  <button type="button" className="btn btn-outline btn-sm py-1 px-2" style={{ fontSize: '11px' }} onClick={() => sigRef.current.clear()}>
+                    🧹 Clear Signature
                   </button>
                 </div>
               </div>
             </div>
 
+            {/* Final Action Buttons */}
             <button
-              className="btn btn-success btn-block btn-lg mt-3"
+              className="btn btn-success w-100 btn-lg py-2.5 shadow mb-2 fw-bold d-flex align-items-center justify-content-center gap-2"
               onClick={handleSubmit}
               disabled={saving}
-              style={{ justifyContent: 'center', boxShadow: '0 2px 8px rgba(22,163,74,0.3)' }}
             >
-              {saving ? <><span className="spinner"></span> Creating...</> : '✅ Finalize & Create Invoice'}
+              {saving ? (
+                <>
+                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  Finalizing...
+                </>
+              ) : (
+                <>✅ Finalize & Create Invoice</>
+              )}
             </button>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 6 }}>
-              Signature required to finalize
-            </div>
-            <button className="btn btn-outline btn-block mt-2" onClick={() => navigate(-1)} style={{ justifyContent: 'center' }}>Cancel</button>
+            <button className="btn btn-outline w-100 py-2 fw-bold" onClick={() => navigate(-1)}>
+              Cancel
+            </button>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { Briefcase, AlertTriangle, Key, CheckCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -135,9 +136,10 @@ export default function Login() {
             width: 64, height: 64, borderRadius: 18,
             background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 28, margin: '0 auto 14px',
+            margin: '0 auto 14px',
             boxShadow: '0 8px 24px rgba(37,99,235,0.4)',
-          }}>🏪</div>
+            color: '#fff',
+          }}><Briefcase size={30} /></div>
           <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: -0.5 }}>MK Enterprise</div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Business Billing & Management</div>
         </div>
@@ -157,7 +159,7 @@ export default function Login() {
                 borderRadius: 10, padding: '10px 14px', marginBottom: 18,
                 color: '#fca5a5', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
               }}>
-                <span style={{ flexShrink: 0 }}>⚠️</span>
+                <AlertTriangle size={16} className="text-danger" style={{ flexShrink: 0 }} />
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -196,9 +198,10 @@ export default function Login() {
                   />
                   <button type="button" onClick={() => setShowPass(v => !v)} style={{
                     position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16,
+                    background: 'none', border: 'none', cursor: 'pointer',
                     color: 'rgba(255,255,255,0.4)', padding: 0,
-                  }}>{showPass ? '🙈' : '👁️'}</button>
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>{showPass ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                 </div>
               </div>
 
@@ -223,7 +226,7 @@ export default function Login() {
                     <span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
                     Verifying...
                   </>
-                ) : '🔐 Sign In'}
+                ) : <><Key size={16} /> Sign In</>}
               </button>
             </form>
 
@@ -257,11 +260,11 @@ export default function Login() {
               borderRadius: 10, padding: '10px 14px', marginBottom: 20,
               color: '#86efac', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              <span>✅</span>
+              <CheckCircle size={16} className="text-success" style={{ flexShrink: 0 }} />
               <span>Password verified for <strong>{supervisorUsername}</strong>. Enter your secret key to continue.</span>
             </div>
 
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 4 }}>🔑 Supervisor Verification</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}><Key size={18} className="text-warning" /> Supervisor Verification</div>
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 24 }}>
               This extra step keeps your admin account secure.
             </div>
@@ -273,7 +276,7 @@ export default function Login() {
                 borderRadius: 10, padding: '10px 14px', marginBottom: 18,
                 color: '#fca5a5', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
               }}>
-                <span style={{ flexShrink: 0 }}>⚠️</span>
+                <AlertTriangle size={16} className="text-danger" style={{ flexShrink: 0 }} />
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -299,9 +302,10 @@ export default function Login() {
                   />
                   <button type="button" onClick={() => setShowSecret(v => !v)} style={{
                     position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 16,
+                    background: 'none', border: 'none', cursor: 'pointer',
                     color: 'rgba(255,255,255,0.3)', padding: 0,
-                  }}>{showSecret ? '🙈' : '👁️'}</button>
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>{showSecret ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                 </div>
               </div>
 
@@ -326,7 +330,7 @@ export default function Login() {
                     <span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
                     Verifying...
                   </>
-                ) : '👑 Verify & Enter'}
+                ) : <><Key size={16} /> Verify & Enter</>}
               </button>
             </form>
           </>

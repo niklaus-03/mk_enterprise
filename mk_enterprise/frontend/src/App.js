@@ -25,6 +25,8 @@ import NewOrder from './pages/NewOrder';
 import AdminPanel from './pages/AdminPanel';
 import WalkInDelivery from './pages/WalkInDelivery';
 import DriverDashboard from './pages/DriverDashboard';
+import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell } from 'lucide-react';
+import { tripApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────
 function ProtectedRoute({ children }) {
@@ -50,20 +52,21 @@ function SupervisorRoute({ children }) {
 function Sidebar({ open, onClose, onLock }) {
   const { logout, admin, isAdmin } = useAuth();
   const { settings } = useApp();
+  const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
   const lang = settings.language === 'hi';
 
   const navItems = [
-    { to: '/', label: lang ? hi.dashboard : 'Dashboard', icon: '📊', exact: true },
-    { to: '/invoices/new', label: lang ? hi.newBill : 'New Bill', icon: '🧾', highlight: true },
-    { to: '/invoices', label: lang ? hi.invoices : 'Invoice History', icon: '📋' },
-    { to: '/products', label: lang ? hi.products : 'Products', icon: '📦' },
-    { to: '/customers', label: lang ? hi.customers : 'Customers', icon: '👥' },
-    ...(isAdmin ? [{ to: '/vehicle-incoming', label: 'Vehicles', icon: '🚛' }] : []),
-    ...(!isAdmin ? [{ to: '/walkin-delivery', label: 'Walk-in Delivery', icon: '🚶' }] : []),
-    { to: '/suppliers', label: 'Suppliers', icon: '🏭' },
-    { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: '🔄' },
-    ...(isAdmin ? [{ to: '/admin', label: 'Admin Panel', icon: '👑' }] : []),
-    { to: '/settings', label: lang ? hi.settings : 'Settings', icon: '⚙️' },
+    { to: '/', label: lang ? hi.dashboard : 'Dashboard', icon: <BarChart3 size={16} />, exact: true },
+    { to: '/invoices/new', label: lang ? hi.newBill : 'New Bill', icon: <FileText size={16} />, highlight: true },
+    { to: '/invoices', label: lang ? hi.invoices : 'Invoice History', icon: <ClipboardList size={16} />, exact: true },
+    { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
+    { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} /> },
+    ...(isAdmin ? [{ to: '/vehicle-incoming', label: 'Vehicles', icon: <Truck size={16} /> }] : []),
+    ...(!isAdmin ? [{ to: '/walkin-delivery', label: 'Walk-in Delivery', icon: <UserCheck size={16} /> }] : []),
+    { to: '/suppliers', label: 'Suppliers', icon: <Building2 size={16} /> },
+    { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
+    ...(isAdmin ? [{ to: '/admin', label: 'Admin Panel', icon: <Shield size={16} /> }] : []),
+    { to: '/settings', label: lang ? hi.settings : 'Settings', icon: <SettingsIcon size={16} /> },
   ];
 
   return (
@@ -82,24 +85,56 @@ function Sidebar({ open, onClose, onLock }) {
         />
       )}
 
+      {/* Logout Confirmation Modal (Premium Design) */}
+      {showLogoutConfirm && (
+        <div className="modal-overlay" style={{ zIndex: 2000, background: 'rgba(15, 23, 42, 0.75)' }}>
+          <div className="modal premium-confirm-modal">
+            <div className="premium-icon-container" style={{ color: '#ef4444' }}>
+              <LogOut size={32} strokeWidth={2.5} />
+            </div>
+            
+            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10, color: '#0f172a', letterSpacing: '-0.5px' }}>
+              Confirm Logout
+            </h3>
+            <p style={{ fontSize: 14.5, color: '#64748b', marginBottom: 0, lineHeight: 1.6, padding: '0 10px' }}>
+              Are you sure you want to sign out? You'll need to login again to access your dashboard.
+            </p>
+            
+            <div className="premium-btn-group">
+              <button onClick={() => logout()} className="btn-premium-danger">
+                Yes, Log Me Out
+              </button>
+              <button onClick={() => setShowLogoutConfirm(false)} className="btn-premium-secondary">
+                Stay Logged In
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
         <div className="sidebar-brand" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10, padding: '16px 16px 12px' }}>
           {/* Profile image */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
             <div style={{
               width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20, overflow: 'hidden',
-              boxShadow: '0 2px 8px rgba(59,130,246,0.4)',
+              overflow: 'hidden', background: '#F8F9FA',
+              boxShadow: '0 2px 8px rgba(197,160,89,0.3)',
+              border: '1.5px solid #C5A059'
             }}>
-              {/* Replace src with real image path when available */}
-              <img
-                src="/logo192.png"
-                alt="profile"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
-                onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerText = '🏪'; }}
-              />
+              <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="60" cy="60" r="48" stroke="#C5A059" stroke-width="3.5" />
+                <circle cx="60" cy="60" r="41" stroke="#C5A059" stroke-width="1" />
+                
+                <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" stroke-width="1" />
+                <path d="M19 60 H101" stroke="#C5A059" stroke-width="1" />
+                <path d="M60 19 V101" stroke="#C5A059" stroke-width="1" />
+                
+                <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
+                <circle cx="60" cy="60" r="26" stroke="#C5A059" stroke-width="2" />
+                <text x="60" y="75" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0B132B" letter-spacing="-2">MK</text>
+              </svg>
             </div>
             <div style={{ overflow: 'hidden' }}>
               <div className="brand-text" style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -122,7 +157,7 @@ function Sidebar({ open, onClose, onLock }) {
                 `nav-item ${isActive ? 'active' : ''} ${item.highlight ? 'new-bill' : ''}`
               }
             >
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{item.icon}</span>
               <span>{item.label}</span>
             </NavLink>
           ))}
@@ -143,7 +178,7 @@ function Sidebar({ open, onClose, onLock }) {
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }}
             >
-              🔒 <span>Lock Screen</span>
+              <Lock size={14} /> <span>Lock Screen</span>
             </button>
           )}
           {/* Fullscreen toggle button */}
@@ -163,17 +198,17 @@ function Sidebar({ open, onClose, onLock }) {
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#fff'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
           >
-            ⛶ <span>{isCurrentlyFullscreen() ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+            <Maximize2 size={14} /> <span>{isCurrentlyFullscreen() ? 'Exit Fullscreen' : 'Fullscreen'}</span>
           </button>
           <div className="sidebar-user">
-            <div className="sidebar-username">
-              {isAdmin ? '👑' : '👤'} {admin?.display_name || admin?.username || 'User'}
+            <div className="sidebar-username" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+              {isAdmin ? <Shield size={14} style={{ color: '#facc15' }} /> : <User size={14} />} {admin?.display_name || admin?.username || 'User'}
               <span style={{ fontSize: 9, background: isAdmin ? 'rgba(250,204,21,0.25)' : 'rgba(99,102,241,0.25)', color: isAdmin ? '#facc15' : '#818cf8', padding: '1px 6px', borderRadius: 6, marginLeft: 6, fontWeight: 700 }}>
                 {isAdmin ? 'ADMIN' : 'MANAGER'}
               </span>
             </div>
-            <button className="logout-btn" onClick={() => { logout(); onClose && onClose(); }} title="Logout">
-              {lang ? hi.logout : 'Logout'}
+            <button className="logout-btn" onClick={() => setShowLogoutConfirm(true)} title="Logout" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <LogOut size={13} /> {lang ? hi.logout : 'Logout'}
             </button>
           </div>
         </div>
@@ -191,19 +226,37 @@ import { Outlet } from "react-router-dom";
 function requestFullscreen() {
   const el = document.documentElement;
   try {
-    if (el.requestFullscreen) el.requestFullscreen();
-    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-    else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
-    else if (el.msRequestFullscreen) el.msRequestFullscreen();
+    if (el.requestFullscreen) {
+      const p = el.requestFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    } else if (el.webkitRequestFullscreen) {
+      const p = el.webkitRequestFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    } else if (el.mozRequestFullScreen) {
+      const p = el.mozRequestFullScreen();
+      if (p && p.catch) p.catch(() => {});
+    } else if (el.msRequestFullscreen) {
+      const p = el.msRequestFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    }
   } catch (e) { /* User denied or not supported */ }
 }
 
 function exitFullscreen() {
   try {
-    if (document.exitFullscreen) document.exitFullscreen();
-    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-    else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
-    else if (document.msExitFullscreen) document.msExitFullscreen();
+    if (document.exitFullscreen) {
+      const p = document.exitFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      const p = document.webkitExitFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    } else if (document.mozCancelFullScreen) {
+      const p = document.mozCancelFullScreen();
+      if (p && p.catch) p.catch(() => {});
+    } else if (document.msExitFullscreen) {
+      const p = document.msExitFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    }
   } catch (e) { }
 }
 
@@ -215,6 +268,7 @@ function isCurrentlyFullscreen() {
 }
 
 function AppLayout() {
+  const { isAdmin } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -297,11 +351,16 @@ function AppLayout() {
   // Lock body scroll when sidebar open on mobile
   useEffect(() => {
     if (sidebarOpen && window.innerWidth < 768) {
+      document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
     } else {
+      document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
     }
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
   }, [sidebarOpen]);
 
   const isOpen = sidebarOpen;
@@ -345,18 +404,47 @@ function AppLayout() {
       )}
 
       <div className="app-main">
-        {/* Mobile topbar */}
-        <div className="mobile-topbar">
+        {/* Mobile topbar — Premium Centered Instagram-Style Layout */}
+        <div className={`mobile-topbar ${isFullscreen ? 'is-fullscreen' : ''}`}>
           <button
             className={`hamburger-btn${isOpen ? ' is-open' : ''}`}
             onClick={() => setSidebarOpen(o => !o)}
             aria-label="Toggle menu"
+            style={{ justifySelf: 'start' }}
           >
             <span className="ham-line" style={isOpen ? { transform: 'rotate(45deg) translate(5px, 5px)' } : {}}></span>
             <span className="ham-line ham-line-mid" style={isOpen ? { opacity: 0, width: 0 } : {}}></span>
             <span className="ham-line" style={isOpen ? { transform: 'rotate(-45deg) translate(5px, -5px)' } : {}}></span>
           </button>
-          <span className="mobile-brand">🏪 MK Enterprise</span>
+          
+          <span className="mobile-brand">
+            MK Enterprise
+          </span>
+
+          {isAdmin ? (
+            <button 
+              className="notification-btn" 
+              onClick={() => alert("Notifications coming soon!")}
+              style={{
+                justifySelf: 'end',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#0f172a',
+                padding: '6px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+              }}
+            >
+              <Bell size={21} strokeWidth={2.2} />
+              <span className="notification-badge" />
+            </button>
+          ) : (
+            <div style={{ width: 33, justifySelf: 'end' }} />
+          )}
         </div>
 
         <div className="app-content">
@@ -370,11 +458,37 @@ function AppLayout() {
 // ── Driver Layout ──────────────────────────────────────────────────────────────
 function DriverLayout() {
   const { logout, user } = useAuth();
+  const [hasActiveTrip, setHasActiveTrip] = useState(false);
+
+  useEffect(() => {
+    const checkActiveTrip = async () => {
+      try {
+        const res = await tripApi.getAll({ status: 'active', limit: 1 });
+        setHasActiveTrip(res.trips && res.trips.length > 0);
+      } catch (_) {}
+    };
+    checkActiveTrip();
+    const interval = setInterval(checkActiveTrip, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100vh', paddingBottom: 80 }}>
       <div style={{ background: 'var(--sidebar-bg)', padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.3px' }}>🏪 MK Driver</div>
-        <button onClick={logout} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', padding: '6px 12px', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Logout</button>
+        <div style={{ textAlign: 'left', overflow: 'hidden' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <User size={16} className="text-light" /> {user?.display_name || user?.username}
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Calendar size={13} style={{ opacity: 0.8 }} /> {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', padding: '6px 12px', borderRadius: 20 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: hasActiveTrip ? '#10b981' : '#6b7280', display: 'inline-block' }}></span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: hasActiveTrip ? '#10b981' : '#9ca3af', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+            {hasActiveTrip ? 'On Trip' : 'Online'}
+          </span>
+        </div>
       </div>
       <div style={{ padding: 16 }}>
         <Outlet />

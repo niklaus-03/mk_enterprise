@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { customerApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
+import { Users, Search, FileText, Edit, Trash2, Plus } from 'lucide-react';
 
 const EMPTY = { name: '', phone: '', address: '', balance: '', gstin: '' };
 
@@ -90,16 +91,16 @@ export default function Customers() {
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">👥 {t('Customers', 'ग्राहक')}</div>
+          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Users size={20} /> {t('Customers', 'ग्राहक')}</div>
           <div className="page-subtitle">{customers.length} customers · Total dues: {fc(totalDue)}</div>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Customer</button>
+        <button className="btn btn-primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Add Customer</button>
       </div>
 
       <div className="card">
         <div className="card-header">
           <div className="search-wrap">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><Search size={16} /></span>
             <input className="form-control" placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 280, paddingLeft: 36 }} />
           </div>
         </div>
@@ -124,9 +125,9 @@ export default function Customers() {
                       <td className="tr">{balanceCell(c.balance)}</td>
                       <td>
                         <div className="flex gap-2">
-                          <Link to={`/invoices?customer_id=${c._id}`} className="btn btn-outline btn-sm">🧾 Bills</Link>
-                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)}>✏️</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c)}>🗑️</button>
+                          <Link to={`/invoices?customer_id=${c._id}`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileText size={13} /> Bills</Link>
+                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}><Edit size={13} /></button>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}><Trash2 size={13} /></button>
                         </div>
                       </td>
                     </tr>
@@ -142,7 +143,7 @@ export default function Customers() {
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title">{editId ? '✏️ Edit Customer' : '➕ Add Customer'}</div>
+              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{editId ? <><Edit size={16} /> Edit Customer</> : <><Plus size={16} /> Add Customer</>}</div>
               <button className="modal-close" onClick={closeModal}>✕</button>
             </div>
             <div className="modal-body">

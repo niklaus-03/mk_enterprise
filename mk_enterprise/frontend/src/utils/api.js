@@ -3,7 +3,7 @@ import axios from 'axios';
 const baseURL =
   window.location.hostname === "localhost"
     ? "http://localhost:5000/api"
-    : "http://192.168.1.37:5000/api";
+    : "http://192.168.1.36:5000/api";
 
 const api = axios.create({
   baseURL,

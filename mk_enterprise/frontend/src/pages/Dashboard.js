@@ -5,6 +5,7 @@ import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, custom
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
+import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck } from 'lucide-react';
 
 
 const PAYMENT_MODES = ['cash', 'upi', 'online', 'others'];
@@ -69,7 +70,7 @@ function useLiveClock() {
 }
 
 export default function Dashboard() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [salesSortDesc, setSalesSortDesc] = useState(true);
@@ -771,92 +772,137 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* ── Dashboard Header ─────────────────────────── */}
+      {/* ── Dashboard Header (Premium Command Center) ─────────────────────────── */}
       <div style={{
-        background: 'linear-gradient(135deg, #1a1f2e 0%, #2d3555 100%)',
-        borderRadius: 14,
-        padding: '18px 22px',
-        marginBottom: 18,
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+        borderRadius: 20,
+        padding: '24px 28px',
+        marginBottom: 24,
         color: '#fff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: 14,
-        boxShadow: '0 4px 24px rgba(26,31,46,0.18)',
+        gap: 20,
+        boxShadow: '0 10px 30px -5px rgba(2, 6, 23, 0.3)',
+        border: '1px solid rgba(255, 255, 255, 0.05)',
       }}>
-        {/* LEFT — Shop name + Live Clock */}
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 0.3, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-            🏪 {settings?.business_name || 'My Shop'}
-            {isAdmin && <span className="badge badge-success" style={{ fontSize: 10, textTransform: 'uppercase' }}>Global (All Managers)</span>}
-          </div>
-          {/* Clock card */}
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 10,
-            background: 'rgba(255,255,255,0.09)',
-            border: '1px solid rgba(255,255,255,0.13)',
-            borderRadius: 10, padding: '8px 14px',
-          }}>
-            <div style={{ fontSize: 22 }}>🕐</div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'monospace', letterSpacing: 2, color: '#60a5fa', lineHeight: 1 }}>
-                {liveTimeIST}
-              </div>
-              <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', marginTop: 2, letterSpacing: 0.3 }}>
-                {liveDateIST} · IST
-              </div>
+        {/* LEFT — Contextual Greeting (Ultra-Minimal) */}
+        <div style={{ flex: '1 1 300px' }}>
+          {isAdmin ? (
+            <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-1px', color: '#fff', margin: 0 }}>
+              Welcome
+            </h1>
+          ) : (
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
+              Welcome back, {user?.display_name || user?.username || 'Manager'}
             </div>
-          </div>
+          )}
         </div>
 
-        {/* RIGHT — Date picker + Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-
-          {/* Global calendar */}
+        {/* RIGHT — Live Metrics & Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          
+          {/* Glassmorphic Live Clock & Date */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: isToday ? 'rgba(255,255,255,0.12)' : 'rgba(252,211,77,0.15)',
-            border: `1.5px solid ${isToday ? 'rgba(255,255,255,0.18)' : '#fcd34d'}`,
-            borderRadius: 9, padding: '7px 13px',
-            transition: 'all 0.2s', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 16,
+            background: 'rgba(255,255,255,0.03)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 16, padding: '10px 18px',
+            boxShadow: 'inset 0 0 12px rgba(255,255,255,0.02)',
           }}>
-            <span style={{ fontSize: 15 }}>📅</span>
-            <div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 1 }}>
-                {isToday ? 'Today' : 'Viewing'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Clock size={18} style={{ color: 'var(--primary)' }} />
+              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'monospace', letterSpacing: '1px', color: '#fff' }}>
+                {liveTimeIST.split(' ')[0]} <span style={{ fontSize: 12, opacity: 0.6 }}>{liveTimeIST.split(' ')[1]}</span>
               </div>
-              <input
-                type="date"
-                value={selectedDate}
-                max={getTodayIST()}
-                onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }}
-                style={{
-                  border: 'none', outline: 'none', fontSize: 13, fontWeight: 600,
-                  fontFamily: 'inherit', background: 'transparent',
-                  cursor: 'pointer', color: isToday ? '#fff' : '#fcd34d', width: 130,
-                }}
-              />
             </div>
-            {!isToday && (
-              <button
-                onClick={() => setSelectedDate(getTodayIST())}
-                style={{
-                  background: '#fcd34d', border: 'none', cursor: 'pointer',
-                  color: '#92400e', fontWeight: 800, fontSize: 10, padding: '3px 8px',
-                  borderRadius: 5, whiteSpace: 'nowrap', marginLeft: 2,
-                }}
-              >↩ Today</button>
-            )}
+            
+            <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)' }} />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', position: 'relative' }}>
+              <Calendar size={18} style={{ color: '#fcd34d' }} />
+              <div style={{ position: 'relative' }}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: -2 }}>
+                  {isToday ? 'Today' : 'Archive'}
+                </div>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={getTodayIST()}
+                  onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }}
+                  style={{
+                    border: 'none', outline: 'none', fontSize: 13, fontWeight: 700,
+                    fontFamily: 'inherit', background: 'transparent',
+                    cursor: 'pointer', color: isToday ? '#fff' : '#fcd34d', width: 110,
+                  }}
+                />
+              </div>
+              {!isToday && (
+                <button
+                  onClick={() => setSelectedDate(getTodayIST())}
+                  style={{
+                    background: '#fcd34d', border: 'none', cursor: 'pointer',
+                    color: '#92400e', fontWeight: 800, fontSize: 10, padding: '4px 8px',
+                    borderRadius: 6, whiteSpace: 'nowrap', transition: 'all 0.2s',
+                    boxShadow: '0 4px 10px rgba(252, 211, 77, 0.2)',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                >↩ Today</button>
+              )}
+            </div>
           </div>
 
-          {/* Action buttons */}
-          <Link to="/invoices/new" className="btn btn-primary btn-lg" style={{ background: '#3b82f6', border: 'none', boxShadow: '0 2px 8px rgba(59,130,246,0.4)' }}>
-            + {t('New Bill', 'नया बिल')}
-          </Link>
-          <Link to="/orders/new" className="btn btn-warning btn-lg" style={{ boxShadow: '0 2px 8px rgba(245,158,11,0.35)' }}>
-            📦 Order
-          </Link>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Link 
+              to="/invoices/new" 
+              className="btn" 
+              style={{ 
+                background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
+                color: '#fff',
+                border: 'none', 
+                padding: '12px 20px',
+                borderRadius: 14,
+                fontWeight: 800,
+                fontSize: 14,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 10px 20px -5px rgba(37, 99, 235, 0.4)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 25px -5px rgba(37, 99, 235, 0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 20px -5px rgba(37, 99, 235, 0.4)'; }}
+            >
+              <FileText size={18} /> {t('New Bill', 'नया बिल')}
+            </Link>
+            
+            <Link 
+              to="/orders/new" 
+              className="btn" 
+              style={{ 
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
+                color: '#fff',
+                border: 'none', 
+                padding: '12px 20px',
+                borderRadius: 14,
+                fontWeight: 800,
+                fontSize: 14,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: '0 10px 20px -5px rgba(217, 119, 6, 0.4)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 25px -5px rgba(217, 119, 6, 0.5)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 20px -5px rgba(217, 119, 6, 0.4)'; }}
+            >
+              <Package size={18} /> {t('New Order', 'नया ऑर्डर')}
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -869,7 +915,7 @@ export default function Dashboard() {
           alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 18 }}>🚛</span>
+            <Truck size={18} style={{ color: '#f59e0b' }} />
             <div>
               <div style={{ fontWeight: 700, fontSize: 13.5 }}>
                 {arrivingSoon.length} vehicle{arrivingSoon.length > 1 ? 's' : ''} arriving soon!
@@ -939,7 +985,7 @@ export default function Dashboard() {
             });
           }}
         >
-          <div className="stat-icon">📅</div>
+          <div className="stat-icon"><Calendar size={24} /></div>
           <div className="stat-value">{fc(data.todaySales)}</div>
           <div className="stat-label">
             {t("Today's Sales", 'आज की बिक्री')} · {data.todayCount} {t('bills', 'बिल')}
@@ -963,7 +1009,7 @@ export default function Dashboard() {
             return !d;
           })}
         >
-          <div className="stat-icon">⏳</div>
+          <div className="stat-icon"><Clock size={24} /></div>
           <div className="stat-value">{fc(data.pendingBalance)}</div>
           <div className="stat-label">
             {t("Today's Pending Dues", 'आज का बकाया')}
@@ -986,7 +1032,7 @@ export default function Dashboard() {
             });
           }}
         >
-          <div className="stat-icon">👥</div>
+          <div className="stat-icon"><Users size={24} /></div>
           <div className="stat-value">{data.pendingCustomers?.length || 0}</div>
           <div className="stat-label">
             {t('Customers with Dues', 'बकाया ग्राहक')}
@@ -1002,7 +1048,7 @@ export default function Dashboard() {
         <div className="stat-card blue" style={{ cursor: 'pointer' }}
           onClick={() => { setShowProducts(d => { if (!d) { closeAllSummaryPanels('products'); scrollToPanel(productsPanelRef); } return !d; }); }}
         >
-          <div className="stat-icon">📦</div>
+          <div className="stat-icon"><Package size={24} /></div>
           <div className="stat-value">{data.productCount}</div>
           <div className="stat-label">
             {t('Products', 'उत्पाद')}
@@ -1037,7 +1083,7 @@ export default function Dashboard() {
           });
         }}>
 
-          <div className="stat-icon">📋</div>
+          <div className="stat-icon"><FileText size={24} /></div>
           <div className="stat-value">
             {settlementData.settlements.length > 0 ? settlementData.settlements.length : 0}
           </div>
@@ -1074,7 +1120,7 @@ export default function Dashboard() {
             });
           }}
         >
-          <div className="stat-icon">🚛</div>
+          <div className="stat-icon"><Truck size={24} /></div>
           <div className="stat-value" style={{ color: activeDeliveries.length > 0 ? 'var(--warning)' : undefined }}>
             {activeDeliveries.length}
           </div>
@@ -1388,8 +1434,8 @@ export default function Dashboard() {
       {showDeparture && (
         <div className="card" style={{ marginBottom: 20 }} ref={departureRef}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
-            <div className="card-title">
-              🚛 Incoming Goods
+            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Truck size={18} /> Incoming Goods
               {activeDeliveries.length > 0 && (
                 <span className="badge badge-warning" style={{ marginLeft: 8, fontSize: 11 }}>
                   {activeDeliveries.length} active
@@ -1404,7 +1450,7 @@ export default function Dashboard() {
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
               {/* Calendar with OK button inside dropdown */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px' }}>
-                <span style={{ fontSize: 12 }}>📅</span>
+                <Calendar size={13} className="text-muted" style={{ marginRight: 4 }} />
                 <input
                   type="date"
                   value={deliveryDateInput || getTodayIST()}
@@ -1457,7 +1503,7 @@ export default function Dashboard() {
                   setShowDeliveryForm(false);
                 }}
               >
-                {showWalkinDelivery ? '✕ Cancel' : '🚶 Walk-in Delivery'}
+                {showWalkinDelivery ? '✕ Cancel' : <><UserCheck size={13} style={{ marginRight: 4 }} /> Walk-in Delivery</>}
               </button>
               <SortDropdown
                 options={[
@@ -1465,8 +1511,8 @@ export default function Dashboard() {
                   { key: 'time_desc', label: '↓ Expected Time' },
                   { key: 'supplier_asc', label: 'A-Z Supplier' },
                   { key: 'items_desc', label: '↓ Most Items' },
-                  { key: 'delivered_first', label: '✅ Delivered First' },
-                  { key: 'pending_first', label: '⏳ Pending First' },
+                  { key: 'delivered_first', label: '✓ Delivered First' },
+                  { key: 'pending_first', label: '⧗ Pending First' },
                 ]}
                 value={vehicleSort}
                 onChange={v => { setVehicleSort(v); setVehicleSortOpen(false); }}
@@ -2122,49 +2168,49 @@ export default function Dashboard() {
                                   <>
                                     <button
                                       className="btn btn-success btn-sm"
-                                      style={{ fontSize: 11 }}
+                                      style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                       onClick={() => {
                                         if (window.confirm(`Mark as delivered? Stock will be updated automatically for matched products.`))
                                           handleDeliveryStatus(d._id, 'delivered');
                                       }}
-                                    >✅ Delivered</button>
+                                    ><CheckCircle size={11} /> Delivered</button>
                                     <button
                                       className="btn btn-outline btn-sm"
-                                      style={{ fontSize: 11 }}
+                                      style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                       onClick={() => handleDeliveryStatus(d._id, 'not_delivered')}
-                                    >❌ Not Delivered</button>
+                                    ><XCircle size={11} /> Not Delivered</button>
                                     <button
                                       className="btn btn-warning btn-sm"
-                                      style={{ fontSize: 11 }}
+                                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
                                       onClick={() => openEditDelivery(d)}
-                                    >✏️</button>
+                                    ><Edit2 size={11} /></button>
                                   </>
                                 )}
                                 {/* Allow re-open if not_delivered */}
                                 {d.status === 'not_delivered' && (
                                   <button
                                     className="btn btn-outline btn-sm"
-                                    style={{ fontSize: 11 }}
+                                    style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                     onClick={() => handleDeliveryStatus(d._id, 'pending')}
-                                  >↩️ Reopen</button>
+                                  ><RotateCcw size={11} /> Reopen</button>
                                 )}
                                 {/* Walk-in specific: Paid button separate from delivery status */}
                                 {d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid' && (
                                   <button
                                     className="btn btn-warning btn-sm"
-                                    style={{ fontSize: 11 }}
+                                    style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                     onClick={() => {
                                       const mode = window.prompt('Payment mode? (cash/upi/online)', 'cash');
                                       if (mode !== null) handleMarkWalkinPaid(d._id, mode || 'cash');
                                     }}
-                                  >💵 Mark Paid</button>
+                                  ><CreditCard size={11} /> Mark Paid</button>
                                 )}
                                 {d.status !== 'delivered' && (
                                   <button
                                     className="btn btn-ghost btn-sm"
-                                    style={{ color: 'var(--danger)', fontSize: 11 }}
+                                    style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
                                     onClick={() => handleDeleteDelivery(d._id)}
-                                  >🗑️</button>
+                                  ><Trash2 size={11} /></button>
                                 )}
                               </div>
                             </td>
@@ -2177,8 +2223,9 @@ export default function Dashboard() {
               );
             })()}
             {/* Stock update note */}
-            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', padding: '8px 12px', background: '#f0fdf4', borderRadius: 6, border: '1px solid #86efac' }}>
-              💡 <strong>Auto Stock Update:</strong> When a delivery is marked "Delivered", stock is automatically increased for items that have a matching product linked. Items without a product link are logged as movements only.
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', padding: '8px 12px', background: '#f0fdf4', borderRadius: 6, border: '1px solid #86efac', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Lightbulb size={14} style={{ color: '#16a34a', flexShrink: 0 }} />
+              <span><strong>Auto Stock Update:</strong> When a delivery is marked "Delivered", stock is automatically increased for items that have a matching product linked. Items without a product link are logged as movements only.</span>
             </div>
           </div>
         </div>

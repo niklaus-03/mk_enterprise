@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { authApi, seedApi, managerApi } from '../utils/api';
+import { Settings as SettingsIcon, Users, Plus, Phone, Trash2, Key, CheckCircle, Briefcase, CreditCard, FileText, AlertTriangle, User, Truck, DollarSign, Activity, Calendar } from 'lucide-react';
 
 export default function Settings() {
   const { settings, updateSettings } = useApp();
@@ -136,7 +137,7 @@ export default function Settings() {
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">⚙️ Settings</div>
+          <div className="page-title d-flex align-items-center gap-2"><SettingsIcon size={22} className="text-secondary" /> Settings</div>
           <div className="page-subtitle">Configure business details, billing, and system preferences</div>
         </div>
       </div>
@@ -146,17 +147,17 @@ export default function Settings() {
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
-              <div className="card-title">👥 Manager Accounts</div>
+              <div className="card-title d-flex align-items-center gap-2"><Users size={18} className="text-secondary" /> Manager Accounts</div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
                 {mgrTotal} / {mgrLimit} slots used · {mgrRemaining} remaining
               </div>
             </div>
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"
               onClick={() => { if (mgrRemaining <= 0) return toast.error(`Manager limit reached (${mgrLimit}/${mgrLimit})`); setShowAddManager(true); }}
               style={{ opacity: mgrRemaining <= 0 ? 0.5 : 1 }}
             >
-              ➕ Add New Manager
+              <Plus size={14} /> Add New Manager
             </button>
           </div>
           <div className="card-body" style={{ padding: 0 }}>
@@ -164,7 +165,7 @@ export default function Settings() {
               <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>Loading managers...</div>
             ) : managers.length === 0 ? (
               <div style={{ padding: 40, textAlign: 'center' }}>
-                <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.6 }}>📭</div>
+                <div style={{ marginBottom: 8, opacity: 0.6 }}><Briefcase size={36} className="text-secondary mx-auto" /></div>
                 <div style={{ color: 'var(--text-muted)', fontSize: 13.5 }}>No managers yet. Click "Add New Manager" to create one.</div>
                 <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 6, opacity: 0.7 }}>Managers can perform billing, manage customers, and products — but cannot see each other's profiles.</div>
               </div>
@@ -190,7 +191,7 @@ export default function Settings() {
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{m.display_name || m.username}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
                           <span>@{m.username}</span>
-                          {m.phone && <span>📞 {m.phone}</span>}
+                          {m.phone && <span className="d-inline-flex align-items-center gap-1"><Phone size={12} /> {m.phone}</span>}
                         </div>
                       </div>
                     </div>
@@ -208,8 +209,8 @@ export default function Settings() {
                       <button className="btn btn-outline btn-sm" onClick={() => { setMgrResetModal(m); setMgrResetPw(''); }}>
                         🔑 Reset PW
                       </button>
-                      <button className="btn btn-sm" style={{ background: 'var(--danger-bg, #fef2f2)', color: 'var(--danger, #dc2626)', border: '1px solid var(--danger-border, #fecaca)' }} onClick={() => handleDeleteManager(m)}>
-                        🗑️ Remove
+                      <button className="btn btn-sm d-inline-flex align-items-center gap-1" style={{ background: 'var(--danger-bg, #fef2f2)', color: 'var(--danger, #dc2626)', border: '1px solid var(--danger-border, #fecaca)' }} onClick={() => handleDeleteManager(m)}>
+                        <Trash2 size={13} /> Remove
                       </button>
                     </div>
                   </div>
