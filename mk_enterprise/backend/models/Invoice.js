@@ -59,8 +59,19 @@ const invoiceSchema = new mongoose.Schema({
 
 invoiceSchema.pre('save', async function (next) {
   if (!this.invoice_number) {
+    // Generate prefixed invoice number based on creator's role
+    let prefix = 'INV';
+    if (this.created_by) {
+      try {
+        const Admin = mongoose.model('Admin');
+        const creator = await Admin.findById(this.created_by);
+        if (creator) {
+          prefix = creator.getPrefixCode() + '-INV';
+        }
+      } catch (_) { /* fallback to INV */ }
+    }
     const count = await mongoose.model('Invoice').countDocuments();
-    this.invoice_number = `INV-${String(count + 1).padStart(5, '0')}`;
+    this.invoice_number = `${prefix}-${String(count + 1).padStart(5, '0')}`;
   }
   next();
 });

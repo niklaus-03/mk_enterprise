@@ -6,6 +6,14 @@ const { formatIST, todayUTCRange } = require('../utils/timeUtils');
 
 router.use(auth);
 
+// Helper: managers see only their own settlements
+function ownerFilter(req) {
+  if (req.user.role === 'manager') {
+    return { created_by: req.user.id };
+  }
+  return {};
+}
+
 // Helper: convert IST date string to UTC range
 function istDateToUTCRange(dateStr) {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -27,7 +35,7 @@ function istDateToUTCRange(dateStr) {
 router.get('/', async (req, res) => {
   try {
     const { date, all, party, sort_amount, sort_date } = req.query;
-    let query = {};
+    let query = { ...ownerFilter(req) };
 
     // Fix 4: When not fetching all history, default to selected date (today if none given)
     if (all !== 'true') {
@@ -94,6 +102,7 @@ router.post('/', async (req, res) => {
       date: entryDate,
       ist_date,
       ist_formatted: formatIST(entryDate),
+      created_by: req.user.id,
     });
 
     res.status(201).json(settlement);

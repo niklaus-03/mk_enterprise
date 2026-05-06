@@ -10,6 +10,7 @@ const settlementSchema = new mongoose.Schema({
   mode: { type: String, enum: ['cash', 'upi', 'online', 'others'], default: 'cash' },
   reference: { type: String, default: '' },
   notes: { type: String, default: '' },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
 }, { timestamps: true });
 
 settlementSchema.index({ date: -1 });

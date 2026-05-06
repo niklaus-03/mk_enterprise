@@ -34,6 +34,29 @@ app.use('/api/deliveries', require('./routes/deliveries'));
 const ordersRoutes = require('./routes/orders');
 
 app.use('/api/orders', ordersRoutes);
+app.use('/api/activity-logs', require('./routes/activityLogs'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/trips', require('./routes/trips'));
+app.use('/api/reports', require('./routes/reports'));
+
+// ── Scheduled backup at 3:00 AM daily ─────────────────────────────────────────
+const { createBackup } = require('./utils/backup');
+function scheduleBackup() {
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(3, 0, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  const ms = target - now;
+  setTimeout(() => {
+    console.log('🔄 Running scheduled backup...');
+    createBackup();
+    setInterval(() => {
+      console.log('🔄 Running scheduled backup...');
+      createBackup();
+    }, 24 * 60 * 60 * 1000);
+  }, ms);
+  console.log(`📦 Next backup scheduled at ${target.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+}
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({
@@ -73,6 +96,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`║  Mode:  ${(process.env.NODE_ENV || 'development').padEnd(32)}║`);
   console.log('╚══════════════════════════════════════════╝\n');
   console.log('→ Run POST /api/seed once to create admin & sample data\n');
+  scheduleBackup();
 });
 
 

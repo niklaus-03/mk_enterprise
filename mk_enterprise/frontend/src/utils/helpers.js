@@ -45,13 +45,60 @@ export function numToWords(num) {
   return conv(n) + ' Rupees Only';
 }
 
-// Hindi translations
+// Hindi translations — comprehensive
 export const hi = {
+  // Navigation
   dashboard: 'डैशबोर्ड', products: 'उत्पाद', customers: 'ग्राहक',
   invoices: 'बिल', newBill: 'नया बिल', settings: 'सेटिंग्स',
   stockMovements: 'स्टॉक मूवमेंट', logout: 'लॉगआउट',
+  // Dashboard
   totalSales: 'कुल बिक्री', todaySales: 'आज की बिक्री',
   pendingDues: 'बकाया राशि', lowStock: 'कम स्टॉक',
+  todayInvoices: 'आज के बिल', allTimePending: 'कुल बकाया',
+  // Actions
   save: 'सहेजें', cancel: 'रद्द करें', delete: 'हटाएं', edit: 'संपादित करें',
-  add: 'जोड़ें', search: 'खोजें', print: 'प्रिंट करें',
+  add: 'जोड़ें', search: 'खोजें', print: 'प्रिंट करें', back: 'वापस',
+  create: 'बनाएं', update: 'अपडेट करें', confirm: 'पुष्टि करें',
+  // Admin Panel
+  adminPanel: 'एडमिन पैनल', managers: 'मैनेजर', drivers: 'ड्राइवर',
+  recovery: 'पासवर्ड रिकवरी', activityLog: 'गतिविधि लॉग',
+  addManager: 'मैनेजर जोड़ें', addDriver: 'ड्राइवर जोड़ें',
+  resetPassword: 'पासवर्ड रीसेट', deleteUser: 'उपयोगकर्ता हटाएं',
+  active: 'सक्रिय', inactive: 'निष्क्रिय',
+  // Driver Module
+  shortTrip: 'छोटी यात्रा', longTrip: 'लंबी यात्रा',
+  history: 'इतिहास', startTrip: 'यात्रा शुरू करें',
+  endTrip: 'यात्रा समाप्त', reachedDestination: 'गंतव्य पहुँचे',
+  origin: 'शुरुआत', destination: 'गंतव्य', cargo: 'माल',
+  ownerName: 'मालिक का नाम', ownerPhone: 'मालिक का फ़ोन',
+  goodsType: 'माल का प्रकार', expense: 'खर्च', totalExpenses: 'कुल खर्च',
+  fuel: 'ईंधन', toll: 'टोल', challan: 'चालान', service: 'सर्विस',
+  food: 'खाना', other: 'अन्य',
+  tripTimeline: 'यात्रा टाइमलाइन', tripStarted: 'यात्रा शुरू',
+  tripCompleted: 'यात्रा पूर्ण', nextLeg: 'अगला चरण',
+  // Goods Types
+  fruitsVeg: 'फल-सब्जी', goods: 'सामान', paint: 'पेंट',
+  tile: 'टाइल', cement: 'सीमेंट', hardware: 'हार्डवेयर सरिया',
+  beverages: 'पेय पदार्थ', booking: 'बुकिंग', others: 'अन्य',
+  // Products
+  productName: 'उत्पाद का नाम', price: 'कीमत', stock: 'स्टॉक',
+  unit: 'इकाई', gst: 'जीएसटी',
+  // Customers
+  customerName: 'ग्राहक का नाम', phone: 'फ़ोन', address: 'पता',
+  balance: 'शेष राशि', due: 'बकाया', advance: 'अग्रिम',
+  // Invoice
+  invoiceNumber: 'बिल नंबर', subtotal: 'उप-कुल', discount: 'छूट',
+  total: 'कुल', amountReceived: 'प्राप्त राशि', balanceDue: 'शेष बकाया',
+  walkInCustomer: 'वॉक-इन ग्राहक', signature: 'हस्ताक्षर',
+  // Notifications
+  notifications: 'सूचनाएं', markAllRead: 'सब पढ़ा हुआ',
+  noNotifications: 'कोई सूचना नहीं', unread: 'अपठित',
+  // Settings
+  language: 'भाषा', theme: 'थीम', businessName: 'व्यापार का नाम',
+  enableSignature: 'हस्ताक्षर सक्षम करें', lowStockThreshold: 'कम स्टॉक सीमा',
+  // Suppliers
+  suppliers: 'आपूर्तिकर्ता', vehicles: 'वाहन',
+  // Time
+  today: 'आज', yesterday: 'कल', thisWeek: 'इस सप्ताह', thisMonth: 'इस महीने',
 };
+

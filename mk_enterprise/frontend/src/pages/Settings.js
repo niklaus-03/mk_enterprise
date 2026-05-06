@@ -359,6 +359,18 @@ export default function Settings() {
                 <div className="form-hint">Show or hide the labour charge field on invoice</div>
               </div>
 
+              {/* Signature toggle */}
+              <div className="form-group">
+                <label className="form-label">✍️ Authorized Signature</label>
+                <div className="flex gap-2">
+                  <button type="button" className={`btn btn-sm ${form.signature_enabled !== false ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setForm({ ...form, signature_enabled: true })}>✅ Enabled</button>
+                  <button type="button" className={`btn btn-sm ${form.signature_enabled === false ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setForm({ ...form, signature_enabled: false })}>❌ Disabled</button>
+                </div>
+                <div className="form-hint">Enable or disable the signature field on invoices. When enabled, a drawing canvas appears during billing.</div>
+              </div>
+
               <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : '💾 Save Preferences'}</button>
             </form>
           </div>

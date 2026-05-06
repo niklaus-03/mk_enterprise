@@ -23,10 +23,25 @@ export function AuthProvider({ children }) {
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
-  const login = async (username, password, secret_key) => {
-    const res = await authApi.login({ username, password, secret_key });
+  // Step 1: Validate credentials. Returns { requires_secret, username } for supervisors,
+  // or completes login for managers/drivers.
+  const login = async (username, password) => {
+    const res = await authApi.login({ username, password });
+    // If supervisor, backend returns requires_secret flag — don't set token yet
+    if (res.requires_secret) {
+      return res; // caller (Login.js) will show secret key step
+    }
+    // Non-supervisor: token received, complete login
     localStorage.setItem('shopbill_token', res.token);
-    // Fetch full user object
+    const me = await authApi.me();
+    setUser(me);
+    return res;
+  };
+
+  // Step 2: Supervisor secret key verification
+  const verifySecret = async (username, secret_key) => {
+    const res = await authApi.verifySecret({ username, secret_key });
+    localStorage.setItem('shopbill_token', res.token);
     const me = await authApi.me();
     setUser(me);
     return res;
@@ -50,6 +65,7 @@ export function AuthProvider({ children }) {
       admin: user,        // backward compat alias
       loading,
       login,
+      verifySecret,
       logout,
       isAuthenticated: !!user,
       isAdmin,

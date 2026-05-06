@@ -9,6 +9,14 @@ const { todayUTCRange } = require('../utils/timeUtils');
 
 router.use(auth);
 
+// Helper: managers see only their own data
+function ownerFilter(req) {
+  if (req.user.role === 'manager') {
+    return { created_by: req.user.id };
+  }
+  return {}; // supervisor sees all
+}
+
 router.get('/', async (req, res) => {
   try {
     const { date } = req.query;
@@ -27,7 +35,7 @@ router.get('/', async (req, res) => {
     }
 
     // Safety log — helps debug calendar date issues
-    const notCancelled = { status: { $ne: 'cancelled' } };
+    const notCancelled = { status: { $ne: 'cancelled' }, ...ownerFilter(req) };
 
     // Fetch global low stock threshold from settings
     const Setting = require('../models/Setting');
@@ -65,8 +73,8 @@ router.get('/', async (req, res) => {
       ]),
       // 3. Total invoice count
       Invoice.countDocuments(notCancelled),
-      // 4. Registered customers with balance > 0
-      Customer.find({ balance: { $gt: 0 }, is_active: true }).sort({ balance: -1 }).limit(50),
+      // 4. Registered customers with balance > 0 (scoped)
+      Customer.find({ balance: { $gt: 0 }, is_active: true, ...(req.user.role === 'manager' ? { $or: [{ created_by: req.user.id }, { allowed_managers: req.user.id }] } : {}) }).sort({ balance: -1 }).limit(50),
       // 5. Product count
       Product.countDocuments({ is_active: true }),
       // 6. All active products — used for both allProducts dropdown AND low stock filtering

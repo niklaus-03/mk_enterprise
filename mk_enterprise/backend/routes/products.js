@@ -8,6 +8,20 @@ const { formatIST } = require('../utils/timeUtils');
 
 router.use(auth);
 
+// Helper: managers see ONLY products they created or are explicitly allowed to view
+function ownerFilter(req, extra = {}) {
+  if (req.user.role === 'manager') {
+    return {
+      ...extra,
+      $or: [
+        { created_by: req.user.id },
+        { allowed_managers: req.user.id },
+      ],
+    };
+  }
+  return extra; // supervisor sees all
+}
+
 // Helper: get global low stock threshold from settings
 async function getGlobalThreshold() {
   const row = await Setting.findOne({ key: 'low_stock_threshold' });
@@ -18,19 +32,37 @@ async function getGlobalThreshold() {
 router.get('/', async (req, res) => {
   try {
     const { search, limit = 200 } = req.query;
-    const query = { is_active: true };
-    if (search) query.name = { $regex: search.trim(), $options: 'i' };
+    const query = { is_active: true, ...ownerFilter(req) };
+    if (search) {
+      const searchFilter = { name: { $regex: search.trim(), $options: 'i' } };
+      if (query.$or) {
+        const ownerOr = query.$or;
+        delete query.$or;
+        query.$and = [{ $or: ownerOr }, searchFilter];
+      } else {
+        Object.assign(query, searchFilter);
+      }
+    }
     const products = await Product.find(query).sort({ name: 1 }).limit(parseInt(limit));
     res.json(products);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET autocomplete - returns all products when no query, filters when typing
+// GET autocomplete - returns products visible to user
 router.get('/autocomplete', async (req, res) => {
   try {
     const { q = '' } = req.query;
-    const query = { is_active: true };
-    if (q.trim()) query.name = { $regex: q.trim(), $options: 'i' };
+    const query = { is_active: true, ...ownerFilter(req) };
+    if (q.trim()) {
+      const searchFilter = { name: { $regex: q.trim(), $options: 'i' } };
+      if (query.$or) {
+        const ownerOr = query.$or;
+        delete query.$or;
+        query.$and = [{ $or: ownerOr }, searchFilter];
+      } else {
+        Object.assign(query, searchFilter);
+      }
+    }
     const products = await Product.find(query, { name: 1, price: 1, gst: 1, unit: 1, stock: 1 }).limit(20);
     res.json(products);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -53,8 +85,8 @@ router.get('/low-stock', async (req, res) => {
 // GET single product
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
+    const product = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    if (!product) return res.status(404).json({ error: 'Product not found or access denied' });
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -62,17 +94,22 @@ router.get('/:id', async (req, res) => {
 // POST create product
 router.post('/', async (req, res) => {
   try {
-    const { name, price, stock, gst, unit, hsn_code, custom_low_stock, weight_per_unit, suggested_price } = req.body;
+    const { name, price, stock, gst, unit, hsn_code, custom_low_stock, weight_per_unit, suggested_price, allowed_managers } = req.body;
     if (!name || price === undefined || stock === undefined || gst === undefined)
       return res.status(400).json({ error: 'name, price, stock, gst required' });
-    const product = await Product.create({
+    const productData = {
       name: name.trim(), price, stock, gst,
       unit: unit || 'pcs',
       hsn_code: hsn_code || '',
       custom_low_stock: (custom_low_stock !== '' && custom_low_stock !== undefined) ? parseFloat(custom_low_stock) : null,
       weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
-    });
+      created_by: req.user.id,
+    };
+    if (allowed_managers && Array.isArray(allowed_managers)) {
+      productData.allowed_managers = allowed_managers;
+    }
+    const product = await Product.create(productData);
     res.status(201).json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -80,6 +117,9 @@ router.post('/', async (req, res) => {
 // PUT update product
 router.put('/:id', async (req, res) => {
   try {
+    const checkProduct = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
+
     const { custom_low_stock, weight_per_unit, suggested_price, ...rest } = req.body;
     const updateData = {
       ...rest,
@@ -88,7 +128,6 @@ router.put('/:id', async (req, res) => {
       suggested_price: parseFloat(suggested_price) || 0,
     };
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
-    if (!product) return res.status(404).json({ error: 'Product not found' });
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -96,9 +135,10 @@ router.put('/:id', async (req, res) => {
 // PATCH stock adjustment
 router.patch('/:id/stock', async (req, res) => {
   try {
+    const product = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    if (!product) return res.status(404).json({ error: 'Product not found or access denied' });
+
     const { qty, type, qty_unit, vehicle_number, driver_name, supplier, notes } = req.body;
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
     const stock_before = product.stock;
     if (type === 'incoming') {
       product.stock += parseFloat(qty);
@@ -122,6 +162,9 @@ router.patch('/:id/stock', async (req, res) => {
 // DELETE (soft)
 router.delete('/:id', async (req, res) => {
   try {
+    const checkProduct = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
+
     await Product.findByIdAndUpdate(req.params.id, { is_active: false });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -3,7 +3,7 @@ import axios from 'axios';
 const baseURL =
   window.location.hostname === "localhost"
     ? "http://localhost:5000/api"
-    : "http://192.168.1.39:5000/api";
+    : "http://192.168.1.37:5000/api";
 
 const api = axios.create({
   baseURL,
@@ -33,6 +33,7 @@ api.interceptors.response.use(
 // ── Auth ──────────────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (data) => api.post('/auth/login', data),
+  verifySecret: (data) => api.post('/auth/verify-secret', data),
   me: () => api.get('/auth/me'),
   changePassword: (data) => api.put('/auth/change-password', data),
   forgotPassword: (identifier) => api.post('/auth/forgot-password', { identifier }),
@@ -47,10 +48,46 @@ export const managerApi = {
   delete: (id) => api.delete(`/auth/managers/${id}`),
 };
 
+// ── Driver Admin (Supervisor only) ───────────────────────────────────────────────────
+export const driverApi = {
+  getAll: () => api.get('/auth/drivers'),
+  create: (data) => api.post('/auth/drivers', data),
+  update: (id, data) => api.put(`/auth/drivers/${id}`, data),
+  resetPassword: (id, new_password) => api.put(`/auth/drivers/${id}/reset-password`, { new_password }),
+  delete: (id) => api.delete(`/auth/drivers/${id}`),
+};
+
 // ── Recovery Requests (Supervisor only) ─────────────────────────────────────────────
 export const recoveryApi = {
   getAll: () => api.get('/auth/recovery-requests'),
   resolve: (id, new_password) => api.put(`/auth/recovery-requests/${id}/resolve`, { new_password }),
+};
+
+// ── Activity Logs (Supervisor only) ──────────────────────────────────────────────────
+export const activityLogApi = {
+  getAll: (params) => api.get('/activity-logs', { params }),
+  getByUser: (userId, params) => api.get(`/activity-logs/user/${userId}`, { params }),
+};
+
+// ── Notifications ────────────────────────────────────────────────────────────────────
+export const notificationApi = {
+  getAll: (params) => api.get('/notifications', { params }),
+  getUnreadCount: () => api.get('/notifications/unread-count'),
+  create: (data) => api.post('/notifications', data),
+  markRead: (id) => api.put(`/notifications/${id}/read`),
+  markAllRead: () => api.put('/notifications/read-all'),
+};
+
+// ── Trips (Driver Module) ────────────────────────────────────────────────────────────
+export const tripApi = {
+  getAll: (params) => api.get('/trips', { params }),
+  get: (id) => api.get(`/trips/${id}`),
+  getGoodsTypes: () => api.get('/trips/goods-types'),
+  create: (data) => api.post('/trips', data),
+  addExpense: (id, data) => api.post(`/trips/${id}/expense`, data),
+  markReached: (id, data) => api.post(`/trips/${id}/reached`, data),
+  addNextLeg: (id, data) => api.post(`/trips/${id}/next-leg`, data),
+  endTrip: (id) => api.post(`/trips/${id}/end`),
 };
 
 // ── Products ──────────────────────────────────────────────────────────────────

@@ -97,12 +97,17 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'At least one item required' });
     }
 
-    // 1. Get previous customer balance
+    // 1. Get previous customer balance (per-manager)
     let prevBalance = 0;
     let customer = null;
     if (customer_id) {
       customer = await Customer.findById(customer_id);
-      if (customer) prevBalance = customer.balance;
+      if (customer) {
+        // Use per-manager balance if available, fallback to global
+        prevBalance = customer.getManagerBalance
+          ? customer.getManagerBalance(req.user.id)
+          : customer.balance;
+      }
     }
 
     // 2. Auto-create new products & validate stock
@@ -126,6 +131,7 @@ router.post('/', async (req, res) => {
           stock: qty,  // default stock = qty being sold (will become 0 after deduction)
           gst: gstRate,
           unit: item.unit || 'pcs',
+          created_by: req.user.id,
         });
         item.product_id = newProduct._id;
         item.is_new_product = false;
@@ -216,9 +222,13 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // 6. Update customer balance
+    // 6. Update customer balance (per-manager ledger)
     if (customer) {
-      customer.balance = balance_due;
+      if (customer.setManagerBalance) {
+        customer.setManagerBalance(req.user.id, balance_due);
+      } else {
+        customer.balance = balance_due;
+      }
       await customer.save();
     }
 
@@ -313,11 +323,18 @@ router.put('/:id', async (req, res) => {
       status: hasReturns ? 'partially_returned' : 'edited',
     }, { new: true });
 
-    // 6. Update customer balance
+    // 6. Update customer balance (per-manager ledger)
     const custId = customer_id || original.customer_id;
     if (custId) {
       const cust = await Customer.findById(custId);
-      if (cust) { cust.balance = balance_due; await cust.save(); }
+      if (cust) {
+        if (cust.setManagerBalance) {
+          cust.setManagerBalance(req.user.id, balance_due);
+        } else {
+          cust.balance = balance_due;
+        }
+        await cust.save();
+      }
     }
 
     res.json(updated);
@@ -351,10 +368,17 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
-    // 2. Reverse customer balance
+    // 2. Reverse customer balance (per-manager ledger)
     if (invoice.customer_id) {
       const cust = await Customer.findById(invoice.customer_id);
-      if (cust) { cust.balance = invoice.previous_balance; await cust.save(); }
+      if (cust) {
+        if (cust.setManagerBalance && invoice.created_by) {
+          cust.setManagerBalance(invoice.created_by, invoice.previous_balance);
+        } else {
+          cust.balance = invoice.previous_balance;
+        }
+        await cust.save();
+      }
     }
 
     // 3. Mark cancelled

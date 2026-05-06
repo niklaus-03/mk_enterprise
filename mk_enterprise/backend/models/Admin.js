@@ -8,7 +8,7 @@ const adminSchema = new mongoose.Schema({
   phone: { type: String, default: '', trim: true },  // for manager login by phone
   role: {
     type: String,
-    enum: ['supervisor', 'manager'],
+    enum: ['supervisor', 'manager', 'driver'],
     default: 'supervisor',
   },
   secret_key: { type: String, default: '' },         // hashed, supervisor only
@@ -43,23 +43,23 @@ adminSchema.methods.compareSecretKey = async function (plain) {
   return bcrypt.compare(plain, this.secret_key);
 };
 
-// Check if account is locked
+// Check if account is locked (5+ failed attempts = permanent lock until admin reset)
 adminSchema.methods.isLocked = function () {
-  return this.lockUntil && this.lockUntil > Date.now();
+  return this.loginAttempts >= 5;
 };
 
-// Increment failed login attempt
+// Increment failed login attempt — after 5, account stays locked until admin resets
 adminSchema.methods.incLoginAttempts = async function () {
-  const MAX_ATTEMPTS = 5;
-  const LOCK_TIME = 15 * 60 * 1000; // 15 minutes
-  if (this.lockUntil && this.lockUntil < Date.now()) {
-    return this.updateOne({ $set: { loginAttempts: 1 }, $unset: { lockUntil: 1 } });
-  }
-  const updates = { $inc: { loginAttempts: 1 } };
-  if (this.loginAttempts + 1 >= MAX_ATTEMPTS) {
-    updates.$set = { lockUntil: new Date(Date.now() + LOCK_TIME) };
-  }
-  return this.updateOne(updates);
+  return this.updateOne({ $inc: { loginAttempts: 1 } });
+};
+
+// Generate a 3-letter prefix code from username (e.g., 'bharat' -> 'BRT', supervisor -> 'ADM')
+adminSchema.methods.getPrefixCode = function () {
+  if (this.role === 'supervisor') return 'ADM';
+  const name = (this.username || '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (name.length <= 3) return name || 'USR';
+  // Take first, middle, last consonant-heavy letters
+  return (name[0] + name[Math.floor(name.length / 2)] + name[name.length - 1]);
 };
 
 module.exports = mongoose.model('Admin', adminSchema);

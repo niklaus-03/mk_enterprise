@@ -7,7 +7,7 @@ const PasswordResetRequest = require('../models/PasswordResetRequest');
 const auth = require('../middleware/auth');
 const { requireSupervisor } = require('../middleware/auth');
 
-const MANAGER_LIMIT = 5;
+// Manager limit removed — unlimited managers allowed
 
 // Rate limiters
 const loginLimiter = rateLimit({
@@ -35,9 +35,10 @@ async function findUser(identifier) {
 }
 
 // ─── POST /api/auth/login ──────────────────────────────────────────────────────
+// Step 1: Validate username/phone + password. If supervisor, return requires_secret flag.
 router.post('/login', loginLimiter, async (req, res) => {
   try {
-    const { username, password, secret_key } = req.body;
+    const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Username/phone and password are required.' });
     }
@@ -47,10 +48,9 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Account not found.' });
     }
 
-    // Check lock
+    // Check lock — permanent until admin resets
     if (user.isLocked()) {
-      const waitMin = Math.ceil((user.lockUntil - Date.now()) / 60000);
-      return res.status(423).json({ error: `Account locked. Try again in ${waitMin} minute(s).` });
+      return res.status(423).json({ error: 'Account locked after 5 failed attempts. Contact your Admin to reset your password.' });
     }
 
     // Check password
@@ -60,19 +60,65 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Incorrect password.' });
     }
 
-    // Supervisor requires secret_key
+    // 2-Step: If supervisor, don't issue token yet — ask for secret key
     if (user.role === 'supervisor') {
-      if (!secret_key) {
-        return res.status(401).json({ error: 'Secret key is required for Supervisor login.' });
-      }
-      const keyMatch = await user.compareSecretKey(secret_key);
-      if (!keyMatch) {
-        await user.incLoginAttempts();
-        return res.status(401).json({ error: 'Incorrect secret key.' });
-      }
+      return res.json({
+        requires_secret: true,
+        username: user.username,
+        message: 'Password verified. Please enter your secret key.',
+      });
     }
 
-    // Success — reset attempts
+    // Non-supervisor (manager/driver) — issue token immediately
+    await Admin.findByIdAndUpdate(user._id, {
+      $set: { loginAttempts: 0, lastLogin: new Date() },
+      $unset: { lockUntil: 1 },
+    });
+
+    const token = jwt.sign(
+      { id: user._id, username: user.username, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
+    res.json({
+      token,
+      username: user.username,
+      display_name: user.display_name || user.username,
+      role: user.role,
+      message: 'Login successful',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/auth/verify-secret ─────────────────────────────────────────────
+// Step 2: Supervisor provides secret key after password was already verified.
+router.post('/verify-secret', loginLimiter, async (req, res) => {
+  try {
+    const { username, secret_key } = req.body;
+    if (!username || !secret_key) {
+      return res.status(400).json({ error: 'Username and secret key are required.' });
+    }
+
+    const user = await findUser(username);
+    if (!user || user.role !== 'supervisor') {
+      return res.status(404).json({ error: 'Supervisor account not found.' });
+    }
+
+    // Check lock — permanent until admin resets
+    if (user.isLocked()) {
+      return res.status(423).json({ error: 'Account locked after 5 failed attempts. Contact your Admin to reset your password.' });
+    }
+
+    const keyMatch = await user.compareSecretKey(secret_key);
+    if (!keyMatch) {
+      await user.incLoginAttempts();
+      return res.status(401).json({ error: 'Incorrect secret key.' });
+    }
+
+    // Success — reset attempts & issue token
     await Admin.findByIdAndUpdate(user._id, {
       $set: { loginAttempts: 0, lastLogin: new Date() },
       $unset: { lockUntil: 1 },
@@ -177,7 +223,7 @@ router.get('/managers', auth, requireSupervisor, async (req, res) => {
       .select('-password -secret_key')
       .sort({ createdAt: -1 });
     const total = managers.length;
-    res.json({ managers, total, limit: MANAGER_LIMIT, remaining: MANAGER_LIMIT - total });
+    res.json({ managers, total, limit: null, remaining: null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -186,12 +232,7 @@ router.get('/managers', auth, requireSupervisor, async (req, res) => {
 // ─── POST /api/auth/managers ──────────────────────────────────────────────────
 router.post('/managers', auth, requireSupervisor, async (req, res) => {
   try {
-    const count = await Admin.countDocuments({ role: 'manager' });
-    if (count >= MANAGER_LIMIT) {
-      return res.status(400).json({
-        error: `Manager limit reached. Maximum ${MANAGER_LIMIT} managers allowed.`,
-      });
-    }
+    // Manager limit removed — no cap on number of managers
 
     const { username, phone, password, display_name } = req.body;
     if (!username || !password) {
@@ -327,4 +368,114 @@ router.put('/recovery-requests/:id/resolve', auth, requireSupervisor, async (req
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//  DRIVER MANAGEMENT (Supervisor only)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── GET /api/auth/drivers ────────────────────────────────────────────────────
+router.get('/drivers', auth, requireSupervisor, async (req, res) => {
+  try {
+    const drivers = await Admin.find({ role: 'driver' })
+      .select('-password -secret_key')
+      .sort({ createdAt: -1 });
+    res.json({ drivers, total: drivers.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/auth/drivers ───────────────────────────────────────────────────
+// Auto-generates: username = vehicle_number (lowercase), password = vehicle_number
+router.post('/drivers', auth, requireSupervisor, async (req, res) => {
+  try {
+    const { vehicle_number, driver_name, phone } = req.body;
+    if (!vehicle_number || !driver_name) {
+      return res.status(400).json({ error: 'Vehicle number and driver name are required.' });
+    }
+
+    const username = vehicle_number.toLowerCase().replace(/\s+/g, '');
+
+    // Check duplicate
+    const exists = await Admin.findOne({ username });
+    if (exists) {
+      return res.status(400).json({ error: 'A driver with this vehicle number already exists.' });
+    }
+
+    const driver = await Admin.create({
+      username,
+      password: vehicle_number.replace(/\s+/g, ''), // default password = vehicle number
+      phone: (phone || '').replace(/\D/g, ''),
+      display_name: driver_name.trim(),
+      role: 'driver',
+      is_active: true,
+      created_by: req.user.id,
+    });
+
+    const result = driver.toObject();
+    delete result.password;
+    delete result.secret_key;
+
+    res.status(201).json({ success: true, driver: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PUT /api/auth/drivers/:id ────────────────────────────────────────────────
+router.put('/drivers/:id', auth, requireSupervisor, async (req, res) => {
+  try {
+    const { display_name, phone, is_active } = req.body;
+    const driver = await Admin.findOne({ _id: req.params.id, role: 'driver' });
+    if (!driver) return res.status(404).json({ error: 'Driver not found.' });
+
+    if (display_name !== undefined) driver.display_name = display_name;
+    if (phone !== undefined) driver.phone = (phone || '').replace(/\D/g, '');
+    if (is_active !== undefined) driver.is_active = is_active;
+    await driver.save();
+
+    const result = driver.toObject();
+    delete result.password;
+    delete result.secret_key;
+    res.json({ success: true, driver: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PUT /api/auth/drivers/:id/reset-password ─────────────────────────────────
+router.put('/drivers/:id/reset-password', auth, requireSupervisor, async (req, res) => {
+  try {
+    const { new_password } = req.body;
+    if (!new_password || new_password.length < 4) {
+      return res.status(400).json({ error: 'Password must be at least 4 characters.' });
+    }
+
+    const driver = await Admin.findOne({ _id: req.params.id, role: 'driver' });
+    if (!driver) return res.status(404).json({ error: 'Driver not found.' });
+
+    driver.password = new_password;
+    driver.loginAttempts = 0;
+    driver.lockUntil = null;
+    await driver.save();
+
+    res.json({ success: true, message: `Password reset for driver ${driver.display_name}.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── DELETE /api/auth/drivers/:id ─────────────────────────────────────────────
+router.delete('/drivers/:id', auth, requireSupervisor, async (req, res) => {
+  try {
+    const driver = await Admin.findOne({ _id: req.params.id, role: 'driver' });
+    if (!driver) return res.status(404).json({ error: 'Driver not found.' });
+
+    await Admin.deleteOne({ _id: req.params.id });
+    res.json({ success: true, message: `Driver "${driver.display_name}" deleted.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
