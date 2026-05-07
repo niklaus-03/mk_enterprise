@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import toast from 'react-hot-toast';
@@ -7,7 +7,7 @@ import { supabase } from '../utils/supabase';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, numToWords, formatIST } from '../utils/helpers';
-import { FileText, ArrowLeft, AlertTriangle, Edit, Share2, Trash2, Printer, Phone, Mail, CheckCircle, Wallet, Smartphone, Globe, CreditCard, MessageSquare, Info, Truck, User, Tag, Download } from 'lucide-react';
+import { FileText, ArrowLeft, AlertTriangle, Edit, Share2, Trash2, Printer, Phone, Mail, CheckCircle, Wallet, Smartphone, Globe, CreditCard, MessageSquare, Info, Truck, User, Tag, Download, Send } from 'lucide-react';
 
 
 const uploadPDF = async (pdfBlob, invoiceNumber) => {
@@ -42,8 +42,35 @@ export default function InvoiceView() {
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState([]);
   const [emailTo, setEmailTo] = useState('');
   const [emailSending, setEmailSending] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [scale, setScale] = useState(1);
+  const [zoomIn, setZoomIn] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (containerRef.current) {
+        const parentWidth = containerRef.current.offsetWidth;
+        if (!zoomIn && parentWidth > 0 && parentWidth < 860) {
+          setScale(parentWidth / 860);
+        } else {
+          setScale(1);
+        }
+      }
+    };
+    handleResize();
+    const timer = setTimeout(handleResize, 150);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timer);
+    };
+  }, [invoice, zoomIn]);
 
   useEffect(() => {
     invoiceApi.get(id).then(setInvoice).catch(e => { toast.error(e.message); navigate('/invoices'); }).finally(() => setLoading(false));
@@ -161,7 +188,12 @@ export default function InvoiceView() {
         margin: 0.3,
         filename: `invoice-${invoice.invoice_number}.pdf`,
         image: { type: 'jpeg', quality: 1 },
-        html2canvas: { scale: 2 },
+        html2canvas: { 
+          scale: 2,
+          useCORS: true,
+          width: 860,
+          windowWidth: 860
+        },
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
 
@@ -252,42 +284,171 @@ Thank you! 🙏`
     others: <CreditCard size={12} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
   };
 
+  let paymentStatusText = 'Paid';
+  let paymentStatusColor = 'var(--success)';
+  let paymentStatusBackground = 'var(--success-light)';
+  let paymentStatusBorder = '1px solid #86efac';
+
+  if (invoice.status === 'cancelled') {
+    paymentStatusText = 'Cancelled';
+    paymentStatusColor = '#6b7280';
+    paymentStatusBackground = '#f3f4f6';
+    paymentStatusBorder = '1px solid #e5e7eb';
+  } else if (invoice.balance_due > 0.01) {
+    if (invoice.amount_received > 0.01) {
+      paymentStatusText = 'Pending';
+      paymentStatusColor = '#d97706';
+      paymentStatusBackground = '#fef3c7';
+      paymentStatusBorder = '1px solid #fde68a';
+    } else {
+      paymentStatusText = 'Due';
+      paymentStatusColor = 'var(--danger)';
+      paymentStatusBackground = 'var(--danger-light)';
+      paymentStatusBorder = '1px solid #fca5a5';
+    }
+  }
+
   return (
     <div>
+      <style>{`
+        @media print {
+          @page {
+            size: auto;
+            margin: 10mm !important;
+          }
+          body {
+            width: 860px !important;
+            min-width: 860px !important;
+            font-size: 11.5px !important;
+            background: #fff !important;
+            color: #000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .app-main, .app-content {
+            padding: 0 !important;
+            margin: 0 !important;
+            background: #fff !important;
+          }
+          .invoice-paper {
+            width: 860px !important;
+            max-width: 860px !important;
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 auto !important;
+            background: #fff !important;
+          }
+          .inv-header {
+            margin-bottom: 12px !important;
+            padding-bottom: 12px !important;
+          }
+          .inv-bill-to {
+            padding: 8px 12px !important;
+          }
+          .inv-total-row {
+            padding: 3px 0 !important;
+          }
+          .inv-words {
+            margin: 8px 0 !important;
+            padding: 6px 12px !important;
+          }
+          .no-print, .hamburger-btn, .mobile-topbar, .sidebar {
+            display: none !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+          }
+          .inv-table td {
+            padding: 5px 8px !important;
+            font-size: 11px !important;
+          }
+          .inv-table th {
+            padding: 5px 8px !important;
+            font-size: 9.5px !important;
+          }
+          .gst-summary-table td, .gst-summary-table th {
+            padding: 3px 5px !important;
+            font-size: 9.5px !important;
+        }
+      `}</style>
       {/* Action bar */}
       <div className="page-header no-print" style={{ marginBottom: 20 }}>
         <div>
           <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> {invoice.invoice_number}</div>
-          <div className="page-subtitle">{istDisplay} · <span style={{ textTransform: 'capitalize' }}>{invoice.status}</span></div>
+          <div className="page-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {istDisplay} · 
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              fontSize: 11,
+              fontWeight: 700,
+              color: paymentStatusColor,
+              background: paymentStatusBackground,
+              border: paymentStatusBorder,
+              padding: '2px 8px',
+              borderRadius: 6,
+              textTransform: 'uppercase'
+            }}>{paymentStatusText}</span>
+          </div>
         </div>
         <div className="page-actions">
           <Link to="/invoices" className="btn btn-outline d-inline-flex align-items-center gap-1"><ArrowLeft size={14} /> All Invoices</Link>
+          <Link to={`/invoices/${id}/edit`} className="btn btn-warning d-inline-flex align-items-center gap-1"><Edit size={14} /> Edit</Link>
+          <button className="btn btn-primary btn-lg d-inline-flex align-items-center gap-1" onClick={handlePrint}><Printer size={14} /> Print / PDF</button>
+          <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => setShowSendModal(true)} style={{ borderColor: '#6366f1', color: '#6366f1' }}>
+            <Send size={14} /> Send Invoice
+          </button>
+          <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => setShowShareModal(true)}><Share2 size={14} /> Share</button>
           {isManager && (
             <button className="btn btn-outline d-inline-flex align-items-center gap-1" style={{ borderColor: 'var(--warning)', color: 'var(--warning)' }} onClick={handleEscalate}>
               <AlertTriangle size={14} /> Escalate to Admin
             </button>
           )}
-          <Link to={`/invoices/${id}/edit`} className="btn btn-warning d-inline-flex align-items-center gap-1"><Edit size={14} /> Edit</Link>
-          <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => setShowShareModal(true)}><Share2 size={14} /> Share</button>
           <button className="btn btn-danger d-inline-flex align-items-center gap-1" onClick={handleDelete}><Trash2 size={14} /> Cancel</button>
-          <button className="btn btn-primary btn-lg d-inline-flex align-items-center gap-1" onClick={handlePrint}><Printer size={14} /> Print / PDF</button>
         </div>
       </div>
 
+      {/* Helper banner for tap-to-zoom on mobile */}
+      {isMobile && (
+        <div style={{ 
+          textAlign: 'center', 
+          marginBottom: 12, 
+          fontSize: 12, 
+          color: 'var(--text-muted)', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: 6,
+          background: 'var(--bg-light)',
+          padding: '6px 12px',
+          borderRadius: 8,
+          border: '1px solid var(--border)'
+        }}>
+          <Info size={14} className="text-primary" />
+          <span>Tap the invoice sheet to <strong>{zoomIn ? 'Fit to Screen' : 'Zoom In & read text'}</strong></span>
+        </div>
+      )}
+
       {/* ── INVOICE PAPER ── */}
-      <div className="invoice-paper">
+      <div className="invoice-view-wrapper" ref={containerRef} style={{ width: '100%', overflowX: zoomIn ? 'auto' : 'hidden' }}>
+        <div 
+          className="invoice-paper" 
+          onClick={() => setZoomIn(!zoomIn)}
+          style={{ zoom: scale, cursor: zoomIn ? 'zoom-out' : 'zoom-in', transition: 'zoom 0.15s ease-in-out' }}
+        >
         {/* Header */}
         <div className="inv-header">
           <div>
             <div className="inv-biz-name">{settings.business_name || 'My Shop'}</div>
-            <div style={{ color: '#6b7280', fontSize: 13, maxWidth: 320, marginTop: 4 }}>{settings.business_address}</div>
-            {settings.business_phone && <div style={{ fontSize: 13, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {settings.business_phone}</div>}
-            {settings.business_email && <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}><Mail size={11} /> {settings.business_email}</div>}
-            {settings.business_gstin && <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>GSTIN: {settings.business_gstin}</div>}
-            {settings.business_state && <div style={{ fontSize: 12, color: '#6b7280' }}>State: {settings.business_state}</div>}
+            <div style={{ color: '#6b7280', fontSize: 11.5, maxWidth: 320, marginTop: 4 }}>{settings.business_address}</div>
+            {settings.business_phone && <div style={{ fontSize: 11.5, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {settings.business_phone}</div>}
+            {settings.business_email && <div style={{ fontSize: 11.5, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}><Mail size={11} /> {settings.business_email}</div>}
+            {settings.business_gstin && <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 2 }}>GSTIN: {settings.business_gstin}</div>}
+            {settings.business_state && <div style={{ fontSize: 11.5, color: '#6b7280' }}>State: {settings.business_state}</div>}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="inv-tag">{invoice.is_manual_bill ? 'MANUAL BILL' : 'TAX INVOICE'}</div>
+            <div className="inv-tag">{invoice.is_manual_bill ? 'MANUAL BILL' : 'INVOICE'}</div>
             <table className="inv-meta-table" style={{ marginTop: 10, marginLeft: 'auto' }}>
               <tbody>
                 <tr><td className="label">Invoice No.</td><td className="value" style={{ fontFamily: 'monospace' }}>{invoice.invoice_number}</td></tr>
@@ -301,7 +462,14 @@ Thank you! 🙏`
         </div>
 
         {/* Bill To */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 18 }}>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'row', 
+          justifyContent: 'space-between', 
+          gap: 12, 
+          marginBottom: 18,
+          alignItems: 'center'
+        }}>
           <div style={{ flex: 1 }}>
             <div className="inv-section-title">Bill To</div>
             <div className="inv-bill-to">
@@ -310,16 +478,28 @@ Thank you! 🙏`
               {invoice.customer_address && <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{invoice.customer_address}</div>}
             </div>
           </div>
-          <div>
+          <div style={{ width: 'auto', flexShrink: 0 }}>
             {invoice.balance_due > 0.01 ? (
-              <div style={{ background: 'var(--danger-light)', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '12px 18px', textAlign: 'right' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase' }}>Balance Due</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--danger)' }}>{fc(invoice.balance_due)}</div>
+              <div style={{ 
+                background: 'var(--danger-light)', 
+                border: '1.5px solid #fca5a5', 
+                borderRadius: 10, 
+                padding: isMobile ? '6px 12px' : '12px 18px', 
+                textAlign: 'right' 
+              }}>
+                <div style={{ fontSize: isMobile ? 8 : 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase' }}>Balance Due</div>
+                <div style={{ fontSize: isMobile ? 18 : 26, fontWeight: 800, color: 'var(--danger)' }}>{fc(invoice.balance_due)}</div>
               </div>
             ) : (
-              <div style={{ background: 'var(--success-light)', border: '1.5px solid #86efac', borderRadius: 10, padding: '12px 18px', textAlign: 'center' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>Status</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><CheckCircle size={16} /> PAID</div>
+              <div style={{ 
+                background: 'var(--success-light)', 
+                border: '1.5px solid #86efac', 
+                borderRadius: 10, 
+                padding: isMobile ? '6px 12px' : '12px 18px', 
+                textAlign: 'center' 
+              }}>
+                <div style={{ fontSize: isMobile ? 8 : 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>Status</div>
+                <div style={{ fontSize: isMobile ? 14 : 20, fontWeight: 800, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><CheckCircle size={isMobile ? 12 : 16} /> PAID</div>
               </div>
             )}
           </div>
@@ -333,61 +513,65 @@ Thank you! 🙏`
         )}
 
         {/* Items Table */}
-        <table className="inv-table" style={{ marginBottom: 16 }}>
-          <thead>
-            <tr>
-              <th style={{ width: 28 }}>#</th>
-              <th>Item Description</th>
-              <th style={{ textAlign: 'center' }}>Qty</th>
-              <th style={{ textAlign: 'right' }}>Rate</th>
-              <th style={{ textAlign: 'right' }}>Taxable</th>
-              {invoice.gst_enabled && <>
-                <th style={{ textAlign: 'center' }}>GST %</th>
-                <th style={{ textAlign: 'right' }}>CGST</th>
-                <th style={{ textAlign: 'right' }}>SGST</th>
-              </>}
-              <th style={{ textAlign: 'right' }}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoice.items.map((item, i) => (
-              <tr key={item._id || i}>
-                <td style={{ color: '#9ca3af' }}>{i + 1}</td>
-                <td>
-                  <strong>{item.product_name}</strong>
-                  {item.returned_qty > 0 && <span className="badge badge-warning" style={{ marginLeft: 6, fontSize: 10 }}>Returned: {item.returned_qty}</span>}
-                  {item.is_defective && <span className="badge badge-danger" style={{ marginLeft: 6, fontSize: 10 }}>Defective</span>}
-                </td>
-                <td style={{ textAlign: 'center' }}>{item.qty}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.price)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.taxable_amount)}</td>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', marginBottom: 16 }}>
+          <table className="inv-table" style={{ marginBottom: 0, minWidth: isMobile ? 650 : 'auto' }}>
+            <thead>
+              <tr>
+                <th style={{ width: 28 }}>#</th>
+                <th>Item Description</th>
+                <th style={{ textAlign: 'center' }}>Qty</th>
+                <th style={{ textAlign: 'right' }}>Rate</th>
+                <th style={{ textAlign: 'right' }}>Taxable</th>
                 {invoice.gst_enabled && <>
-                  <td style={{ textAlign: 'center' }}>{item.gst}%</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.cgst)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.sgst)}</td>
+                  <th style={{ textAlign: 'center' }}>GST %</th>
+                  <th style={{ textAlign: 'right' }}>CGST</th>
+                  <th style={{ textAlign: 'right' }}>SGST</th>
                 </>}
-                <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fc(item.total)}</td>
+                <th style={{ textAlign: 'right' }}>Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {invoice.items.map((item, i) => (
+                <tr key={item._id || i}>
+                  <td style={{ color: '#9ca3af' }}>{i + 1}</td>
+                  <td>
+                    <strong>{item.product_name}</strong>
+                    {item.returned_qty > 0 && <span className="badge badge-warning" style={{ marginLeft: 6, fontSize: 10 }}>Returned: {item.returned_qty}</span>}
+                    {item.is_defective && <span className="badge badge-danger" style={{ marginLeft: 6, fontSize: 10 }}>Defective</span>}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>{item.qty}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.price)}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.taxable_amount)}</td>
+                  {invoice.gst_enabled && <>
+                    <td style={{ textAlign: 'center' }}>{item.gst}%</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.cgst)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.sgst)}</td>
+                  </>}
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fc(item.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {/* GST Summary + Totals */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, alignItems: 'flex-start', marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', gap: 24, alignItems: 'flex-start', marginBottom: 14 }}>
           {invoice.gst_enabled && Object.keys(gstSummary).length > 0 && (
             <div style={{ flex: 1 }}>
               <div className="inv-section-title">GST Summary</div>
-              <table className="gst-summary-table">
-                <thead><tr><th>GST Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th></tr></thead>
-                <tbody>
-                  {Object.entries(gstSummary).map(([rate, g]) => (
-                    <tr key={rate}><td>{rate}%</td><td style={{ fontFamily: 'monospace' }}>{fc(g.taxable)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.cgst)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.sgst)}</td></tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table className="gst-summary-table" style={{ minWidth: isMobile ? 400 : 'auto' }}>
+                  <thead><tr><th>GST Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th></tr></thead>
+                  <tbody>
+                    {Object.entries(gstSummary).map(([rate, g]) => (
+                      <tr key={rate}><td>{rate}%</td><td style={{ fontFamily: 'monospace' }}>{fc(g.taxable)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.cgst)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.sgst)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-          <div className="inv-totals-box" style={{ minWidth: 280 }}>
+          <div className="inv-totals-box" style={{ minWidth: 280, flex: 'none' }}>
             <div className="inv-total-row"><span className="text-muted">Subtotal</span><span className="mono">{fc(invoice.subtotal)}</span></div>
             {invoice.gst_enabled && <>
               <div className="inv-total-row"><span className="text-muted">CGST</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
@@ -402,7 +586,7 @@ Thank you! 🙏`
               </div>
             )}
             {invoice.labour_charge > 0 && (
-              <div className="inv-total-row" style={{ color: '#7c3aed', fontWeight: 600 }}>
+              <div className="inv-total-row text-warning">
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><User size={12} /> Labour Charge</span>
                 <span className="mono">+ {fc(invoice.labour_charge)}</span>
               </div>
@@ -491,6 +675,7 @@ Thank you! 🙏`
           </div>
         </div>
       </div>
+    </div>
 
       {/* Share Modal */}
       {showShareModal && (
@@ -588,6 +773,143 @@ Thank you! 🙏`
                 </button>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Invoice Modal */}
+      {showSendModal && (
+        <div className="modal-overlay" onClick={() => setShowSendModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <div className="modal-title d-flex align-items-center gap-2"><Send size={18} className="text-primary" /> Send Invoice to Staff</div>
+              <button className="modal-close" onClick={() => setShowSendModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px 15px' }}>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 15 }}>
+                Select present managers or drivers to instantly dispatch this invoice's task to their dashboards.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                
+                {/* Managers Section */}
+                <div>
+                  <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    💼 Managers Present
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[
+                      { id: 'mgr-1', name: 'Suresh Sharma', role: 'manager' },
+                      { id: 'mgr-2', name: 'Neha Verma', role: 'manager' }
+                    ].map(person => {
+                      const isSelected = selectedStaff.includes(person.id);
+                      return (
+                        <div 
+                          key={person.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedStaff(selectedStaff.filter(id => id !== person.id));
+                            } else {
+                              setSelectedStaff([...selectedStaff, person.id]);
+                            }
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '10px 14px',
+                            background: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-light)',
+                            border: isSelected ? '1px solid #6366f1' : '1px solid var(--border)',
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={() => {}} 
+                              style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.name}</span>
+                          </div>
+                          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Manager</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Drivers Section */}
+                <div style={{ marginTop: 8 }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    🚚 Drivers Present
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[
+                      { id: 'drv-1', name: 'Ramesh Kumar', role: 'driver' },
+                      { id: 'drv-2', name: 'Amit Singh', role: 'driver' },
+                      { id: 'drv-3', name: 'Jaswinder Singh', role: 'driver' }
+                    ].map(person => {
+                      const isSelected = selectedStaff.includes(person.id);
+                      return (
+                        <div 
+                          key={person.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedStaff(selectedStaff.filter(id => id !== person.id));
+                            } else {
+                              setSelectedStaff([...selectedStaff, person.id]);
+                            }
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '10px 14px',
+                            background: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-light)',
+                            border: isSelected ? '1px solid #6366f1' : '1px solid var(--border)',
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={() => {}} 
+                              style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.name}</span>
+                          </div>
+                          <span className="badge" style={{ background: '#fef3c7', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              <div style={{ marginTop: 20 }}>
+                <button
+                  className="btn btn-primary btn-block d-inline-flex align-items-center gap-2"
+                  style={{ justifyContent: 'center', background: '#6366f1', borderColor: '#6366f1' }}
+                  onClick={() => {
+                    if (selectedStaff.length === 0) {
+                      toast.error("Please select at least one manager or driver!");
+                      return;
+                    }
+                    toast.success(`Invoice dispatched successfully to ${selectedStaff.length} selected staff!`);
+                    setShowSendModal(false);
+                  }}
+                >
+                  <Send size={14} /> Send Dispatch Notification
+                </button>
+              </div>
             </div>
           </div>
         </div>

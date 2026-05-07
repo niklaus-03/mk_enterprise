@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { invoiceApi, productApi, customerApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
+import { Edit, Save, AlertTriangle, FileText, CreditCard, Coins, ArrowLeft } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 const PAYMENT_MODES = ['cash', 'upi', 'online', 'others'];
@@ -137,19 +138,24 @@ export default function EditInvoice() {
     <div>
       <div className="page-header no-print">
         <div>
-          <div className="page-title">✏️ Edit Invoice — {original?.invoice_number}</div>
+          <div className="page-title d-flex align-items-center gap-2"><Edit size={22} className="text-warning" /> Edit Invoice — {original?.invoice_number}</div>
           <div className="page-subtitle">Modify items, handle returns or defectives</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-outline" onClick={() => navigate(-1)}>← Back</button>
-          <button className="btn btn-success btn-lg" onClick={handleSave} disabled={saving}>
-            {saving ? <><span className="spinner"></span> Saving...</> : '💾 Save Changes'}
+          <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</button>
+          <button className="btn btn-success btn-lg d-inline-flex align-items-center gap-1" onClick={handleSave} disabled={saving}>
+            {saving ? <><span className="spinner"></span> Saving...</> : <><Save size={16} /> Save Changes</>}
           </button>
         </div>
       </div>
 
       <div className="alert alert-warning">
-        ⚠️ <strong>Edit Invoice:</strong> Original stock will be restored and re-deducted based on updated quantities. Returns and defectives will be accounted for automatically.
+        <div className="d-flex align-items-start gap-2">
+          <AlertTriangle size={18} className="text-warning mt-1" style={{ flexShrink: 0 }} />
+          <div>
+            <strong>Edit Invoice:</strong> Original stock will be restored and re-deducted based on updated quantities. Returns and defectives will be accounted for automatically.
+          </div>
+        </div>
       </div>
 
       <div className="billing-layout">
@@ -157,7 +163,7 @@ export default function EditInvoice() {
           {/* Items with return/defective handling */}
           <div className="card mb-5">
             <div className="card-header">
-              <div className="card-title">📋 Items (with Return / Defective Handling)</div>
+              <div className="card-title d-flex align-items-center gap-2"><FileText size={18} className="text-primary" /> Items (with Return / Defective Handling)</div>
               <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Row</button>
             </div>
             <div className="card-body" style={{ padding: '12px 16px', overflowX: 'auto' }}>
@@ -232,7 +238,7 @@ export default function EditInvoice() {
           {/* Payments */}
           <div className="card mb-5">
             <div className="card-header">
-              <div className="card-title">💳 Payments</div>
+              <div className="card-title d-flex align-items-center gap-2"><CreditCard size={18} className="text-primary" /> Payments</div>
               <button className="btn btn-outline btn-sm" onClick={() => setPayments(p => [...p, { mode: 'cash', amount: '', reference: '' }])}>+ Add Mode</button>
             </div>
             <div className="card-body">
@@ -262,7 +268,7 @@ export default function EditInvoice() {
         {/* Summary */}
         <div>
           <div className="summary-box">
-            <div className="summary-title">💰 Updated Summary</div>
+            <div className="summary-title d-flex align-items-center gap-2"><Coins size={18} className="text-primary" /> Updated Summary</div>
             <div className="summary-row"><span className="text-muted">Subtotal</span><span className="mono">{fc(subtotal)}</span></div>
             {gstEnabled && <>
               <div className="summary-row"><span className="text-muted">CGST</span><span className="mono">{fc(gstTotal / 2)}</span></div>
@@ -278,10 +284,10 @@ export default function EditInvoice() {
               <span>{balanceDue > 0.01 ? 'Balance Due' : 'Change'}</span>
               <span className="mono">{fc(Math.abs(balanceDue))}</span>
             </div>
-            <button className="btn btn-success btn-block btn-lg mt-3" onClick={handleSave} disabled={saving} style={{ justifyContent: 'center' }}>
-              {saving ? 'Saving...' : '💾 Save Changes'}
+            <button className="btn btn-success btn-block btn-lg mt-3 d-inline-flex align-items-center justify-content-center gap-1" onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : <><Save size={16} /> Save Changes</>}
             </button>
-            <button className="btn btn-outline btn-block mt-2" onClick={() => navigate(-1)} style={{ justifyContent: 'center' }}>Cancel</button>
+            <button className="btn btn-outline btn-block mt-2 d-inline-flex align-items-center justify-content-center" onClick={() => navigate(-1)}>Cancel</button>
           </div>
         </div>
       </div>

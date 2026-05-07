@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { productApi, settingsApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
+import { Package, Plus, Trash2, Edit, Check, X, Scale, IndianRupee, AlertTriangle, Save, Sparkles, Info, Search } from 'lucide-react';
 
 const DEFAULT_UNITS = ['bag', 'kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'quintal', 'ton', 'mtr', 'dozen', 'pkt', 'strip'];
 
@@ -76,6 +77,13 @@ export default function Products() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [priceCalculated, setPriceCalculated] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const fc = formatCurrency;
 
   const load = useCallback((q = '') => {
@@ -187,7 +195,10 @@ export default function Products() {
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">📦 Products</div>
+          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}><Package size={22} /></span>
+            <span>Products Inventory</span>
+          </div>
           <div className="page-subtitle">Manage inventory, pricing, and stock levels</div>
         </div>
         <div className="flex gap-2">
@@ -201,113 +212,119 @@ export default function Products() {
 
       {/* Add / Edit Form */}
       {showForm && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-header">
-            <div className="card-title">{editId ? '✏️ Edit Product' : '➕ Add Product'}</div>
+        <div className="card" style={{ marginBottom: 20, border: '1.5px solid #6366f1', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.15)' }}>
+          <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', borderBottom: '1.5px solid #e2e8f0' }}>
+            <div style={{ background: editId ? '#fef3c7' : '#ecfdf5', color: editId ? '#d97706' : '#059669', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {editId ? <Edit size={16} /> : <Plus size={16} />}
+            </div>
+            <div className="card-title" style={{ margin: 0, fontWeight: 800, fontSize: '15.5px', color: '#1e293b' }}>
+              {editId ? 'Edit Product Details' : 'Add New Product Inventory'}
+            </div>
           </div>
-          <div className="card-body">
-            <div className="form-row">
+          <div className="card-body" style={{ padding: '20px 24px' }}>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(12, 1fr)', 
+              gap: '16px',
+              alignItems: 'start'
+            }}>
               {/* Name */}
-              <div className="form-group">
-                <label className="form-label">Product Name *</label>
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 4' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Product Name *</label>
                 <input className="form-control" value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Cement Bag, Rice" autoFocus />
+                  placeholder="e.g. Cement Bag, Rice" autoFocus style={{ borderRadius: 8 }} />
               </div>
 
               {/* Unit — dynamic */}
-              <div className="form-group">
-                <label className="form-label">Unit</label>
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Unit</label>
                 <UnitInput value={form.unit} onChange={v => setForm(f => ({ ...f, unit: v }))} />
               </div>
 
               {/* Weight per unit */}
-              <div className="form-group">
-                <label className="form-label">Weight per Unit (kg)</label>
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Weight per Unit (kg)</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.weight_per_unit}
                   onChange={e => { setForm(f => ({ ...f, weight_per_unit: e.target.value })); setPriceCalculated(false); }}
-                  placeholder="e.g. 50 for cement bag" />
-                <div className="form-hint">Used for quintal-based price calculation</div>
+                  placeholder="e.g. 50" style={{ borderRadius: 8 }} />
+                <div className="form-hint" style={{ fontSize: '11px', color: '#64748b', marginTop: 4 }}>Used for quintal price calculation</div>
               </div>
 
               {/* Base Price */}
-              <div className="form-group">
-                <label className="form-label">Base Price ₹ *</label>
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Base Price ₹ *</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.price}
                   onChange={e => { setForm(f => ({ ...f, price: e.target.value })); setPriceCalculated(false); }}
-                  placeholder="0.00" />
+                  placeholder="0.00" style={{ borderRadius: 8 }} />
               </div>
 
               {/* GST */}
-              <div className="form-group">
-                <label className="form-label">GST %</label>
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>GST %</label>
                 <select className="form-control" value={form.gst}
-                  onChange={e => { setForm(f => ({ ...f, gst: e.target.value })); setPriceCalculated(false); }}>
+                  onChange={e => { setForm(f => ({ ...f, gst: e.target.value })); setPriceCalculated(false); }}
+                  style={{ borderRadius: 8 }}>
                   {[0, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
                 </select>
               </div>
 
               {/* Suggested Final Price */}
-              <div className="form-group">
-                <label className="form-label">
-                  Suggested Final Price ₹
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 5' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 700, color: '#475569' }}>
+                  <span>Suggested Final Price ₹</span>
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    style={{ marginLeft: 8, fontSize: 11, padding: '2px 8px' }}
+                    style={{ fontSize: 11, padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: 4, borderColor: '#6366f1', color: '#6366f1', background: '#f5f3ff', borderRadius: 6, fontWeight: 600 }}
                     onClick={calcSuggestedPrice}
                   >
-                    ⚡ Calculate
+                    <Sparkles size={11} fill="#6366f1" /> Calculate Suggested
                   </button>
                 </label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.suggested_price}
                   onChange={e => setForm(f => ({ ...f, suggested_price: e.target.value }))}
-                  placeholder="Auto-calculated or manual" />
-                <div className="form-hint">
-                  Formula: Base + (Weight ÷ 100 × Quintal Charge) + GST. Click Calculate once.
+                  placeholder="Auto-calculated or manual" style={{ borderRadius: 8 }} />
+                <div className="form-hint" style={{ fontSize: '11px', color: '#64748b', marginTop: 4 }}>
+                  Formula: Base + (Weight ÷ 100 × Quintal Charge) + GST.
                 </div>
               </div>
 
               {/* Stock */}
-              <div className="form-group">
-                <label className="form-label">Current Stock</label>
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 3' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Current Stock</label>
                 <input className="form-control" type="number" min="0"
                   value={form.stock}
                   onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
-                  placeholder="0" />
+                  placeholder="0" style={{ borderRadius: 8 }} />
               </div>
 
               {/* Custom Low Stock Alert */}
-              <div className="form-group">
-                <label className="form-label">Custom Low Stock Alert</label>
+              <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 4' }}>
+                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Custom Low Stock Alert</label>
                 <input className="form-control" type="number" min="0"
                   value={form.custom_low_stock}
                   onChange={e => setForm(f => ({ ...f, custom_low_stock: e.target.value }))}
-                  placeholder={`Global: ${threshold}`} />
-                <div className="form-hint">Leave blank to use global threshold ({threshold})</div>
-              </div>
-
-              {/* Active toggle */}
-              <div className="form-group">
-                <label className="form-label">Status</label>
-                <div className="flex gap-2">
-                  <button type="button"
-                    className={`btn btn-sm ${form.is_active ? 'btn-success' : 'btn-outline'}`}
-                    onClick={() => setForm(f => ({ ...f, is_active: true }))}>✅ Active</button>
-                  <button type="button"
-                    className={`btn btn-sm ${!form.is_active ? 'btn-danger' : 'btn-outline'}`}
-                    onClick={() => setForm(f => ({ ...f, is_active: false }))}>❌ Inactive</button>
-                </div>
+                  placeholder={`Global: ${threshold}`} style={{ borderRadius: 8 }} />
+                <div className="form-hint" style={{ fontSize: '11px', color: '#64748b', marginTop: 4 }}>Leave blank to use global threshold ({threshold})</div>
               </div>
             </div>
 
-            <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-              <button className="btn btn-outline" onClick={() => { setShowForm(false); setEditId(null); }}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? <><span className="spinner"></span> Saving...</> : editId ? '💾 Update' : '💾 Add Product'}
+            <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 20, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
+              <button className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }} onClick={() => { setShowForm(false); setEditId(null); }}>
+                <X size={14} /> Cancel
+              </button>
+              <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }} onClick={handleSave} disabled={saving}>
+                {saving ? (
+                  <><span className="spinner"></span> Saving...</>
+                ) : (
+                  <>
+                    <Save size={14} /> {editId ? 'Update Product' : 'Add Product'}
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -317,13 +334,16 @@ export default function Products() {
       {/* Search */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-body" style={{ padding: '12px 16px' }}>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
+              <Search size={16} />
+            </span>
             <input
               className="form-control"
-              placeholder="🔍 Search products... (e.g. cement, rice, bag)"
+              placeholder="Search products by name... (e.g. cement, rice, bag)"
               value={search}
               onChange={e => { setSearch(e.target.value); load(e.target.value); }}
-              style={{ paddingLeft: 14, fontSize: 14 }}
+              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8 }}
             />
             {search && (
               <button
@@ -350,16 +370,27 @@ export default function Products() {
           {loading ? (
             <div className="loading"><span className="spinner"></span></div>
           ) : products.length === 0 ? (
-            <div className="empty-state" style={{ padding: 32 }}>
-              <div className="empty-icon">📦</div>
-              <div className="empty-text">{search ? `No products match "${search}"` : 'No products yet'}</div>
-              <div className="empty-sub">
-                {!search && <button className="btn btn-primary" onClick={openAdd} style={{ marginTop: 12 }}>+ Add First Product</button>}
+            <div className="empty-state" style={{ padding: '40px 24px', textAlign: 'center' }}>
+              <div style={{ color: '#cbd5e1', marginBottom: 12, display: 'flex', justifyContent: 'center' }}><Package size={48} /></div>
+              <div className="empty-text" style={{ fontSize: 15, fontWeight: 600, color: '#475569' }}>{search ? `No products match "${search}"` : 'No products yet'}</div>
+              <div className="empty-sub" style={{ marginTop: 8 }}>
+                {!search && (
+                  <button className="btn btn-primary" onClick={openAdd} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, marginTop: 12 }}>
+                    <Plus size={14} /> Add First Product
+                  </button>
+                )}
               </div>
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+            <>
+              {window.innerWidth < 768 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 16px', padding: '10px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
+                  <Info size={14} style={{ flexShrink: 0 }} />
+                  <span>Swipe horizontally ↔ to view full details (GST, Weight, Stock, Actions).</span>
+                </div>
+              )}
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ minWidth: '850px', width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
                     {['Product Name', 'Base Price', 'GST', 'Final Price', 'Weight', 'Stock', 'Actions'].map(h => (
@@ -413,10 +444,22 @@ export default function Products() {
                           )}
                         </td>
                         <td style={{ padding: '10px 14px' }}>
-                          <div className="flex gap-1">
-                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(p)}>✏️ Edit</button>
-                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}
-                              onClick={() => handleDelete(p._id)}>🗑️</button>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button 
+                              className="btn btn-outline btn-sm" 
+                              onClick={() => openEdit(p)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}
+                            >
+                              <Edit size={12} /> Edit
+                            </button>
+                            <button 
+                              className="btn btn-ghost btn-sm" 
+                              style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }}
+                              onClick={() => handleDelete(p._id)}
+                              title="Delete Product"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -424,7 +467,7 @@ export default function Products() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </div></>
           )}
         </div>
       </div>

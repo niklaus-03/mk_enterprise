@@ -1479,25 +1479,26 @@ tbody tr:hover {
 }
 
 .inv-biz-name {
-  font-size: 26px;
-  font-weight: 800;
+  font-family: 'Playfair Display', 'Georgia', serif;
+  font-size: 21px;
+  font-weight: 900;
   letter-spacing: -0.5px;
-  color: #111827;
+  color: #0f172a;
+  text-transform: uppercase;
 }
 
 .inv-tag {
-  background: #111827;
-  color: #fff;
-  padding: 5px 16px;
-  border-radius: 5px;
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
+  font-family: 'Playfair Display', 'Georgia', serif;
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 2px;
   display: inline-block;
+  text-transform: uppercase;
 }
 
 .inv-meta-table {
-  font-size: 13px;
+  font-size: 11.5px;
 }
 
 .inv-meta-table td {
@@ -1522,10 +1523,11 @@ tbody tr:hover {
 }
 
 .inv-bill-to {
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
   padding: 12px 16px;
+  box-shadow: 0 4px 15px rgba(15, 23, 42, 0.05);
 }
 
 .inv-table {
@@ -1536,7 +1538,7 @@ tbody tr:hover {
 .inv-table th {
   background: #111827;
   color: #fff;
-  padding: 9px 10px;
+  padding: 6px 10px;
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -1544,13 +1546,35 @@ tbody tr:hover {
 }
 
 .inv-table td {
-  padding: 9px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid #e5e7eb;
   font-size: 13px;
 }
 
 .inv-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.gst-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.gst-summary-table th {
+  background: #f8fafc;
+  color: #475569;
+  padding: 4px 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-bottom: 1.5px solid #cbd5e1;
+}
+
+.gst-summary-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 11px;
 }
 
 .inv-table tbody tr:nth-child(even) {
@@ -3228,32 +3252,45 @@ input[type="search"]::-webkit-search-cancel-button {
 
 /* ── Invoice Mobile Fixes ── */
 @media (max-width: 768px) {
+  .invoice-view-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    padding: 4px 0 !important;
+  }
+
   .invoice-paper {
-    padding: 14px 10px !important;
+    min-width: 860px !important;
+    width: 860px !important;
+    padding: 32px !important;
+    box-shadow: var(--shadow-md) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
   }
 
   .inv-header {
-    flex-direction: column !important;
-    gap: 12px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
   }
 
   .inv-header>div:last-child {
-    text-align: left !important;
+    text-align: right !important;
   }
 
   .inv-tag {
-    font-size: 13px !important;
-    padding: 4px 10px !important;
+    font-size: 16px !important;
   }
 
-  /* Bill To + Status side by side → stack on mobile */
+  /* Bill To + Status side by side → keep row on mobile */
   .invoice-paper>div[style*="justifyContent: space-between"] {
-    flex-direction: column !important;
+    flex-direction: row !important;
   }
 
   .inv-totals-box {
-    width: 100% !important;
-    min-width: unset !important;
+    width: auto !important;
+    min-width: 280px !important;
   }
 
   .inv-table {
@@ -3265,12 +3302,12 @@ input[type="search"]::-webkit-search-cancel-button {
     padding: 6px 5px !important;
   }
 
-  /* Footer: stack QR + signature */
+  /* Footer: keep QR + signature side-by-side on mobile */
   .inv-footer {
-    flex-direction: column !important;
-    align-items: center !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-end !important;
     gap: 16px !important;
-    text-align: center !important;
   }
 
   .inv-sign {

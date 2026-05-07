@@ -41,8 +41,8 @@ export default function Invoices() {
     catch (err) { toast.error(err.message); }
   };
 
-  const totalSales = invoices.reduce((s, i) => s + i.total, 0);
-  const totalDue = invoices.reduce((s, i) => s + (i.balance_due || 0), 0);
+  const totalSales = parseFloat(invoices.reduce((s, i) => s + i.total, 0).toFixed(2));
+  const totalDue = parseFloat(invoices.reduce((s, i) => s + (i.balance_due || 0), 0).toFixed(2));
   const pages = Math.ceil(total / LIMIT);
   const fc = formatCurrency;
 
@@ -50,6 +50,16 @@ export default function Invoices() {
     if (!payments?.length) return null;
     const modes = [...new Set(payments.map(p => p.mode.toUpperCase()))];
     return modes.join(' + ');
+  };
+
+  const getInvoiceStatusBadge = (inv) => {
+    if (inv.status === 'cancelled') {
+      return <span className="badge badge-gray" style={{ fontSize: 11 }}>Cancelled</span>;
+    }
+    if (inv.balance_due > 0.01) {
+      return <span className="badge badge-danger" style={{ fontSize: 11, background: '#fef2f2', color: '#dc2626', border: '1px solid #fee2e2' }}>Pending</span>;
+    }
+    return <span className="badge badge-success" style={{ fontSize: 11, background: '#ecfdf5', color: '#059669', border: '1px solid #d1fae5' }}>Paid</span>;
   };
 
   return (
@@ -85,18 +95,27 @@ export default function Invoices() {
                     border: '1px solid #e2e8f0',
                     borderRadius: 14,
                     padding: 16,
-                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.01)',
+                    boxShadow: '0 4px 6px -1px rgba(15,23,42,0.03), 0 2px 4px -1px rgba(15,23,42,0.01)',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 12
+                    gap: 12,
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translateY(-3px)';
+                    e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.03)';
+                    e.currentTarget.style.borderColor = '#cbd5e1';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(15,23,42,0.03), 0 2px 4px -1px rgba(15,23,42,0.01)';
+                    e.currentTarget.style.borderColor = '#e2e8f0';
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 800, fontFamily: 'monospace', fontSize: 15 }}>
                         {inv.invoice_number}
                       </Link>
-                      <span className={`badge ${inv.status === 'active' ? 'badge-success' : inv.status === 'partially_returned' ? 'badge-warning' : 'badge-gray'}`} style={{ fontSize: 11 }}>
-                        {inv.status}
-                      </span>
+                      {getInvoiceStatusBadge(inv)}
                     </div>
 
                     <div style={{ fontSize: 13.5, color: 'var(--text)' }}>
@@ -202,9 +221,7 @@ export default function Invoices() {
                              : <span className="badge badge-success d-inline-flex align-items-center gap-1">Paid <CheckCircle size={11} /></span>}
                         </td>
                         <td>
-                          <span className={`badge ${inv.status === 'active' ? 'badge-success' : inv.status === 'partially_returned' ? 'badge-warning' : 'badge-gray'}`}>
-                            {inv.status}
-                          </span>
+                          {getInvoiceStatusBadge(inv)}
                         </td>
                         <td>
                           <div className="flex gap-2">
@@ -223,9 +240,19 @@ export default function Invoices() {
         </div>
         {/* Pagination */}
         {pages > 1 && (
-          <div className="card-body flex-between" style={{ paddingTop: 12 }}>
-            <div className="text-muted fs-13">Showing {Math.min((page - 1) * LIMIT + 1, total)}–{Math.min(page * LIMIT, total)} of {total}</div>
-            <div className="flex gap-2">
+          <div 
+            className={isMobile ? "card-body" : "card-body flex-between"} 
+            style={{ 
+              paddingTop: 12, 
+              display: 'flex', 
+              flexDirection: isMobile ? 'column' : 'row', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              gap: isMobile ? 12 : 0 
+            }}
+          >
+            <div className="text-muted fs-13" style={{ textAlign: 'center' }}>Showing {Math.min((page - 1) * LIMIT + 1, total)}–{Math.min(page * LIMIT, total)} of {total}</div>
+            <div className="flex gap-2" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
               <button className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft size={13} /> Prev</button>
               {Array.from({ length: Math.min(pages, 5) }, (_, i) => i + 1).map(p => (
                 <button key={p} className={`btn btn-sm ${p === page ? 'btn-primary' : 'btn-outline'}`} onClick={() => setPage(p)}>{p}</button>

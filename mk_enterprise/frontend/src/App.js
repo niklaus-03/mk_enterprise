@@ -50,7 +50,7 @@ function SupervisorRoute({ children }) {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 function Sidebar({ open, onClose, onLock }) {
-  const { logout, admin, isAdmin } = useAuth();
+  const { logout, admin, isAdmin, user } = useAuth();
   const { settings } = useApp();
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
   const lang = settings.language === 'hi';
@@ -114,35 +114,78 @@ function Sidebar({ open, onClose, onLock }) {
       <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
         <div className="sidebar-brand" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10, padding: '16px 16px 12px' }}>
           {/* Profile image */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <div style={{
-              width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', background: '#F8F9FA',
-              boxShadow: '0 2px 8px rgba(197,160,89,0.3)',
-              border: '1.5px solid #C5A059'
-            }}>
-              <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="60" cy="60" r="48" stroke="#C5A059" stroke-width="3.5" />
-                <circle cx="60" cy="60" r="41" stroke="#C5A059" stroke-width="1" />
-                
-                <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" stroke-width="1" />
-                <path d="M19 60 H101" stroke="#C5A059" stroke-width="1" />
-                <path d="M60 19 V101" stroke="#C5A059" stroke-width="1" />
-                
-                <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
-                <circle cx="60" cy="60" r="26" stroke="#C5A059" stroke-width="2" />
-                <text x="60" y="75" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0B132B" letter-spacing="-2">MK</text>
-              </svg>
-            </div>
-            <div style={{ overflow: 'hidden' }}>
-              <div className="brand-text" style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Mehta Traders
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+              <div style={{
+                width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                overflow: 'hidden', background: '#F8F9FA',
+                boxShadow: '0 2px 8px rgba(197,160,89,0.3)',
+                border: '1.5px solid #C5A059'
+              }}>
+                <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="60" cy="60" r="48" stroke="#C5A059" stroke-width="3.5" />
+                  <circle cx="60" cy="60" r="41" stroke="#C5A059" stroke-width="1" />
+                  
+                  <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" stroke-width="1" />
+                  <path d="M19 60 H101" stroke="#C5A059" stroke-width="1" />
+                  <path d="M60 19 V101" stroke="#C5A059" stroke-width="1" />
+                  
+                  <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
+                  <circle cx="60" cy="60" r="26" stroke="#C5A059" stroke-width="2" />
+                  <text x="60" y="75" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0B132B" letter-spacing="-2">MK</text>
+                </svg>
               </div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', marginTop: 1 }}>
-                {settings.business_name || 'Business Management'}
+              <div style={{ overflow: 'hidden' }}>
+                <div className="brand-text" style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Mehta Traders
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {settings.business_name || 'Business Management'}
+                </div>
               </div>
             </div>
+
+            {/* Laptop/Desktop Golden Notification Bell */}
+            {user && (
+              <button 
+                onClick={() => {
+                  const role = user.role || 'manager';
+                  if (role === 'driver') {
+                    alert("Notifications:\n• New trip dispatch assigned to you.\n• Please check active trip details.");
+                  } else if (role === 'manager') {
+                    alert("Notifications:\n• Invoice shared with you.\n• Driver trip successfully completed!");
+                  } else {
+                    alert("Notifications:\n• New Invoice created!\n• Database backup complete.");
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#C5A059',
+                  padding: '6px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  marginLeft: '8px',
+                  flexShrink: 0
+                }}
+                title="Notifications"
+              >
+                <Bell size={18} strokeWidth={2.2} />
+                <span style={{
+                  position: 'absolute',
+                  top: 3, right: 3,
+                  width: 7, height: 7,
+                  background: '#ef4444',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 4px #ef4444'
+                }} />
+              </button>
+            )}
           </div>
         </div>
         <nav className="sidebar-nav">
@@ -267,7 +310,7 @@ function isCurrentlyFullscreen() {
 }
 
 function AppLayout() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -407,10 +450,19 @@ function AppLayout() {
             MK Enterprise
           </span>
 
-          {isAdmin ? (
+          {user ? (
             <button 
               className="notification-btn" 
-              onClick={() => alert("Notifications coming soon!")}
+              onClick={() => {
+                const role = user.role || 'manager';
+                if (role === 'driver') {
+                  alert("Notifications:\n• New trip dispatch assigned to you.\n• Please check active trip details.");
+                } else if (role === 'manager') {
+                  alert("Notifications:\n• Invoice shared with you.\n• Driver trip successfully completed!");
+                } else {
+                  alert("Notifications:\n• New Invoice created!\n• Database backup complete.");
+                }
+              }}
               style={{
                 justifySelf: 'end',
                 background: 'none',

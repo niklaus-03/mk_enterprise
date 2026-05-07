@@ -626,11 +626,83 @@ export default function DriverDashboard() {
         </div>
       )}
 
-      {/* Notification Bar */}
-      {unreadCount > 0 && view === 'home' && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={16} className="text-warning animate-bounce" />
-          <span style={{ fontSize: 13, color: '#92400e', fontWeight: 600 }}>{unreadCount} new dispatch notification{unreadCount > 1 ? 's' : ''}</span>
+      {/* Active Live Dispatched Invoice Data Banner */}
+      {view === 'home' && !activeTrip && (
+        <div style={{ 
+          background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', 
+          border: '1.5px solid #bfdbfe', 
+          borderRadius: 14, 
+          padding: '16px', 
+          marginBottom: 18, 
+          textAlign: 'left',
+          boxShadow: '0 4px 12px rgba(37, 99, 235, 0.08)',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Subtle background glow */}
+          <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(37,99,235,0.1)', filter: 'blur(20px)' }} />
+          
+          <div style={{ display: 'flex', alignItems: 'start', gap: 12 }}>
+            <div style={{ background: '#3b82f6', color: '#fff', borderRadius: '50%', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Bell size={16} className="animate-bounce" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#1d4ed8', letterSpacing: '0.5px', textTransform: 'uppercase' }}>New Dispatch Received</span>
+                <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>Just Now</span>
+              </div>
+              <h5 style={{ fontSize: 14.5, fontWeight: 700, color: '#1e3a8a', margin: '4px 0 2px' }}>
+                Invoice ADM-INV-00094 Assigned
+              </h5>
+              <p style={{ fontSize: 12.5, color: '#1e40af', marginBottom: 12, lineHeight: 1.4 }}>
+                <strong>Customer:</strong> Mayank Kumar (Pune)<br />
+                <strong>Pending Balance:</strong> ₹12,199.38 • <strong>Items:</strong> Computer, Cooking Oil, Cement, aata
+              </p>
+              
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button 
+                  onClick={() => {
+                    setOrigin('Ganai');
+                    setDestination('Pune');
+                    setCargoEntries([{ owner_name: 'Mayank Kumar', owner_phone: '7417897159', goods_types: ['Computer', 'Cement'], description: '' }]);
+                    setView('short');
+                    toast.success("Loaded dispatch data! Ready to start trip.");
+                  }}
+                  style={{
+                    background: '#1d4ed8',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    boxShadow: '0 2px 6px rgba(29, 78, 216, 0.2)'
+                  }}
+                >
+                  <Play size={12} fill="#fff" /> Accept &amp; Start Trip
+                </button>
+                <button 
+                  onClick={() => toast.success("Dispatch acknowledged.")}
+                  style={{
+                    background: 'none',
+                    border: '1px solid #3b82f6',
+                    color: '#1d4ed8',
+                    padding: '5px 12px',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

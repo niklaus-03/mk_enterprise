@@ -33,16 +33,26 @@ export function numToWords(num) {
     'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   if (!num || num === 0) return 'Zero Rupees Only';
-  const n = Math.floor(Math.abs(num));
-  function conv(n) {
-    if (n < 20) return a[n];
-    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '');
-    if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + conv(n % 100) : '');
-    if (n < 100000) return conv(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + conv(n % 1000) : '');
-    if (n < 10000000) return conv(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + conv(n % 100000) : '');
-    return conv(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + conv(n % 10000000) : '');
+  const absNum = Math.abs(num);
+  const n = Math.floor(absNum);
+  const paise = Math.round((absNum - n) * 100);
+  function conv(v) {
+    if (v < 20) return a[v];
+    if (v < 100) return b[Math.floor(v / 10)] + (v % 10 ? ' ' + a[v % 10] : '');
+    if (v < 1000) return a[Math.floor(v / 100)] + ' Hundred' + (v % 100 ? ' ' + conv(v % 100) : '');
+    if (v < 100000) return conv(Math.floor(v / 1000)) + ' Thousand' + (v % 1000 ? ' ' + conv(v % 1000) : '');
+    if (v < 10000000) return conv(Math.floor(v / 100000)) + ' Lakh' + (v % 100000 ? ' ' + conv(v % 100000) : '');
+    return conv(Math.floor(v / 10000000)) + ' Crore' + (v % 10000000 ? ' ' + conv(v % 10000000) : '');
   }
-  return conv(n) + ' Rupees Only';
+  let result = '';
+  if (n > 0) {
+    result += conv(n) + ' Rupees';
+  }
+  if (paise > 0) {
+    if (result) result += ' and ';
+    result += conv(paise) + ' Paise';
+  }
+  return result ? result + ' Only' : 'Zero Rupees Only';
 }
 
 // Hindi translations — comprehensive
