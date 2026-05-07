@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { invoiceApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle } from 'lucide-react';
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
