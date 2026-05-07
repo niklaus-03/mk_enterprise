@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { invoiceApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
+import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
@@ -48,20 +49,20 @@ export default function Invoices() {
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">📋 Invoice History</div>
+          <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> Invoice History</div>
           <div className="page-subtitle">{total} invoices · Sales: {fc(totalSales)} · Due: {fc(totalDue)}</div>
         </div>
-        <Link to="/invoices/new" className="btn btn-primary">+ New Invoice</Link>
+        <Link to="/invoices/new" className="btn btn-primary d-inline-flex align-items-center gap-1"><Plus size={14} /> New Invoice</Link>
       </div>
 
       <div className="card">
         <div className="card-header">
-          <div className="search-wrap">
-            <span className="search-icon">🔍</span>
+          <div className="search-wrap" style={{ position: 'relative' }}>
+            <span className="search-icon" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}><Search size={14} style={{ color: '#94a3b8' }} /></span>
             <input className="form-control" placeholder="Search by customer or invoice number..." value={search}
               onChange={e => setSearch(e.target.value)} style={{ width: 320, paddingLeft: 36 }} />
           </div>
-          {customer_id && <Link to="/invoices" className="btn btn-outline btn-sm">✕ Clear Filter</Link>}
+          {customer_id && <Link to="/invoices" className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1"><X size={12} /> Clear Filter</Link>}
         </div>
         <div className="card-body no-pad">
           {loading ? <div className="loading"><span className="spinner"></span></div> : (
@@ -106,8 +107,8 @@ export default function Invoices() {
                       <td className="tr mono text-success">{fc(inv.amount_received)}</td>
                       <td className="tr">
                         {inv.balance_due > 0.01
-                          ? <span className="badge badge-danger">{fc(inv.balance_due)}</span>
-                          : <span className="badge badge-success">Paid ✓</span>}
+                           ? <span className="badge badge-danger">{fc(inv.balance_due)}</span>
+                           : <span className="badge badge-success d-inline-flex align-items-center gap-1">Paid <CheckCircle size={11} /></span>}
                       </td>
                       <td>
                         <span className={`badge ${inv.status === 'active' ? 'badge-success' : inv.status === 'partially_returned' ? 'badge-warning' : 'badge-gray'}`}>
@@ -116,9 +117,9 @@ export default function Invoices() {
                       </td>
                       <td>
                         <div className="flex gap-2">
-                          <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm">👁️</Link>
-                          <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm">✏️</Link>
-                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inv)}>🗑️</button>
+                          <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" title="View"><Eye size={12} /></Link>
+                          <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" title="Edit"><Edit size={12} /></Link>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inv)} title="Delete"><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -133,11 +134,11 @@ export default function Invoices() {
           <div className="card-body flex-between" style={{ paddingTop: 12 }}>
             <div className="text-muted fs-13">Showing {Math.min((page - 1) * LIMIT + 1, total)}–{Math.min(page * LIMIT, total)} of {total}</div>
             <div className="flex gap-2">
-              <button className="btn btn-outline btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+              <button className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft size={13} /> Prev</button>
               {Array.from({ length: Math.min(pages, 5) }, (_, i) => i + 1).map(p => (
                 <button key={p} className={`btn btn-sm ${p === page ? 'btn-primary' : 'btn-outline'}`} onClick={() => setPage(p)}>{p}</button>
               ))}
-              <button className="btn btn-outline btn-sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next →</button>
+              <button className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next <ChevronRight size={13} /></button>
             </div>
           </div>
         )}
