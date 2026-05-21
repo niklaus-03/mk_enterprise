@@ -7,7 +7,7 @@ import { formatCurrency } from '../utils/helpers';
 import { useLocation } from 'react-router-dom';
 import { orderApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
-import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet, Play, CheckCircle, AlertTriangle, Plus, Trash2, Monitor, Check, ArrowLeft, Maximize2, Receipt, FolderOpen, Inbox, Clock, Tag, Wallet, Smartphone, Globe, CreditCard, PenTool, Save } from 'lucide-react';
+import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet, Play, CheckCircle, AlertTriangle, Plus, Trash2, Monitor, Check, ArrowLeft, Maximize2, Receipt, FolderOpen, Inbox, Clock, Tag, Wallet, Smartphone, Globe, CreditCard, PenTool, Save, Package } from 'lucide-react';
 
 const newItem = () => ({
   _key: Date.now() + Math.random(),
@@ -253,6 +253,7 @@ export default function NewInvoice() {
   const [loadedDraftId, setLoadedDraftId] = useState(null);
   const [driverName, setDriverName] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
+  const [totalWeight, setTotalWeight] = useState('');
   const [vehicleCharge, setVehicleCharge] = useState('');
   const [labourCharge, setLabourCharge] = useState('');
   const [isManualBill, setIsManualBill] = useState(false);
@@ -269,16 +270,15 @@ export default function NewInvoice() {
   const [billDate, setBillDate] = useState(getISTDateTime());
   const [manualBillRef, setManualBillRef] = useState('');
 
-  // Auto-draft save
   useEffect(() => {
     const draft = {
       items, customerMode, customerId, walkIn, payments, discount,
-      concessionReason, notes, driverName, vehicleNumber, vehicleCharge,
+      concessionReason, notes, driverName, vehicleNumber, totalWeight, vehicleCharge,
       labourCharge, billDate, isManualBill, manualBillRef, savedAt: Date.now(),
     };
     localStorage.setItem(AUTO_DRAFT_KEY, JSON.stringify(draft));
   }, [items, customerMode, customerId, walkIn, payments, discount, notes,
-    driverName, vehicleNumber, vehicleCharge, labourCharge, billDate, isManualBill, manualBillRef]);
+    driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge, billDate, isManualBill, manualBillRef]);
 
   // Load customers
   useEffect(() => {
@@ -326,6 +326,7 @@ export default function NewInvoice() {
       setNotes(draft.notes || '');
       setDriverName(draft.driverName || '');
       setVehicleNumber(draft.vehicleNumber || '');
+      setTotalWeight(draft.totalWeight || '');
       setVehicleCharge(draft.vehicleCharge || '');
       setLabourCharge(draft.labourCharge || '');
       setBillDate(draft.billDate || getISTDateTime());
@@ -422,7 +423,7 @@ export default function NewInvoice() {
     const newDraft = {
       id: Date.now(), customerName, totalAmount, itemCount: validItems.length,
       items, customerMode, customerId, walkIn, payments, discount, notes,
-      driverName, vehicleNumber, vehicleCharge, labourCharge,
+      driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge,
       billDate, isManualBill, manualBillRef, savedAt: Date.now(),
     };
     const updated = [newDraft, ...existing];
@@ -433,11 +434,23 @@ export default function NewInvoice() {
 
   const onProductSelect = (idx, p) => {
     if (p._isNew) {
-      updateItem(idx, { product_id: '', product_name: p.name, price: 0, gst: 0, qty: 1, unit: p.unit || 'bag', _isNew: true });
+      updateItem(idx, { product_id: '', product_name: p.name, price: 0, gst: 0, qty: 1, unit: p.unit || 'bag', _isNew: true, weight_per_unit: 0 });
     } else {
-      updateItem(idx, { product_id: p._id, product_name: p.name, price: p.price, gst: p.gst, qty: 1, unit: p.unit || 'pcs', _isNew: false });
+      updateItem(idx, { product_id: p._id, product_name: p.name, price: p.price, gst: p.gst, qty: 1, unit: p.unit || 'pcs', _isNew: false, weight_per_unit: p.weight_per_unit || 0 });
     }
   };
+
+  // Auto-calculate total weight from items whenever items change
+  useEffect(() => {
+    const autoWeight = items.reduce((sum, item) => {
+      const wpv = parseFloat(item.weight_per_unit) || 0;
+      const qty = parseFloat(item.qty) || 0;
+      return sum + (wpv * qty);
+    }, 0);
+    if (autoWeight > 0) {
+      setTotalWeight(parseFloat(autoWeight.toFixed(2)).toString());
+    }
+  }, [items.map(i => `${i.product_id}:${i.qty}`).join(',')]);  // eslint-disable-line
 
   const addItem = () => setItems(prev => [...prev, newItem()]);
   const removeItem = (idx) => { if (items.length === 1) return; setItems(prev => prev.filter((_, i) => i !== idx)); };
@@ -478,6 +491,7 @@ export default function NewInvoice() {
     setNotes(draft.notes || '');
     setDriverName(draft.driverName || '');
     setVehicleNumber(draft.vehicleNumber || '');
+    setTotalWeight(draft.totalWeight || '');
     setVehicleCharge(draft.vehicleCharge || '');
     setLabourCharge(draft.labourCharge || '');
     setBillDate(draft.billDate || getISTDateTime());
@@ -545,6 +559,7 @@ export default function NewInvoice() {
         discount_enabled: discountEnabled,
         driver_name: driverName,
         vehicle_number: vehicleNumber,
+        total_weight: totalWeight,
         vehicle_charge: vc,
         labour_charge: lc,
         bill_date: billDate,
@@ -1061,6 +1076,27 @@ export default function NewInvoice() {
                     }}
                     placeholder="Driver name (optional)"
                   />
+                </div>
+                <div className="form-group">
+                  <label className="form-label d-inline-flex align-items-center gap-1"><Package size={13} /> Total Weight
+                    {parseFloat(totalWeight) > 0 && (
+                      <span style={{ fontSize: 10, background: '#dcfce7', color: '#16a34a', padding: '1px 6px', borderRadius: 8, fontWeight: 700, marginLeft: 4 }}>AUTO</span>
+                    )}
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+                    <input
+                      className="form-control"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      style={{ border: 'none', borderRadius: 0, flex: 1 }}
+                      value={totalWeight}
+                      onChange={e => setTotalWeight(e.target.value)}
+                      placeholder="Auto-calculated from items"
+                    />
+                    <span style={{ padding: '0 12px', background: '#f8fafc', borderLeft: '1px solid var(--border)', fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>kg</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Auto-filled based on item weights. You can override manually.</div>
                 </div>
               </div>
             </div>

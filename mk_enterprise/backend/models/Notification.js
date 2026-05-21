@@ -25,6 +25,10 @@ const notificationSchema = new mongoose.Schema({
       'driver_cash_given',   // Cash given to driver
       'trip_started',        // Driver started a trip
       'trip_completed',      // Driver completed a trip
+      'driver_dispatch',     // Invoice dispatched to driver for delivery
+      'invoice_shared',      // Invoice shared with a manager
+      'trip_update',         // General trip update
+      'system_alert',        // General system alerts
       'general',             // Generic notification
     ],
     required: true,

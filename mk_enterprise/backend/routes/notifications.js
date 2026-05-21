@@ -7,7 +7,7 @@ const { requireSupervisor } = require('../middleware/auth');
 router.use(auth);
 
 // ── Helper: create a notification (used by other routes) ──────────────────────
-async function createNotification({ sender_id, sender_name, recipient_id, recipient_role, type, title, message, priority, entity_type, entity_id }) {
+async function createNotification({ sender_id, sender_name, recipient_id, recipient_role, type, title, message, priority, entity_type, entity_id, metadata }) {
   try {
     return await Notification.create({
       sender_id: sender_id || null,
@@ -20,6 +20,7 @@ async function createNotification({ sender_id, sender_name, recipient_id, recipi
       priority: priority || 'medium',
       entity_type: entity_type || '',
       entity_id: entity_id || null,
+      metadata: metadata || {}
     });
   } catch (err) {
     console.error('Notification error:', err.message);
@@ -36,7 +37,7 @@ router.get('/', async (req, res) => {
     const query = {
       $or: [
         { recipient_id: req.user.id },
-        { recipient_role: req.user.role },
+        { recipient_id: null, recipient_role: req.user.role },
         { recipient_role: 'all' },
       ],
     };
@@ -63,7 +64,7 @@ router.get('/unread-count', async (req, res) => {
     const count = await Notification.countDocuments({
       $or: [
         { recipient_id: req.user.id },
-        { recipient_role: req.user.role },
+        { recipient_id: null, recipient_role: req.user.role },
         { recipient_role: 'all' },
       ],
       is_read: false,
@@ -77,7 +78,7 @@ router.get('/unread-count', async (req, res) => {
 // ── POST /api/notifications — Create a notification (managers/drivers send alerts) ─
 router.post('/', async (req, res) => {
   try {
-    const { type, title, message, priority, recipient_role, entity_type, entity_id } = req.body;
+    const { type, title, message, priority, recipient_role, recipient_id, entity_type, entity_id, metadata } = req.body;
     if (!type || !title) {
       return res.status(400).json({ error: 'type and title are required' });
     }
@@ -85,6 +86,7 @@ router.post('/', async (req, res) => {
     const notification = await createNotification({
       sender_id: req.user.id,
       sender_name: req.user.username,
+      recipient_id: recipient_id,
       recipient_role: recipient_role || 'supervisor',
       type,
       title,
@@ -92,6 +94,7 @@ router.post('/', async (req, res) => {
       priority,
       entity_type,
       entity_id,
+      metadata
     });
 
     res.status(201).json({ success: true, notification });
@@ -122,7 +125,7 @@ router.put('/read-all', async (req, res) => {
       {
         $or: [
           { recipient_id: req.user.id },
-          { recipient_role: req.user.role },
+          { recipient_id: null, recipient_role: req.user.role },
           { recipient_role: 'all' },
         ],
         is_read: false,

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { managerApi, recoveryApi, driverApi, activityLogApi, notificationApi } from '../utils/api';
-import { Users, Shield, Key, Bell, CheckCircle, Truck, FileText, Plus, Trash2, Phone, Pause, Play, Clock, User, LogIn, CreditCard, Package } from 'lucide-react';
+import { Users, Shield, Key, Bell, CheckCircle, Truck, FileText, Plus, Trash2, Phone, Pause, Play, Clock, User, LogIn, CreditCard, Package, UserCheck } from 'lucide-react';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -52,10 +52,13 @@ export default function AdminPanel() {
     } catch (_) {}
   }, []);
 
-  const loadActivityLogs = useCallback(async () => {
+  const [logFilter, setLogFilter] = useState({ role: '', entity_type: '' });
+  const [logDate, setLogDate] = useState('');
+
+  const loadActivityLogs = useCallback(async (filters = {}) => {
     try {
       setLogsLoading(true);
-      const res = await activityLogApi.getAll({ limit: 50 });
+      const res = await activityLogApi.getAll({ limit: 100, ...filters });
       setActivityLogs(res.logs || []);
     } catch (_) {}
     finally { setLogsLoading(false); }
@@ -277,8 +280,9 @@ export default function AdminPanel() {
           { id: 'drivers', label: 'Drivers', icon: <Truck size={14} style={{ marginRight: 6 }} />, count: drivers.length },
           { id: 'recovery', label: 'Recovery', icon: <Key size={14} style={{ marginRight: 6 }} />, count: pendingCount },
           { id: 'activity', label: 'Activity Log', icon: <FileText size={14} style={{ marginRight: 6 }} />, count: 0 },
+          { id: 'walkin', label: 'Walk-in Delivery', icon: <UserCheck size={14} style={{ marginRight: 6 }} />, count: 0 },
         ].map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'activity') loadActivityLogs(); }} style={{
+          <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'activity') loadActivityLogs({}); if (t.id === 'walkin') navigate('/walkin-delivery'); }} style={{
             flex: 1, padding: '10px 12px', borderRadius: 8, border: 'none', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
             background: tab === t.id ? '#fff' : 'transparent', color: tab === t.id ? '#111827' : '#6b7280',
             boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,0.08)' : 'none', transition: 'all 0.15s', fontFamily: 'inherit',
@@ -454,9 +458,32 @@ export default function AdminPanel() {
       {/* ── Activity Log Tab ────────────────────── */}
       {tab === 'activity' && (
         <div style={card}>
-          <div style={cardHead}>
+          <div style={{ ...cardHead, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={16} /> Global Activity Log</div>
-            <button onClick={loadActivityLogs} style={btnOutline}>🔄 Refresh</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select style={{ ...inputStyle, width: 'auto', padding: '6px 10px', fontSize: 12 }} value={logFilter.role}
+                onChange={e => { const r = e.target.value; setLogFilter(f => ({ ...f, role: r })); loadActivityLogs({ ...(r ? { user_role: r } : {}), ...(logFilter.entity_type ? { entity_type: logFilter.entity_type } : {}), ...(logDate ? { date: logDate } : {}) }); }}>
+                <option value="">All Roles</option>
+                <option value="supervisor">Admin / Supervisor</option>
+                <option value="manager">Manager</option>
+                <option value="driver">Driver</option>
+              </select>
+              <select style={{ ...inputStyle, width: 'auto', padding: '6px 10px', fontSize: 12 }} value={logFilter.entity_type}
+                onChange={e => { const et = e.target.value; setLogFilter(f => ({ ...f, entity_type: et })); loadActivityLogs({ ...(logFilter.role ? { user_role: logFilter.role } : {}), ...(et ? { entity_type: et } : {}), ...(logDate ? { date: logDate } : {}) }); }}>
+                <option value="">All Types</option>
+                <option value="invoice">Invoice</option>
+                <option value="customer">Customer</option>
+                <option value="product">Product</option>
+                <option value="walkin">Walk-in</option>
+                <option value="delivery">Delivery</option>
+                <option value="trip">Trip</option>
+                <option value="stock">Stock</option>
+              </select>
+              <input type="date" style={{ ...inputStyle, width: 'auto', padding: '6px 10px', fontSize: 12 }} value={logDate}
+                onChange={e => { setLogDate(e.target.value); loadActivityLogs({ ...(logFilter.role ? { user_role: logFilter.role } : {}), ...(logFilter.entity_type ? { entity_type: logFilter.entity_type } : {}), ...(e.target.value ? { date: e.target.value } : {}) }); }} />
+              <button onClick={() => { setLogFilter({ role: '', entity_type: '' }); setLogDate(''); loadActivityLogs({}); }} style={btnOutline}>✕ Clear</button>
+              <button onClick={() => loadActivityLogs({ ...(logFilter.role ? { user_role: logFilter.role } : {}), ...(logFilter.entity_type ? { entity_type: logFilter.entity_type } : {}), ...(logDate ? { date: logDate } : {}) })} style={btnOutline}>🔄 Refresh</button>
+            </div>
           </div>
           {logsLoading ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading...</div>
@@ -468,6 +495,8 @@ export default function AdminPanel() {
           ) : (
             <div style={{ padding: '4px 0', maxHeight: 500, overflowY: 'auto' }}>
               {activityLogs.map((log, idx) => {
+                const rcMap = { supervisor: { bg: '#eff6ff', color: '#2563eb' }, manager: { bg: '#f0fdf4', color: '#16a34a' }, driver: { bg: '#fef3c7', color: '#d97706' } };
+                const rc = rcMap[log.user_role] || { bg: '#f3f4f6', color: '#374151' };
                 const icons = {
                   create: <Plus size={14} style={{ color: '#16a34a' }} />,
                   update: <FileText size={14} style={{ color: '#2563eb' }} />,
@@ -483,11 +512,12 @@ export default function AdminPanel() {
                       {icons[log.action] || <FileText size={14} style={{ color: '#4b5563' }} />}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span style={{ color: '#2563eb' }}>{log.username}</span>
-                        <span style={{ color: '#6b7280', fontWeight: 400 }}> {log.action}d </span>
-                        <span>{log.entity_type}</span>
-                        {log.entity_name && <span style={{ color: '#374151' }}> "{log.entity_name}"</span>}
+                        <span style={{ ...badge(rc.bg, rc.color) }}>{log.user_role}</span>
+                        <span style={{ color: '#6b7280', fontWeight: 400 }}>{log.action}d</span>
+                        <span style={{ ...badge('#f1f5f9', '#374151'), fontWeight: 600 }}>{log.entity_type}</span>
+                        {log.entity_name && <span style={{ color: '#374151' }}>"{log.entity_name}"</span>}
                       </div>
                       {log.description && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{log.description}</div>}
                       <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>

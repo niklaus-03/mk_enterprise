@@ -3,6 +3,8 @@ const router = express.Router();
 const Delivery = require('../models/Delivery');
 const Product = require('../models/Product');
 const StockMovement = require('../models/StockMovement');
+const Notification = require('../models/Notification');
+const Admin = require('../models/Admin');
 const auth = require('../middleware/auth');
 const { formatIST, todayUTCRange } = require('../utils/timeUtils');
 
@@ -105,6 +107,30 @@ router.post('/', async (req, res) => {
       })),
       notes: (notes || '').trim(),
     });
+
+    // Broadcast incoming vehicle notification to all non-driver team members
+    try {
+      const teamMembers = await Admin.find(
+        { role: { $in: ['supervisor', 'manager'] }, is_active: true },
+        '_id role'
+      );
+      const itemSummary = items.map(i => `${i.item_name} x${i.quantity}`).join(', ');
+      const notifications = teamMembers.map(member => ({
+        recipient_id: member._id,
+        recipient_role: member.role,
+        type: 'vehicle_incoming',
+        title: `🚚 Vehicle Incoming — ${vehicle_number.trim()}`,
+        message: `${(supplier || 'Unknown supplier').trim()} | Items: ${itemSummary} | ETA: ${formatISTDateTime(arrivalDate)}`,
+        priority: 'medium',
+        entity_type: 'delivery',
+        entity_id: delivery._id,
+      }));
+      if (notifications.length > 0) {
+        await Notification.insertMany(notifications);
+      }
+    } catch (notifErr) {
+      console.error('Delivery broadcast notification error:', notifErr.message);
+    }
 
     res.status(201).json(delivery);
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -4,7 +4,10 @@ const Invoice = require('../models/Invoice');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 const StockMovement = require('../models/StockMovement');
+const Notification = require('../models/Notification');
+const Admin = require('../models/Admin');
 const auth = require('../middleware/auth');
+const { logActivity } = require('./activityLogs');
 const { formatIST } = require('../utils/timeUtils');
 
 router.use(auth);
@@ -89,7 +92,7 @@ router.post('/', async (req, res) => {
       items, payments = [], discount = 0, notes = '', concession_reason = '',
       gst_enabled = true, discount_enabled = false,
       bill_date, is_manual_bill = false, manual_bill_ref = '',
-      driver_name = '', vehicle_number = '',
+      driver_name = '', vehicle_number = '', total_weight = 0,
       vehicle_charge = 0, labour_charge = 0,
     } = req.body;
 
@@ -189,6 +192,7 @@ router.post('/', async (req, res) => {
       manual_bill_ref,
       driver_name,
       vehicle_number,
+      total_weight: parseFloat(total_weight) || 0,
       date: invoiceDate,
       ist_formatted: formatIST(invoiceDate),
       signature: req.body.signature || '',
@@ -233,6 +237,38 @@ router.post('/', async (req, res) => {
     }
 
     res.status(201).json(invoice);
+
+    // Log activity (fire-and-forget, after response)
+    logActivity(req, {
+      action: 'create',
+      entity_type: 'invoice',
+      entity_id: invoice._id,
+      entity_name: invoice.invoice_number,
+      description: `Invoice created for ${invoice.customer_name}. Total: ₹${invoice.total}`,
+    });
+
+    // Driver dispatch notification
+    if (req.body.send_to_driver && req.body.driver_id) {
+      try {
+        const driverUser = await Admin.findById(req.body.driver_id);
+        if (driverUser) {
+          const itemSummary = processedItems.map(i => `${i.product_name} x${i.qty}`).join(', ');
+          await Notification.create({
+            recipient_id: driverUser._id,
+            recipient_role: 'driver',
+            type: 'driver_dispatch',
+            title: `📦 Delivery Dispatch — ${invoice.invoice_number}`,
+            message: `Items: ${itemSummary}. Collect ₹${invoice.balance_due > 0 ? invoice.balance_due : invoice.total} from ${invoice.customer_name}.${invoice.customer_address ? ' Destination: ' + invoice.customer_address : ''} Total Weight: ${invoice.total_weight} kg.`,
+            priority: 'high',
+            entity_type: 'invoice',
+            entity_id: invoice._id,
+            metadata: { total_weight: invoice.total_weight }
+          });
+        }
+      } catch (notifErr) {
+        console.error('Driver dispatch notification error:', notifErr.message);
+      }
+    }
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -246,7 +282,7 @@ router.put('/:id', async (req, res) => {
     if (original.status === 'cancelled') return res.status(400).json({ error: 'Cannot edit a cancelled invoice' });
 
     const { items, payments = [], discount = 0, notes = '', concession_reason = '', gst_enabled = true,
-      customer_id, customer_name, customer_phone, customer_address } = req.body;
+      customer_id, customer_name, customer_phone, customer_address, total_weight } = req.body;
 
     // 1. Restore stock from original items
     for (const old of original.items) {
@@ -317,6 +353,7 @@ router.put('/:id', async (req, res) => {
       customer_name: customer_name || original.customer_name,
       customer_phone: customer_phone !== undefined ? customer_phone : original.customer_phone,
       customer_address: customer_address !== undefined ? customer_address : original.customer_address,
+      total_weight: total_weight !== undefined ? parseFloat(total_weight) || 0 : original.total_weight,
       items: processedItems, subtotal, discount: parseFloat(discount) || 0,
       gst_total, total, total_with_prev_balance, payments, amount_received,
       balance_due, notes, gst_enabled,
@@ -338,6 +375,15 @@ router.put('/:id', async (req, res) => {
     }
 
     res.json(updated);
+
+    // Log activity (fire-and-forget)
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'invoice',
+      entity_id: updated._id,
+      entity_name: updated.invoice_number,
+      description: `Invoice edited. New total: ₹${updated.total}${hasReturns ? ' (has returns)' : ''}`,
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -384,6 +430,16 @@ router.delete('/:id', async (req, res) => {
     // 3. Mark cancelled
     invoice.status = 'cancelled';
     await invoice.save();
+
+    // Log activity
+    await logActivity(req, {
+      action: 'delete',
+      entity_type: 'invoice',
+      entity_id: invoice._id,
+      entity_name: invoice.invoice_number,
+      description: `Invoice cancelled. Original total: ₹${invoice.total}`,
+    });
+
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

@@ -1,20 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const rateLimit = require('express-rate-limit');
 const Admin = require('../models/Admin');
 const PasswordResetRequest = require('../models/PasswordResetRequest');
+const ActivityLog = require('../models/ActivityLog');
 const auth = require('../middleware/auth');
 const { requireSupervisor } = require('../middleware/auth');
 
 // Manager limit removed — unlimited managers allowed
-
-// Rate limiters
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Too many login attempts. Please try again after 15 minutes.' },
-});
 
 // ─── Helper: find user by username OR phone ────────────────────────────────────
 async function findUser(identifier) {
@@ -36,7 +29,7 @@ async function findUser(identifier) {
 
 // ─── POST /api/auth/login ──────────────────────────────────────────────────────
 // Step 1: Validate username/phone + password. If supervisor, return requires_secret flag.
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -48,15 +41,18 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Account not found.' });
     }
 
-    // Check lock — permanent until admin resets
-    if (user.isLocked()) {
-      return res.status(423).json({ error: 'Account locked after 5 failed attempts. Contact your Admin to reset your password.' });
-    }
-
     // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      await user.incLoginAttempts();
+      await ActivityLog.create({
+        user_id: user._id,
+        username: user.username,
+        user_role: user.role,
+        action: 'failed_login',
+        entity_type: 'Admin',
+        description: 'Failed login attempt (incorrect password)',
+        ip_address: req.ip || req.connection?.remoteAddress || '',
+      });
       return res.status(401).json({ error: 'Incorrect password.' });
     }
 
@@ -71,8 +67,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     // Non-supervisor (manager/driver) — issue token immediately
     await Admin.findByIdAndUpdate(user._id, {
-      $set: { loginAttempts: 0, lastLogin: new Date() },
-      $unset: { lockUntil: 1 },
+      $set: { lastLogin: new Date() },
     });
 
     const token = jwt.sign(
@@ -95,7 +90,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 
 // ─── POST /api/auth/verify-secret ─────────────────────────────────────────────
 // Step 2: Supervisor provides secret key after password was already verified.
-router.post('/verify-secret', loginLimiter, async (req, res) => {
+router.post('/verify-secret', async (req, res) => {
   try {
     const { username, secret_key } = req.body;
     if (!username || !secret_key) {
@@ -107,21 +102,23 @@ router.post('/verify-secret', loginLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Supervisor account not found.' });
     }
 
-    // Check lock — permanent until admin resets
-    if (user.isLocked()) {
-      return res.status(423).json({ error: 'Account locked after 5 failed attempts. Contact your Admin to reset your password.' });
-    }
-
     const keyMatch = await user.compareSecretKey(secret_key);
     if (!keyMatch) {
-      await user.incLoginAttempts();
+      await ActivityLog.create({
+        user_id: user._id,
+        username: user.username,
+        user_role: user.role,
+        action: 'failed_login',
+        entity_type: 'Admin',
+        description: 'Failed verify-secret attempt (incorrect secret key)',
+        ip_address: req.ip || req.connection?.remoteAddress || '',
+      });
       return res.status(401).json({ error: 'Incorrect secret key.' });
     }
 
-    // Success — reset attempts & issue token
+    // Success — issue token
     await Admin.findByIdAndUpdate(user._id, {
-      $set: { loginAttempts: 0, lastLogin: new Date() },
-      $unset: { lockUntil: 1 },
+      $set: { lastLogin: new Date() },
     });
 
     const token = jwt.sign(
@@ -217,7 +214,7 @@ router.post('/forgot-password', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── GET /api/auth/managers ───────────────────────────────────────────────────
-router.get('/managers', auth, requireSupervisor, async (req, res) => {
+router.get('/managers', auth, async (req, res) => {
   try {
     const managers = await Admin.find({ role: 'manager' })
       .select('-password -secret_key')
@@ -301,8 +298,6 @@ router.put('/managers/:id/reset-password', auth, requireSupervisor, async (req, 
     if (!manager) return res.status(404).json({ error: 'Manager not found.' });
 
     manager.password = new_password;
-    manager.loginAttempts = 0;
-    manager.lockUntil = null;
     await manager.save();
 
     res.json({ success: true, message: `Password reset for ${manager.username}.` });
@@ -352,8 +347,6 @@ router.put('/recovery-requests/:id/resolve', auth, requireSupervisor, async (req
     if (!user) return res.status(404).json({ error: 'User account not found.' });
 
     user.password = new_password;
-    user.loginAttempts = 0;
-    user.lockUntil = null;
     await user.save();
 
     // Mark request resolved
@@ -373,7 +366,7 @@ router.put('/recovery-requests/:id/resolve', auth, requireSupervisor, async (req
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── GET /api/auth/drivers ────────────────────────────────────────────────────
-router.get('/drivers', auth, requireSupervisor, async (req, res) => {
+router.get('/drivers', auth, async (req, res) => {
   try {
     const drivers = await Admin.find({ role: 'driver' })
       .select('-password -secret_key')
@@ -454,8 +447,6 @@ router.put('/drivers/:id/reset-password', auth, requireSupervisor, async (req, r
     if (!driver) return res.status(404).json({ error: 'Driver not found.' });
 
     driver.password = new_password;
-    driver.loginAttempts = 0;
-    driver.lockUntil = null;
     await driver.save();
 
     res.json({ success: true, message: `Password reset for driver ${driver.display_name}.` });

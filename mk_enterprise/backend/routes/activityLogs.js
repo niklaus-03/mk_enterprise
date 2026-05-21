@@ -29,13 +29,14 @@ async function logActivity(req, { action, entity_type, entity_id, entity_name, d
 // ── GET /api/activity-logs — Admin only, paginated ────────────────────────────
 router.get('/', requireSupervisor, async (req, res) => {
   try {
-    const { page = 1, limit = 50, user_id, entity_type, action, date } = req.query;
+    const { page = 1, limit = 50, user_id, entity_type, action, date, user_role } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const query = {};
 
     if (user_id) query.user_id = user_id;
     if (entity_type) query.entity_type = entity_type;
     if (action) query.action = action;
+    if (user_role) query.user_role = user_role;
 
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
       const start = new Date(date + 'T00:00:00.000+05:30');
@@ -79,6 +80,5 @@ router.get('/user/:userId', requireSupervisor, async (req, res) => {
 });
 
 // Export the helper for use in other routes
-router.logActivity = logActivity;
-
 module.exports = router;
+module.exports.logActivity = logActivity;

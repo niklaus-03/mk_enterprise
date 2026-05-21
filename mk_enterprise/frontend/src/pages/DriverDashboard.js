@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { tripApi, notificationApi } from '../utils/api';
 import { Car, Truck, History, Settings, Bell, Wallet, MapPin, RefreshCw, CheckCircle, FileText, Play, LogOut, Plus, Package, ArrowLeft, Landmark, Clock, Calendar, Shield, Info, Map, ChevronRight } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 
 const GOODS_TYPES = [
@@ -12,6 +13,7 @@ const GOODS_TYPES = [
 
 export default function DriverDashboard() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const [view, setView] = useState('home'); // home, short, long, history, settings, active_trip
   const [activeTrip, setActiveTrip] = useState(null);
   const [trips, setTrips] = useState([]);
@@ -22,9 +24,11 @@ export default function DriverDashboard() {
   // Trip form
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
-  const [cargoEntries, setCargoEntries] = useState([{ owner_name: '', owner_phone: '', goods_types: [], description: '' }]);
+  const [cargoEntries, setCargoEntries] = useState([{ owner_name: '', owner_phone: '', goods_types: [], description: '', weight: '' }]);
   const [searchQuery, setSearchQuery] = useState({});
   const [dropdownOpen, setDropdownOpen] = useState({});
+  const [activeDispatchId, setActiveDispatchId] = useState(null);
+  const [linkedInvoiceId, setLinkedInvoiceId] = useState(null);
 
   // Expense form
   const [expType, setExpType] = useState('fuel');
@@ -71,15 +75,90 @@ export default function DriverDashboard() {
 
   useEffect(() => { loadActiveTrip(); loadNotifications(); }, [loadActiveTrip, loadNotifications]);
 
+  useEffect(() => {
+    if (location.state?.dispatchNotif && view === 'home' && !activeTrip) {
+      const notif = location.state.dispatchNotif;
+      setActiveDispatchId(notif._id);
+      setLinkedInvoiceId(notif.entity_id);
+      // Extract data from: "Items: aata x1, parle x1. Collect ₹1000 from Mayank. Destination: Mumbai. Total Weight: 0 kg."
+      const msg = notif.message || '';
+      
+      let itemsList = [];
+      const itemsMatch = msg.match(/Items: (.*?)\./);
+      if (itemsMatch) {
+        itemsList = itemsMatch[1].split(', ').map(i => i.trim());
+      }
+      
+      const nameMatch = msg.match(/from ([^.]+)/);
+      const destMatch = msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/);
+      const weightMatch = msg.match(/Weight: (\d+)/);
+
+      const meta = notif.metadata || {};
+      const phone = meta.customer_phone || '';
+      
+      let newCargo = [];
+      if (meta.items && meta.items.length > 0) {
+        const totalW = meta.items.reduce((sum, item) => sum + (item.weight || 0), 0);
+        newCargo = [{
+          owner_name: meta.customer_name || nameMatch?.[1]?.trim() || '',
+          owner_phone: phone,
+          goods_types: [],
+          description: '',
+          weight: totalW,
+          items: meta.items.map(item => ({
+            name: item.goods_type.split(' x')[0],
+            quantity: parseInt(item.goods_type.split(' x')[1]) || 1,
+            weight: item.weight || 0
+          }))
+        }];
+      } else {
+        newCargo = [{
+          owner_name: nameMatch ? nameMatch[1].trim() : '',
+          owner_phone: phone,
+          goods_types: [],
+          description: '',
+          weight: weightMatch ? weightMatch[1].trim() : '',
+          items: itemsList.map(itemStr => ({
+            name: itemStr,
+            quantity: 1,
+            weight: 0
+          }))
+        }];
+      }
+
+      setDestination(meta.destination || (destMatch ? destMatch[1].trim() : ''));
+      setOrigin('MK Enterprise Ganai Gangoli');
+      setCargoEntries(newCargo);
+      
+      setView('short'); // Default to short trip when auto-filling
+      
+      // Clear state to prevent loop
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, view, activeTrip]);
+
   const startTrip = async (type) => {
     if (!origin.trim() || !destination.trim()) return toast.error('Origin and destination are required');
     try {
-      const res = await tripApi.create({ type, origin, destination, cargo: cargoEntries.filter(c => c.owner_name) });
+      const payload = { type, origin, destination, cargo: cargoEntries.filter(c => c.owner_name) };
+      if (linkedInvoiceId) payload.invoice_id = linkedInvoiceId;
+      
+      const res = await tripApi.create(payload);
       toast.success('Trip started! 🚛');
       setActiveTrip(res.trip);
       setView('active_trip');
       setOrigin(''); setDestination('');
-      setCargoEntries([{ owner_name: '', owner_phone: '', goods_types: [], description: '' }]);
+      setLinkedInvoiceId(null);
+      setCargoEntries([{ owner_name: '', owner_phone: '', goods_types: [], description: '', weight: '' }]);
+      
+      // If trip was started from a dispatch notification, mark it as read NOW
+      if (activeDispatchId) {
+        try {
+          await notificationApi.markRead(activeDispatchId);
+          setActiveDispatchId(null);
+          loadNotifications();
+        } catch (e) {}
+      }
     } catch (err) { toast.error(err.message); }
   };
 
@@ -182,7 +261,7 @@ export default function DriverDashboard() {
               <div key={i} className="bg-light rounded p-3 mb-3 border">
                 <div className="row g-3 mb-3">
                   <div className="col-sm-6">
-                    <label className="form-label text-secondary fw-bold" style={{ fontSize: '10px' }}>Owner Name</label>
+                    <label className="form-label text-secondary fw-bold" style={{ fontSize: '10px' }}>Owner Name (Consignor)</label>
                     <input className="form-control" placeholder="Name" value={c.owner_name} onChange={e => { const n = [...cargoEntries]; n[i].owner_name = e.target.value; setCargoEntries(n); }} />
                   </div>
                   <div className="col-sm-6">
@@ -191,98 +270,48 @@ export default function DriverDashboard() {
                   </div>
                 </div>
 
-                <label className="form-label text-secondary fw-bold mb-2 text-start d-block" style={{ fontSize: '11px' }}>Type of Goods (select or type below)</label>
-                
-                {/* Selected Goods Tags */}
-                <div className="d-flex flex-wrap gap-2 mb-2 text-start">
-                  {(c.goods_types || []).length === 0 && (
-                    <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>No goods selected yet</span>
-                  )}
-                  {(c.goods_types || []).map(g => (
-                    <span key={g} className="badge d-inline-flex align-items-center gap-2 py-1.5 px-3" style={{ borderRadius: '20px', fontSize: '11px', fontWeight: 600, background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', boxShadow: '0 2px 6px rgba(37,99,235,0.2)' }}>
-                      <Package size={11} /> {g}
-                      <span onClick={() => {
-                        const n = [...cargoEntries];
-                        n[i].goods_types = n[i].goods_types.filter(t => t !== g);
-                        setCargoEntries(n);
-                      }} style={{ cursor: 'pointer', fontWeight: 800, fontSize: '13px', marginLeft: '4px', opacity: 0.8 }} title="Remove">×</span>
-                    </span>
-                  ))}
-                </div>
-
-                {/* Combobox Search Select */}
-                <div className="position-relative mb-5">
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Type to filter or enter custom goods..."
-                    value={searchQuery[i] || ''}
-                    style={{ borderRadius: '10px', fontSize: '13px', padding: '10px 14px', border: '1px solid #cbd5e1' }}
-                    onFocus={() => setDropdownOpen({ ...dropdownOpen, [i]: true })}
-                    onBlur={() => {
-                      setTimeout(() => setDropdownOpen({ ...dropdownOpen, [i]: false }), 200);
-                    }}
-                    onChange={e => {
-                      setSearchQuery({ ...searchQuery, [i]: e.target.value });
-                      setDropdownOpen({ ...dropdownOpen, [i]: true });
-                    }}
-                  />
-                  
-                  {/* Dropdown Options List */}
-                  {dropdownOpen[i] && (
-                    <div className="premium-dropdown-card text-start mt-1">
-                      <div className="list-group list-group-flush">
-                        {GOODS_TYPES.filter(g => g.toLowerCase().includes((searchQuery[i] || '').toLowerCase()))
-                          .map(g => {
-                            const isSelected = (c.goods_types || []).includes(g);
-                            return (
-                              <button
-                                key={g}
-                                type="button"
-                                className={`premium-dropdown-item ${isSelected ? 'active-item' : ''}`}
-                                onMouseDown={() => {
-                                  const n = [...cargoEntries];
-                                  const types = n[i].goods_types || [];
-                                  n[i].goods_types = types.includes(g) ? types.filter(t => t !== g) : [...types, g];
-                                  setCargoEntries(n);
-                                  setSearchQuery({ ...searchQuery, [i]: '' });
-                                }}
-                              >
-                                <span>{g}</span>
-                                {isSelected && <span style={{ fontSize: '11px', fontWeight: 600 }}>✓ Selected</span>}
-                              </button>
-                            );
-                          })}
-                        
-                        {searchQuery[i] && searchQuery[i].trim() !== '' && !GOODS_TYPES.map(x => x.toLowerCase()).includes(searchQuery[i].trim().toLowerCase()) && (
-                          <button
-                            type="button"
-                            className="premium-dropdown-item premium-dropdown-add-custom"
-                            onMouseDown={() => {
-                              const n = [...cargoEntries];
-                              const customGoods = searchQuery[i].trim();
-                              if (customGoods) {
-                                const types = n[i].goods_types || [];
-                                if (!types.includes(customGoods)) {
-                                  n[i].goods_types = [...types, customGoods];
-                                  setCargoEntries(n);
-                                }
-                              }
-                              setSearchQuery({ ...searchQuery, [i]: '' });
-                            }}
-                          >
-                            <span>➕ Add Custom: <strong>"{searchQuery[i].trim()}"</strong></span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                <div className="mt-3">
+                  <label className="form-label text-secondary fw-bold mb-2 text-start d-block" style={{ fontSize: '11px' }}>Itemized Cargo (LR Table)</label>
+                  <table className="table table-bordered table-sm mb-2" style={{ fontSize: '13px' }}>
+                    <thead className="table-light">
+                      <tr>
+                        <th>Particulars (Item)</th>
+                        <th width="80">Qty</th>
+                        <th width="100">Weight (kg)</th>
+                        <th width="40"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(c.items || []).map((item, itemIdx) => (
+                        <tr key={itemIdx}>
+                          <td className="p-0"><input className="form-control form-control-sm border-0" placeholder="e.g. Wheat" value={item.name} onChange={e => { const n = [...cargoEntries]; n[i].items[itemIdx].name = e.target.value; setCargoEntries(n); }} /></td>
+                          <td className="p-0"><input type="number" className="form-control form-control-sm border-0" placeholder="0" value={item.quantity} onChange={e => { const n = [...cargoEntries]; n[i].items[itemIdx].quantity = e.target.value; setCargoEntries(n); }} /></td>
+                          <td className="p-0"><input type="number" className="form-control form-control-sm border-0" placeholder="0" value={item.weight} onChange={e => { const n = [...cargoEntries]; n[i].items[itemIdx].weight = e.target.value; n[i].weight = n[i].items.reduce((s, it) => s + (parseFloat(it.weight) || 0), 0); setCargoEntries(n); }} /></td>
+                          <td className="p-0 text-center align-middle">
+                            <button type="button" className="btn btn-link text-danger p-0" onClick={() => { const n = [...cargoEntries]; n[i].items = n[i].items.filter((_, idx) => idx !== itemIdx); n[i].weight = n[i].items.reduce((s, it) => s + (parseFloat(it.weight) || 0), 0); setCargoEntries(n); }}>×</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {(c.items || []).length === 0 && (
+                        <tr><td colSpan="4" className="text-center text-muted" style={{ fontSize: '12px', fontStyle: 'italic', padding: '8px' }}>No items added</td></tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan="2" className="text-end fw-bold align-middle" style={{ fontSize: '12px' }}>Total Weight:</td>
+                        <td colSpan="2" className="fw-bold align-middle bg-light p-0">
+                          <input type="number" className="form-control form-control-sm border-0 bg-transparent fw-bold text-dark px-2" placeholder="0" value={c.weight} onChange={e => { const n = [...cargoEntries]; n[i].weight = e.target.value; setCargoEntries(n); }} />
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <button type="button" className="btn btn-sm btn-outline-secondary py-1" style={{ fontSize: '11px' }} onClick={() => { const n = [...cargoEntries]; if (!n[i].items) n[i].items = []; n[i].items.push({ name: '', quantity: 1, weight: 0 }); setCargoEntries(n); }}>+ Add Item Row</button>
                 </div>
               </div>
             ))}
              <button
               type="button"
-              onClick={() => setCargoEntries([...cargoEntries, { owner_name: '', owner_phone: '', goods_types: [], description: '' }])}
+              onClick={() => setCargoEntries([...cargoEntries, { owner_name: '', owner_phone: '', goods_types: [], items: [{ name: '', quantity: 1, weight: 0 }], description: '', weight: '' }])}
               className="add-row-btn mb-3 d-inline-flex align-items-center justify-content-center gap-1"
             >
               <Plus size={14} /> Add Another Consignment Owner
@@ -341,6 +370,63 @@ export default function DriverDashboard() {
               </div>
             </div>
             <div className="card-body">
+              {/* Cargo List Display (Transport Invoice Format) */}
+              {activeLeg?.cargo?.length > 0 && (
+                <>
+                  <h5 className="mb-3 fw-bold text-dark d-flex align-items-center gap-2"><Package size={18} className="text-secondary" /> Active Cargo Loaded (Bilty)</h5>
+                  <div className="mb-4">
+                    {activeLeg.cargo.map((c, idx) => (
+                      <div key={idx} className="bg-light rounded p-3 mb-3 border shadow-sm">
+                        <div className="mb-2 pb-2 border-bottom" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <span className="text-muted text-uppercase fw-bold" style={{ fontSize: '10px', letterSpacing: '0.5px' }}>Consignor / Owner</span>
+                            <div className="fw-bold text-dark mt-1" style={{ fontSize: '15px' }}>
+                              {c.owner_name} {c.owner_phone && <span className="text-muted fw-normal" style={{fontSize: '13px'}}>({c.owner_phone})</span>}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <table className="table table-sm table-borderless mt-2 mb-0" style={{ fontSize: '13px' }}>
+                          <thead className="table-light border-bottom">
+                            <tr>
+                              <th className="fw-bold text-secondary">Particulars</th>
+                              <th className="fw-bold text-secondary text-center" width="80">Qty</th>
+                              <th className="fw-bold text-secondary text-end" width="100">Weight (kg)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {c.items && c.items.length > 0 ? (
+                              c.items.map((item, itemIdx) => (
+                                <tr key={itemIdx} className="border-bottom border-light">
+                                  <td className="align-middle fw-medium text-dark py-2">{item.name}</td>
+                                  <td className="align-middle text-center py-2">{item.quantity}</td>
+                                  <td className="align-middle text-end py-2">{item.weight} kg</td>
+                                </tr>
+                              ))
+                            ) : (
+                              (c.goods_types || []).map((g, gi) => (
+                                <tr key={gi} className="border-bottom border-light">
+                                  <td className="align-middle fw-medium text-dark py-2">{g}</td>
+                                  <td className="align-middle text-center py-2">-</td>
+                                  <td className="align-middle text-end py-2">-</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                          <tfoot>
+                            <tr>
+                              <td colSpan="2" className="text-end fw-bold pt-3" style={{ fontSize: '13px', color: '#1e40af' }}>Total Weight:</td>
+                              <td className="text-end fw-bold pt-3" style={{ fontSize: '14px', color: '#1e40af' }}>{c.weight || 0} kg</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                  <hr className="my-4" />
+                </>
+              )}
+
               {/* Expense Logging Form */}
               <h5 className="mb-3 fw-bold text-dark d-flex align-items-center gap-2"><Wallet size={18} className="text-success" /> Log Highway Expense</h5>
               <div className="d-flex flex-wrap gap-2 mb-3">
@@ -626,9 +712,9 @@ export default function DriverDashboard() {
         </div>
       )}
 
-      {/* Active Live Dispatched Invoice Data Banner */}
-      {view === 'home' && !activeTrip && (
-        <div style={{ 
+      {/* Active Live Dispatched Invoice Data Banners */}
+      {view === 'home' && !activeTrip && notifications.filter(n => n.type === 'driver_dispatch' && !n.is_read).map(dispatchNotif => (
+        <div key={dispatchNotif._id} style={{ 
           background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', 
           border: '1.5px solid #bfdbfe', 
           borderRadius: 14, 
@@ -648,24 +734,77 @@ export default function DriverDashboard() {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 11, fontWeight: 800, color: '#1d4ed8', letterSpacing: '0.5px', textTransform: 'uppercase' }}>New Dispatch Received</span>
-                <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>Just Now</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#1d4ed8', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                  NEW DISPATCH RECEIVED {dispatchNotif.sender_name && dispatchNotif.sender_name !== 'System' ? `(Assigned by ${dispatchNotif.sender_name})` : ''}
+                </span>
+                <span style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>{new Date(dispatchNotif.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <h5 style={{ fontSize: 14.5, fontWeight: 700, color: '#1e3a8a', margin: '4px 0 2px' }}>
-                Invoice ADM-INV-00094 Assigned
+                {dispatchNotif.title}
               </h5>
               <p style={{ fontSize: 12.5, color: '#1e40af', marginBottom: 12, lineHeight: 1.4 }}>
-                <strong>Customer:</strong> Mayank Kumar (Pune)<br />
-                <strong>Pending Balance:</strong> ₹12,199.38 • <strong>Items:</strong> Computer, Cooking Oil, Cement, aata
+                {dispatchNotif.message}
               </p>
               
               <div style={{ display: 'flex', gap: 8 }}>
                 <button 
-                  onClick={() => {
-                    setOrigin('Ganai');
-                    setDestination('Pune');
-                    setCargoEntries([{ owner_name: 'Mayank Kumar', owner_phone: '7417897159', goods_types: ['Computer', 'Cement'], description: '' }]);
+                  onClick={async () => {
+                    // Extract info from message for prefilling
+                    const msg = dispatchNotif.message || '';
+                    let customerName = '';
+                    if (msg.includes('Collect ₹')) {
+                      const afterFrom = msg.split(' from ')[1];
+                      if (afterFrom) customerName = afterFrom.split('.')[0];
+                    }
+                    
+                    const meta = dispatchNotif.metadata || {};
+                    const phone = meta.customer_phone || '';
+                    const dest = meta.destination || (msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/) ? msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/)[1].trim() : '');
+                    const cName = meta.customer_name || customerName || 'Dispatched Customer';
+
+                    let newCargo = [];
+                    if (meta.items && meta.items.length > 0) {
+                      const totalW = meta.items.reduce((sum, item) => sum + (item.weight || 0), 0);
+                      newCargo = [{
+                        owner_name: cName,
+                        owner_phone: phone,
+                        goods_types: [], // Legacy array, keeping empty
+                        description: 'Auto-filled from dispatch',
+                        weight: totalW,
+                        items: meta.items.map(item => ({
+                          name: item.goods_type.split(' x')[0],
+                          quantity: parseInt(item.goods_type.split(' x')[1]) || 1,
+                          weight: item.weight || 0
+                        }))
+                      }];
+                    } else {
+                      let itemsList = [];
+                      const itemsMatch = msg.match(/Items: (.*?)\./);
+                      if (itemsMatch) {
+                        itemsList = itemsMatch[1].split(', ').map(i => i.trim());
+                      }
+                      const totalWeight = meta.total_weight || '';
+                      
+                      newCargo = [{
+                        owner_name: cName, 
+                        owner_phone: phone, 
+                        goods_types: [], 
+                        description: 'Auto-filled from dispatch',
+                        weight: totalWeight,
+                        items: itemsList.map(itemStr => ({
+                          name: itemStr,
+                          quantity: 1,
+                          weight: 0
+                        }))
+                      }];
+                    }
+                    
+                    setOrigin('MK Enterprise Ganai Gangoli');
+                    setDestination(dest);
+                    setCargoEntries(newCargo);
+                    setActiveDispatchId(dispatchNotif._id);
                     setView('short');
+                    
                     toast.success("Loaded dispatch data! Ready to start trip.");
                   }}
                   style={{
@@ -686,7 +825,13 @@ export default function DriverDashboard() {
                   <Play size={12} fill="#fff" /> Accept &amp; Start Trip
                 </button>
                 <button 
-                  onClick={() => toast.success("Dispatch acknowledged.")}
+                  onClick={async () => {
+                    try {
+                      await notificationApi.markRead(dispatchNotif._id);
+                      loadNotifications();
+                      toast.success("Dispatch acknowledged and dismissed.");
+                    } catch (e) {}
+                  }}
                   style={{
                     background: 'none',
                     border: '1px solid #3b82f6',
@@ -704,7 +849,7 @@ export default function DriverDashboard() {
             </div>
           </div>
         </div>
-      )}
+      ))}
 
       {/* HOME VIEW */}
       {view === 'home' && !activeTrip && (

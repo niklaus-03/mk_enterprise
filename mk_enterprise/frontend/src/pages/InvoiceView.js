@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import toast from 'react-hot-toast';
-import { invoiceApi } from '../utils/api';
+import { invoiceApi, managerApi, driverApi, notificationApi } from '../utils/api';
 import { supabase } from '../utils/supabase';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -38,14 +38,20 @@ export default function InvoiceView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { settings } = useApp();
-  const { isManager } = useAuth();
+  const { isManager, user } = useAuth();
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState([]);
+  const [staffData, setStaffData] = useState({ managers: [], drivers: [] });
+  const [fetchingStaff, setFetchingStaff] = useState(false);
+  const [sendingDispatch, setSendingDispatch] = useState(false);
   const [emailTo, setEmailTo] = useState('');
   const [emailSending, setEmailSending] = useState(false);
+  const [showEscalateModal, setShowEscalateModal] = useState(false);
+  const [escalateReason, setEscalateReason] = useState('');
+  const [escalating, setEscalating] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [scale, setScale] = useState(1);
   const [zoomIn, setZoomIn] = useState(false);
@@ -76,6 +82,22 @@ export default function InvoiceView() {
     invoiceApi.get(id).then(setInvoice).catch(e => { toast.error(e.message); navigate('/invoices'); }).finally(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    if (showSendModal) {
+      setFetchingStaff(true);
+      Promise.all([
+        managerApi.getAll().catch(() => ({ managers: [] })),
+        driverApi.getAll().catch(() => ({ drivers: [] }))
+      ]).then(([mgrRes, drvRes]) => {
+        setStaffData({ 
+          managers: mgrRes.managers || [], 
+          drivers: drvRes.drivers || [] 
+        });
+        setFetchingStaff(false);
+      });
+    }
+  }, [showSendModal]);
+
   const handleDelete = async () => {
     if (!window.confirm('Cancel this invoice? Stock will be restored.')) return;
     try { await invoiceApi.delete(id); toast.success('Invoice cancelled'); navigate('/invoices'); }
@@ -90,9 +112,29 @@ export default function InvoiceView() {
   };
 
   const handleEscalate = () => {
-    const reason = window.prompt("Reason for escalation to Admin:");
-    if (reason) {
+    setShowEscalateModal(true);
+  };
+
+  const submitEscalate = async () => {
+    if (!escalateReason.trim()) return toast.error('Please enter a reason');
+    setEscalating(true);
+    try {
+      await notificationApi.create({
+        recipient_role: 'supervisor',
+        type: 'invoice_approval',
+        title: `⚠️ Escalation — ${invoice.invoice_number}`,
+        message: escalateReason,
+        priority: 'high',
+        entity_type: 'invoice',
+        entity_id: invoice._id,
+      });
       toast.success('Invoice escalated to Admin for review.');
+      setShowEscalateModal(false);
+      setEscalateReason('');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setEscalating(false);
     }
   };
 
@@ -135,6 +177,70 @@ export default function InvoiceView() {
       setEmailTo('');
     } finally {
       setEmailSending(false);
+    }
+  };
+
+  const handleSendDispatch = async () => {
+    if (selectedStaff.length === 0) return toast.error('Select at least one staff member');
+    setSendingDispatch(true);
+    try {
+      const itemSummary = invoice.items.map(i => `${i.product_name} x${i.qty}`).join(', ');
+      const message = `Items: ${itemSummary}. Collect ₹${invoice.balance_due > 0 ? invoice.balance_due : invoice.total} from ${invoice.customer_name}.${invoice.customer_address ? ' Destination: ' + invoice.customer_address : ''} Total Weight: ${invoice.total_weight || 0} kg.`;
+
+      for (const staffId of selectedStaff) {
+        const isManager = staffData.managers.some(m => m._id === staffId);
+        const role = isManager ? 'manager' : 'driver';
+
+        const notifType = isManager ? 'invoice_shared' : 'driver_dispatch';
+        const notifTitle = isManager ? `📄 Invoice Shared — ${invoice.invoice_number}` : `📦 Delivery Dispatch — ${invoice.invoice_number}`;
+        const notifMessage = isManager 
+          ? `Invoice ${invoice.invoice_number} for ${invoice.customer_name} has been shared with you.` 
+          : message;
+
+        await notificationApi.create({
+          recipient_id: staffId,
+          recipient_role: role,
+          type: notifType,
+          title: notifTitle,
+          message: notifMessage,
+          priority: 'high',
+          entity_type: 'invoice',
+          entity_id: invoice._id,
+          metadata: { 
+            invoice_id: invoice._id, 
+            total_weight: invoice.total_weight || 0,
+            customer_phone: invoice.customer_phone || '',
+            customer_name: invoice.customer_name || '',
+            destination: invoice.customer_address || '',
+            items: invoice.items.map(item => ({
+              goods_type: `${item.item_name} x${item.quantity}`,
+              weight: item.weight ? (parseFloat(item.weight) * parseInt(item.quantity)) : 0
+            }))
+          }
+        });
+
+        // If assigning to a driver, also notify the Admins/Supervisors about who assigned it
+        if (role === 'driver') {
+          const staffName = staffData.drivers.find(d => d._id === staffId)?.display_name || 'Driver';
+          await notificationApi.create({
+            recipient_id: null,
+            recipient_role: 'supervisor',
+            type: 'dispatch_assigned',
+            title: `📋 Dispatch Assigned`,
+            message: `${user?.display_name || user?.username} assigned Invoice ${invoice.invoice_number} to ${staffName}`,
+            priority: 'medium',
+            entity_type: 'invoice',
+            entity_id: invoice._id,
+          });
+        }
+      }
+      toast.success('Dispatch notification(s) sent!');
+      setShowSendModal(false);
+      setSelectedStaff([]);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSendingDispatch(false);
     }
   };
 
@@ -793,121 +899,159 @@ Thank you! 🙏`
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 
-                {/* Managers Section */}
-                <div>
-                  <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    💼 Managers Present
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[
-                      { id: 'mgr-1', name: 'Suresh Sharma', role: 'manager' },
-                      { id: 'mgr-2', name: 'Neha Verma', role: 'manager' }
-                    ].map(person => {
-                      const isSelected = selectedStaff.includes(person.id);
-                      return (
-                        <div 
-                          key={person.id}
-                          onClick={() => {
-                            if (isSelected) {
-                              setSelectedStaff(selectedStaff.filter(id => id !== person.id));
-                            } else {
-                              setSelectedStaff([...selectedStaff, person.id]);
-                            }
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 14px',
-                            background: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-light)',
-                            border: isSelected ? '1px solid #6366f1' : '1px solid var(--border)',
-                            borderRadius: 8,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <input 
-                              type="checkbox" 
-                              checked={isSelected}
-                              onChange={() => {}} 
-                              style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.name}</span>
-                          </div>
-                          <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Manager</span>
+                {fetchingStaff ? (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Loading staff list...</div>
+                ) : (
+                  <>
+                    {/* Managers Section */}
+                    {staffData.managers.length > 0 && (
+                      <div>
+                        <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          💼 Managers Present
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {staffData.managers.map(person => {
+                            const isSelected = selectedStaff.includes(person._id);
+                            return (
+                              <div 
+                                key={person._id}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedStaff(selectedStaff.filter(id => id !== person._id));
+                                  } else {
+                                    setSelectedStaff([...selectedStaff, person._id]);
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '10px 14px',
+                                  background: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-light)',
+                                  border: isSelected ? '1px solid #6366f1' : '1px solid var(--border)',
+                                  borderRadius: 8,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isSelected}
+                                    onChange={() => {}} 
+                                    style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
+                                  />
+                                  <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.display_name || person.username}</span>
+                                </div>
+                                <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Manager</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                      </div>
+                    )}
 
-                {/* Drivers Section */}
-                <div style={{ marginTop: 8 }}>
-                  <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    🚚 Drivers Present
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[
-                      { id: 'drv-1', name: 'Ramesh Kumar', role: 'driver' },
-                      { id: 'drv-2', name: 'Amit Singh', role: 'driver' },
-                      { id: 'drv-3', name: 'Jaswinder Singh', role: 'driver' }
-                    ].map(person => {
-                      const isSelected = selectedStaff.includes(person.id);
-                      return (
-                        <div 
-                          key={person.id}
-                          onClick={() => {
-                            if (isSelected) {
-                              setSelectedStaff(selectedStaff.filter(id => id !== person.id));
-                            } else {
-                              setSelectedStaff([...selectedStaff, person.id]);
-                            }
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 14px',
-                            background: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-light)',
-                            border: isSelected ? '1px solid #6366f1' : '1px solid var(--border)',
-                            borderRadius: 8,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <input 
-                              type="checkbox" 
-                              checked={isSelected}
-                              onChange={() => {}} 
-                              style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.name}</span>
-                          </div>
-                          <span className="badge" style={{ background: '#fef3c7', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
+                    {/* Drivers Section */}
+                    {staffData.drivers.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          🚚 Drivers Present
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {staffData.drivers.map(person => {
+                            const isSelected = selectedStaff.includes(person._id);
+                            return (
+                              <div 
+                                key={person._id}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedStaff(selectedStaff.filter(id => id !== person._id));
+                                  } else {
+                                    setSelectedStaff([...selectedStaff, person._id]);
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '10px 14px',
+                                  background: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-light)',
+                                  border: isSelected ? '1px solid #6366f1' : '1px solid var(--border)',
+                                  borderRadius: 8,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isSelected}
+                                    onChange={() => {}} 
+                                    style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
+                                  />
+                                  <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.display_name || person.username}</span>
+                                </div>
+                                <span className="badge" style={{ background: '#fef3c7', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                      </div>
+                    )}
+                    
+                    {staffData.managers.length === 0 && staffData.drivers.length === 0 && (
+                      <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>No staff members found.</div>
+                    )}
+                  </>
+                )}
 
               </div>
 
               <div style={{ marginTop: 20 }}>
                 <button
+                  onClick={handleSendDispatch}
+                  disabled={sendingDispatch || fetchingStaff || selectedStaff.length === 0}
                   className="btn btn-primary btn-block d-inline-flex align-items-center gap-2"
                   style={{ justifyContent: 'center', background: '#6366f1', borderColor: '#6366f1' }}
-                  onClick={() => {
-                    if (selectedStaff.length === 0) {
-                      toast.error("Please select at least one manager or driver!");
-                      return;
-                    }
-                    toast.success(`Invoice dispatched successfully to ${selectedStaff.length} selected staff!`);
-                    setShowSendModal(false);
-                  }}
                 >
-                  <Send size={14} /> Send Dispatch Notification
+                  <Send size={14} /> {sendingDispatch ? 'Sending...' : 'Send Dispatch Notification'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Escalate Modal */}
+      {showEscalateModal && (
+        <div className="modal-overlay" onClick={() => setShowEscalateModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <div className="modal-title d-flex align-items-center gap-2">
+                <AlertTriangle size={18} className="text-warning" /> Escalate to Admin
+              </div>
+              <button className="modal-close" onClick={() => setShowEscalateModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px 15px' }}>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 15 }}>
+                Provide a reason for escalating this invoice to the Supervisor Admin. They will receive an instant notification.
+              </p>
+              <textarea
+                className="form-control"
+                rows="4"
+                placeholder="Reason for escalation..."
+                value={escalateReason}
+                onChange={e => setEscalateReason(e.target.value)}
+                style={{ resize: 'none', marginBottom: 20 }}
+              ></textarea>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button className="btn btn-outline" onClick={() => setShowEscalateModal(false)}>Cancel</button>
+                <button 
+                  className="btn btn-warning d-inline-flex align-items-center gap-2" 
+                  onClick={submitEscalate}
+                  disabled={escalating || !escalateReason.trim()}
+                >
+                  {escalating ? <span className="spinner"></span> : <AlertTriangle size={16} />}
+                  Submit Escalation
                 </button>
               </div>
             </div>

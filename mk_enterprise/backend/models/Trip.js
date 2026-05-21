@@ -4,8 +4,14 @@ const mongoose = require('mongoose');
 const cargoSchema = new mongoose.Schema({
   owner_name: { type: String, default: '' },
   owner_phone: { type: String, default: '' },
-  goods_types: [{ type: String }], // Fruits-Vegetables, Goods, Paint, Tile, Cement, Hardware Sariya, Beverages, Booking, Others
+  goods_types: [{ type: String }], // Legacy fallback
   description: { type: String, default: '' },
+  weight: { type: Number, default: 0 }, // kg/tons
+  items: [{
+    name: { type: String },
+    quantity: { type: Number },
+    weight: { type: Number }
+  }]
 }, { _id: false });
 
 // Timeline entry (start, expense, reached, loading, returning, end)
@@ -40,8 +46,8 @@ const tripLegSchema = new mongoose.Schema({
 const tripSchema = new mongoose.Schema({
   driver_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', required: true },
   driver_name: { type: String, default: '' },
-  vehicle_number: { type: String, default: '' },
-
+  vehicle_number: { type: String, required: true },
+  invoice_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null },
   type: { type: String, enum: ['short', 'long'], required: true },
   status: { type: String, enum: ['active', 'completed'], default: 'active' },
 

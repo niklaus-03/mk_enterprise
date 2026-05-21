@@ -15,8 +15,6 @@ const adminSchema = new mongoose.Schema({
   is_active: { type: Boolean, default: true },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   display_name: { type: String, default: '' },
-  loginAttempts: { type: Number, default: 0 },
-  lockUntil: { type: Date, default: null },
   lastLogin: { type: Date, default: null },
 }, { timestamps: true });
 
@@ -41,16 +39,6 @@ adminSchema.methods.comparePassword = async function (plain) {
 adminSchema.methods.compareSecretKey = async function (plain) {
   if (!plain || !this.secret_key) return false;
   return bcrypt.compare(plain, this.secret_key);
-};
-
-// Check if account is locked (5+ failed attempts = permanent lock until admin reset)
-adminSchema.methods.isLocked = function () {
-  return this.loginAttempts >= 5;
-};
-
-// Increment failed login attempt — after 5, account stays locked until admin resets
-adminSchema.methods.incLoginAttempts = async function () {
-  return this.updateOne({ $inc: { loginAttempts: 1 } });
 };
 
 // Generate a 3-letter prefix code from username (e.g., 'bharat' -> 'BRT', supervisor -> 'ADM')

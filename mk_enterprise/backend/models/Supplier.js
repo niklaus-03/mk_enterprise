@@ -6,6 +6,7 @@ const supplierSchema = new mongoose.Schema({
   address: { type: String, default: '', trim: true },
   notes: { type: String, default: '', trim: true },
   is_active: { type: Boolean, default: true },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
 }, { timestamps: true });
 
 supplierSchema.index({ name: 1 });

@@ -355,43 +355,103 @@ router.post('/walkin-due', async (req, res) => {
     }
     const { formatIST } = require('../utils/timeUtils');
     const now = new Date();
+    const dueAmount = parseFloat(amount);
+    const customerPhone = phone && phone.trim() ? phone.trim() : 'Not Available';
 
-    // Create a minimal invoice record to represent this due
+    // Phone lookup: if phone provided, check for existing registered customer
+    if (customerPhone !== 'Not Available') {
+      const existingCustomer = await Customer.findOne({
+        phone: customerPhone,
+        is_active: true,
+      });
+
+      if (existingCustomer) {
+        // Link due to the registered customer's ledger instead of creating walk-in invoice
+        const invoice = new Invoice({
+          customer_id: existingCustomer._id,
+          customer_name: existingCustomer.name,
+          customer_phone: existingCustomer.phone,
+          items: [{
+            product_name: notes || 'Due entry',
+            qty: 1,
+            price: dueAmount,
+            gst: 0,
+            taxable_amount: dueAmount,
+            cgst: 0,
+            sgst: 0,
+            total: dueAmount,
+          }],
+          subtotal: dueAmount,
+          discount: 0,
+          gst_total: 0,
+          total: dueAmount,
+          total_with_prev_balance: dueAmount + (existingCustomer.getManagerBalance(req.user.id) || 0),
+          payments: [],
+          amount_received: 0,
+          balance_due: dueAmount,
+          notes: notes || 'Manual due entry (phone-matched)',
+          gst_enabled: false,
+          date: now,
+          ist_formatted: formatIST(now),
+          created_by: req.user ? req.user.id : null,
+        });
+        await invoice.save();
+
+        // Update customer's per-manager balance
+        const prevBalance = existingCustomer.getManagerBalance(req.user.id);
+        existingCustomer.setManagerBalance(req.user.id, prevBalance + dueAmount);
+        await existingCustomer.save();
+
+        return res.status(201).json({
+          success: true,
+          matched_customer: true,
+          customer_id: existingCustomer._id,
+          customer_name: existingCustomer.name,
+          invoice_id: invoice._id,
+          invoice_number: invoice.invoice_number,
+          message: `Due of ₹${dueAmount.toFixed(2)} added to registered customer "${existingCustomer.name}" ledger`,
+        });
+      }
+    }
+
+    // No phone match — create standard walk-in invoice
     const invoice = new Invoice({
       customer_id: null,
       customer_name: name.trim(),
-      customer_phone: phone || '',
+      customer_phone: customerPhone,
       items: [{
         product_name: notes || 'Due entry',
         qty: 1,
-        price: parseFloat(amount),
+        price: dueAmount,
         gst: 0,
-        taxable_amount: parseFloat(amount),
+        taxable_amount: dueAmount,
         cgst: 0,
         sgst: 0,
-        total: parseFloat(amount),
+        total: dueAmount,
       }],
-      subtotal: parseFloat(amount),
+      subtotal: dueAmount,
       discount: 0,
       gst_total: 0,
-      total: parseFloat(amount),
-      total_with_prev_balance: parseFloat(amount),
+      total: dueAmount,
+      total_with_prev_balance: dueAmount,
       payments: [],
       amount_received: 0,
-      balance_due: parseFloat(amount),
+      balance_due: dueAmount,
       notes: notes || 'Manual due entry',
       gst_enabled: false,
       date: now,
       ist_formatted: formatIST(now),
+      created_by: req.user ? req.user.id : null,
     });
 
     await invoice.save();
 
     res.status(201).json({
       success: true,
+      matched_customer: false,
       invoice_id: invoice._id,
       invoice_number: invoice.invoice_number,
-      message: `Due of ₹${parseFloat(amount).toFixed(2)} created for ${name}`,
+      message: `Due of ₹${dueAmount.toFixed(2)} created for ${name}`,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -3,6 +3,7 @@ const router = express.Router();
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
 const auth = require('../middleware/auth');
+const { logActivity } = require('./activityLogs');
 
 router.use(auth);
 
@@ -101,6 +102,16 @@ router.post('/', async (req, res) => {
     }
 
     const customer = await Customer.create(customerData);
+
+    // Log activity
+    logActivity(req, {
+      action: 'create',
+      entity_type: 'customer',
+      entity_id: customer._id,
+      entity_name: customer.name,
+      description: `Customer created. Phone: ${customer.phone || 'N/A'}`,
+    });
+
     res.status(201).json(customer);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -116,6 +127,16 @@ router.put('/:id', async (req, res) => {
       updateData.allowed_managers = allowed_managers;
     }
     const customer = await Customer.findByIdAndUpdate(req.params.id, updateData, { new: true });
+
+    // Log activity
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'customer',
+      entity_id: customer._id,
+      entity_name: customer.name,
+      description: `Customer updated`,
+    });
+
     res.json(customer);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -126,7 +147,58 @@ router.delete('/:id', async (req, res) => {
     if (!checkCust) return res.status(404).json({ error: 'Customer not found or access denied' });
 
     await Customer.findByIdAndUpdate(req.params.id, { is_active: false });
+
+    // Log activity
+    logActivity(req, {
+      action: 'delete',
+      entity_type: 'customer',
+      entity_id: checkCust._id,
+      entity_name: checkCust.name,
+      description: `Customer soft-deleted`,
+    });
+
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST delegate customer to another manager
+router.post('/:id/delegate', async (req, res) => {
+  try {
+    const { manager_id } = req.body;
+    if (!manager_id) return res.status(400).json({ error: 'manager_id is required' });
+
+    const customer = await Customer.findById(req.params.id);
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+    // Only creator or supervisor can delegate
+    if (req.user.role !== 'supervisor' && customer.created_by?.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Only the customer creator or supervisor can delegate' });
+    }
+
+    // Avoid duplicates in allowed_managers
+    const already = customer.allowed_managers.some(m => m.toString() === manager_id);
+    if (!already) {
+      customer.allowed_managers.push(manager_id);
+    }
+
+    // Initialize their ledger entry in manager_balances if not present
+    const hasLedger = customer.manager_balances.some(mb => mb.manager_id.toString() === manager_id);
+    if (!hasLedger) {
+      customer.manager_balances.push({ manager_id, balance: 0 });
+    }
+
+    await customer.save();
+
+    // Log activity
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'customer',
+      entity_id: customer._id,
+      entity_name: customer.name,
+      description: `Customer delegated to manager ${manager_id}`,
+    });
+
+    res.json({ success: true, allowed_managers: customer.allowed_managers });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

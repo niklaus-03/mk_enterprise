@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { stockApi, productApi } from '../utils/api';
 import { formatIST } from '../utils/helpers';
+import { Package, Plus, Filter, ArrowDownRight, ArrowUpRight, FileText, Settings2, RefreshCcw, Truck, User, AlignLeft, Calendar, Info, Layers, CheckCircle2 } from 'lucide-react';
 
-// Enhancement 7: extended unit options
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
 export default function StockMovements() {
@@ -29,11 +29,11 @@ export default function StockMovements() {
   useEffect(() => { load(); }, [filter, page]);
 
   const handleCreate = async () => {
-    if (!form.product_id || !form.qty || parseFloat(form.qty) <= 0) return toast.error('Select product and enter quantity');
+    if (!form.product_id || !form.qty || parseFloat(form.qty) <= 0) return toast.error('Select product and enter a valid quantity');
     setSaving(true);
     try {
       await stockApi.create({ ...form, qty: parseFloat(form.qty) });
-      toast.success('Stock movement recorded');
+      toast.success('Stock movement recorded successfully');
       setShowModal(false);
       setForm({ product_id: '', type: 'incoming', qty: '', qty_unit: 'pcs', vehicle_number: '', driver_name: '', supplier: '', notes: '' });
       load();
@@ -46,10 +46,6 @@ export default function StockMovements() {
     setShowModal(true);
   };
 
-  const typeColors = { incoming: 'badge-success', outgoing: 'badge-danger' };
-  const sourceColors = { invoice: 'badge-primary', manual: 'badge-gray', return: 'badge-warning', adjustment: 'badge-warning' };
-
-  // Auto-set qty_unit from selected product
   const onProductChange = (e) => {
     const p = products.find(p => p._id === e.target.value);
     setForm({ ...form, product_id: e.target.value, qty_unit: p?.unit || 'pcs' });
@@ -57,138 +53,283 @@ export default function StockMovements() {
 
   return (
     <div>
-      <div className="page-header">
+      {/* ── HEADER ── */}
+      <div className="page-header" style={{ marginBottom: 24 }}>
         <div>
-          <div className="page-title">📦 Stock Movements</div>
-          <div className="page-subtitle">{total} total records · Tracks incoming & outgoing stock</div>
+          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ background: '#fef3c7', color: '#d97706', padding: 8, borderRadius: 12, display: 'flex' }}>
+              <Layers size={24} strokeWidth={2.5} />
+            </div>
+            <span>Stock Ledger</span>
+          </div>
+          <div className="page-subtitle" style={{ marginLeft: 50 }}>Track all incoming and outgoing inventory movements</div>
         </div>
-        <button className="btn btn-primary" onClick={openModal}>+ Record Movement</button>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button 
+            className="btn btn-primary" 
+            onClick={openModal}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 10, fontWeight: 700, padding: '10px 18px', boxShadow: '0 4px 6px -1px rgba(79, 70, 229, 0.2)' }}
+          >
+            <Plus size={16} /> Record Movement
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="card mb-4">
-        <div className="card-body" style={{ padding: '14px 20px' }}>
-          <div className="flex gap-4" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <div className="flex gap-2 flex-center">
-              <span className="text-muted fs-13 fw-600">Type:</span>
-              {[['', 'All'], ['incoming', '↓ Incoming'], ['outgoing', '↑ Outgoing']].map(([v, l]) => (
-                <button key={v} className={`btn btn-sm ${filter.type === v ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter(f => ({ ...f, type: v }))}>{l}</button>
+      {/* ── FILTERS ── */}
+      <div className="card" style={{ marginBottom: 24, borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+        <div className="card-body" style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', background: '#f8fafc', borderRadius: 16 }}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Filter size={14} /> Movement Type
+            </span>
+            <div style={{ display: 'flex', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              {[['', 'All Types'], ['incoming', '↓ Incoming'], ['outgoing', '↑ Outgoing']].map(([v, l]) => (
+                <button 
+                  key={v} 
+                  onClick={() => setFilter(f => ({ ...f, type: v }))}
+                  style={{ 
+                    padding: '8px 16px', fontSize: 13, fontWeight: filter.type === v ? 700 : 600,
+                    background: filter.type === v ? (v === 'incoming' ? '#dcfce7' : v === 'outgoing' ? '#fee2e2' : '#e0e7ff') : 'transparent',
+                    color: filter.type === v ? (v === 'incoming' ? '#16a34a' : v === 'outgoing' ? '#dc2626' : '#4f46e5') : '#64748b',
+                    border: 'none', borderRight: v !== 'outgoing' ? '1px solid #e2e8f0' : 'none',
+                    cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >{l}</button>
               ))}
             </div>
-            <div className="flex gap-2 flex-center">
-              <span className="text-muted fs-13 fw-600">Source:</span>
-              {[['', 'All'], ['invoice', 'Invoice'], ['manual', 'Manual'], ['return', 'Return']].map(([v, l]) => (
-                <button key={v} className={`btn btn-sm ${filter.source === v ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter(f => ({ ...f, source: v }))}>{l}</button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Settings2 size={14} /> Source
+            </span>
+            <div style={{ display: 'flex', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+              {[['', 'All Sources'], ['invoice', 'Invoice'], ['manual', 'Manual'], ['return', 'Return']].map(([v, l], i) => (
+                <button 
+                  key={v} 
+                  onClick={() => setFilter(f => ({ ...f, source: v }))}
+                  style={{ 
+                    padding: '8px 16px', fontSize: 13, fontWeight: filter.source === v ? 700 : 600,
+                    background: filter.source === v ? '#4f46e5' : 'transparent',
+                    color: filter.source === v ? '#fff' : '#64748b',
+                    border: 'none', borderRight: i !== 3 ? '1px solid #e2e8f0' : 'none',
+                    cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >{l}</button>
               ))}
             </div>
+          </div>
+
+          <div style={{ marginLeft: 'auto', background: '#fff', padding: '6px 12px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
+            {total} Records Found
           </div>
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-body no-pad">
-          {loading ? <div className="loading"><span className="spinner"></span></div> : (
-            <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
-              <table>
-                <thead><tr>
-                  <th>Date (IST)</th>
-                  <th>Product</th>
-                  <th>Type</th>
-                  <th>Source</th>
-                  <th className="tr">Qty</th>
-                  <th>Unit</th>
-                  <th className="tr">Before</th>
-                  <th className="tr">After</th>
-                  <th>Vehicle #</th>
-                  <th>Driver</th>
-                  <th>Notes</th>
-                </tr></thead>
-                <tbody>
-                  {movements.length === 0 ? (
-                    <tr><td colSpan={11} style={{ textAlign: 'center', padding: 32 }}>No stock movements found.</td></tr>
-                  ) : movements.map(m => (
-                    <tr key={m._id}>
-                      <td style={{ fontSize: 12.5 }}>{m.ist_formatted || formatIST(m.date)}</td>
-                      <td><strong>{m.product_name}</strong></td>
-                      <td><span className={`badge ${typeColors[m.type]}`}>{m.type === 'incoming' ? '↓ In' : '↑ Out'}</span></td>
-                      <td><span className={`badge ${sourceColors[m.source] || 'badge-gray'}`}>{m.source}</span></td>
-                      <td className="tr mono fw-700">{m.qty}</td>
-                      <td className="text-muted" style={{ fontSize: 12.5 }}>{m.qty_unit || '—'}</td>
-                      <td className="tr mono text-muted">{m.stock_before}</td>
-                      <td className="tr mono fw-600">{m.stock_after}</td>
-                      <td>{m.vehicle_number || <span className="text-muted">—</span>}</td>
-                      <td>{m.driver_name || <span className="text-muted">—</span>}</td>
-                      <td className="text-muted" style={{ fontSize: 12.5 }}>{m.notes || m.supplier || '—'}</td>
-                    </tr>
+      {/* ── TABLE ── */}
+      <div className="card" style={{ borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', overflow: 'hidden' }}>
+        <div className="card-body no-pad" style={{ overflowX: 'auto' }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><span className="spinner"></span></div>
+          ) : movements.length === 0 ? (
+             <div className="empty-state" style={{ padding: 60, textAlign: 'center' }}>
+                <div style={{ background: '#f8fafc', width: 64, height: 64, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#94a3b8' }}>
+                  <Layers size={32} />
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>No Movements Found</div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>Try adjusting your filters or record a new movement.</div>
+              </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                <tr>
+                  {['Date (IST)', 'Product', 'Type', 'Source', 'Qty', 'Unit', 'Before', 'After', 'Vehicle / Driver', 'Notes'].map((h, i) => (
+                    <th key={h} style={{
+                      padding: '16px 20px',
+                      textAlign: (i === 4 || i === 6 || i === 7) ? 'right' : 'left',
+                      fontSize: 11.5, fontWeight: 800, color: '#475569',
+                      textTransform: 'uppercase', letterSpacing: '0.5px'
+                    }}>{h}</th>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((m, idx) => {
+                  const isIncoming = m.type === 'incoming';
+                  return (
+                    <tr key={m._id} style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      background: idx % 2 === 0 ? '#fff' : '#fafafa',
+                      transition: 'background 0.2s'
+                    }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#fafafa'}>
+                      
+                      <td style={{ padding: '14px 20px', fontSize: 12.5, color: '#475569', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{m.ist_formatted ? m.ist_formatted.split(' ')[0] : formatIST(m.date).split(' ')[0]}</div>
+                        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{m.ist_formatted ? m.ist_formatted.split(' ').slice(1).join(' ') : formatIST(m.date).split(' ').slice(1).join(' ')}</div>
+                      </td>
+
+                      <td style={{ padding: '14px 20px', fontWeight: 800, color: '#0f172a', fontSize: 14 }}>
+                        {m.product_name}
+                      </td>
+
+                      <td style={{ padding: '14px 20px' }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '4px 10px', borderRadius: 20,
+                          background: isIncoming ? '#dcfce7' : '#fee2e2',
+                          color: isIncoming ? '#16a34a' : '#dc2626',
+                          fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px'
+                        }}>
+                          {isIncoming ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />}
+                          {m.type}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: '14px 20px' }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '4px 10px', borderRadius: 20,
+                          background: m.source === 'invoice' ? '#e0e7ff' : m.source === 'manual' ? '#f1f5f9' : '#fef3c7',
+                          color: m.source === 'invoice' ? '#4f46e5' : m.source === 'manual' ? '#475569' : '#d97706',
+                          border: `1px solid ${m.source === 'invoice' ? '#c7d2fe' : m.source === 'manual' ? '#e2e8f0' : '#fde68a'}`,
+                          fontSize: 11, fontWeight: 700, textTransform: 'capitalize'
+                        }}>
+                          {m.source === 'invoice' ? <FileText size={12} /> : m.source === 'manual' ? <Settings2 size={12} /> : <RefreshCcw size={12} />}
+                          {m.source}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 800, fontSize: 15, fontFamily: 'monospace', color: isIncoming ? '#16a34a' : '#dc2626' }}>
+                        {isIncoming ? '+' : '−'}{m.qty}
+                      </td>
+
+                      <td style={{ padding: '14px 20px', fontSize: 12.5, color: '#64748b', fontWeight: 600 }}>
+                        {m.qty_unit || '—'}
+                      </td>
+
+                      <td style={{ padding: '14px 20px', textAlign: 'right', fontFamily: 'monospace', fontSize: 13, color: '#94a3b8' }}>
+                        {m.stock_before}
+                      </td>
+
+                      <td style={{ padding: '14px 20px', textAlign: 'right', fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: '#1e293b' }}>
+                        {m.stock_after}
+                      </td>
+
+                      <td style={{ padding: '14px 20px' }}>
+                        {m.vehicle_number ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {m.vehicle_number}</span>
+                            {m.driver_name && <span style={{ fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.driver_name}</span>}
+                          </div>
+                        ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      </td>
+
+                      <td style={{ padding: '14px 20px' }}>
+                        {(m.notes || m.supplier) ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 180 }}>
+                            {m.supplier && <span style={{ fontSize: 12, fontWeight: 600, color: '#1e293b' }}>{m.supplier}</span>}
+                            {m.notes && <span style={{ fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'flex-start', gap: 4 }}><AlignLeft size={12} style={{ marginTop: 2, flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notes}</span></span>}
+                          </div>
+                        ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      </td>
+
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
 
-      {/* Record Movement Modal */}
+      {/* ── RECORD MODAL ── */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title">📦 Record Stock Movement</div>
-              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+        <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', inset: 0, zIndex: 1000 }}>
+          <div className="modal" style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 650, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)', overflow: 'hidden', animation: 'modalSlideUp 0.3s ease' }}>
+            
+            <div className="modal-header" style={{ background: '#f8fafc', padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ background: '#e0e7ff', color: '#4f46e5', padding: 8, borderRadius: 10 }}>
+                  <Package size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Record Stock Movement</h3>
+                  <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Manually adjust inventory levels</div>
+                </div>
+              </div>
+              <button onClick={() => setShowModal(false)} style={{ background: '#f1f5f9', border: 'none', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'} onMouseLeave={e => e.currentTarget.style.background = '#f1f5f9'}>✕</button>
             </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Product *</label>
-                <select className="form-control" value={form.product_id} onChange={onProductChange}>
-                  <option value="">-- Select Product --</option>
-                  {products.map(p => <option key={p._id} value={p._id}>{p.name} (Stock: {p.stock} {p.unit})</option>)}
+
+            <div className="modal-body" style={{ padding: 24 }}>
+              
+              <div className="form-group" style={{ marginBottom: 20 }}>
+                <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Select Product <span className="text-danger">*</span></label>
+                <select className="form-control" value={form.product_id} onChange={onProductChange} style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px 16px', fontSize: 14, fontWeight: 600, color: form.product_id ? '#0f172a' : '#94a3b8', cursor: 'pointer' }}>
+                  <option value="">-- Choose a product from inventory --</option>
+                  {products.map(p => <option key={p._id} value={p._id}>{p.name} (Current: {p.stock} {p.unit})</option>)}
                 </select>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Movement Type *</label>
-                  <select className="form-control" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-                    <option value="incoming">↓ Incoming (Stock In)</option>
-                    <option value="outgoing">↑ Outgoing (Stock Out)</option>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Movement Type <span className="text-danger">*</span></label>
+                  <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 4 }}>
+                    <button onClick={() => setForm({ ...form, type: 'incoming' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'incoming' ? '#fff' : 'transparent', color: form.type === 'incoming' ? '#16a34a' : '#64748b', fontWeight: form.type === 'incoming' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'incoming' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
+                      <ArrowDownRight size={16} /> Incoming
+                    </button>
+                    <button onClick={() => setForm({ ...form, type: 'outgoing' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'outgoing' ? '#fff' : 'transparent', color: form.type === 'outgoing' ? '#dc2626' : '#64748b', fontWeight: form.type === 'outgoing' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'outgoing' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
+                      <ArrowUpRight size={16} /> Outgoing
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Quantity <span className="text-danger">*</span></label>
+                  <input className="form-control" type="number" min="0.01" step="0.01" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} placeholder="0.00" style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px 16px', fontSize: 15, fontWeight: 700, fontFamily: 'monospace' }} />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Unit</label>
+                  <select className="form-control" value={form.qty_unit} onChange={e => setForm({ ...form, qty_unit: e.target.value })} style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px', fontSize: 14, fontWeight: 600 }}>
+                    {QTY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Quantity *</label>
-                  <input className="form-control" type="number" min="0.01" step="0.01" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} placeholder="0" />
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px dashed #cbd5e1', marginBottom: 24 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Info size={14} /> Optional Details
                 </div>
-                {/* Enhancement 7: quantity unit */}
-                <div className="form-group">
-                  <label className="form-label">Unit</label>
-                  <select className="form-control" value={form.qty_unit} onChange={e => setForm({ ...form, qty_unit: e.target.value })}>
-                    {QTY_UNITS.map(u => <option key={u} value={u}>{u.charAt(0).toUpperCase() + u.slice(1)}</option>)}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <input className="form-control" value={form.vehicle_number} onChange={e => setForm({ ...form, vehicle_number: e.target.value })} placeholder="Vehicle Number (e.g. UK07 AB 1234)" style={{ borderRadius: 10, fontSize: 13 }} />
+                  </div>
+                  <div>
+                    <input className="form-control" value={form.driver_name} onChange={e => setForm({ ...form, driver_name: e.target.value })} placeholder="Driver Name" style={{ borderRadius: 10, fontSize: 13 }} />
+                  </div>
+                </div>
+                <div>
+                  <input className="form-control" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Supplier name or any additional remarks..." style={{ borderRadius: 10, fontSize: 13 }} />
                 </div>
               </div>
-              {/* Enhancement 7: vehicle and driver fields */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">🚛 Vehicle Number</label>
-                  <input className="form-control" value={form.vehicle_number} onChange={e => setForm({ ...form, vehicle_number: e.target.value })} placeholder="e.g. UK07 AB 1234" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">👤 Driver Name</label>
-                  <input className="form-control" value={form.driver_name} onChange={e => setForm({ ...form, driver_name: e.target.value })} placeholder="Optional" />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Supplier / Notes</label>
-                <input className="form-control" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Supplier name, party details, or notes" />
-              </div>
-              <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
-                <button className="btn btn-outline" onClick={() => setShowModal(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !form.product_id}>
-                  {saving ? 'Saving...' : '💾 Record Movement'}
+
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', paddingTop: 20, borderTop: '1px solid #e2e8f0' }}>
+                <button className="btn btn-outline" onClick={() => setShowModal(false)} style={{ borderRadius: 10, fontWeight: 600, padding: '10px 20px' }}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !form.product_id} style={{ borderRadius: 10, fontWeight: 700, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {saving ? <span className="spinner" style={{ width: 16, height: 16 }}></span> : <CheckCircle2 size={16} />} 
+                  {saving ? 'Saving...' : 'Confirm Movement'}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes modalSlideUp {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+      `}</style>
     </div>
   );
 }

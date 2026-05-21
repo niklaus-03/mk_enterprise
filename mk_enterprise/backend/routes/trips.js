@@ -4,6 +4,7 @@ const Trip = require('../models/Trip');
 const Notification = require('../models/Notification');
 const Admin = require('../models/Admin');
 const auth = require('../middleware/auth');
+const { logActivity } = require('./activityLogs');
 
 router.use(auth);
 
@@ -34,7 +35,7 @@ router.get('/', async (req, res) => {
     if (type) query.type = type;
 
     const [trips, total] = await Promise.all([
-      Trip.find(query).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)),
+      Trip.find(query).populate('invoice_id', 'invoice_number customer_name').sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)),
       Trip.countDocuments(query),
     ]);
 
@@ -47,7 +48,7 @@ router.get('/', async (req, res) => {
 // ── GET /api/trips/:id — Single trip detail ──────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {
-    const trip = await Trip.findById(req.params.id);
+    const trip = await Trip.findById(req.params.id).populate('invoice_id', 'invoice_number customer_name');
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
     res.json(trip);
   } catch (err) {
@@ -58,7 +59,7 @@ router.get('/:id', async (req, res) => {
 // ── POST /api/trips — Start a new trip ───────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
-    const { type, origin, destination, cargo } = req.body;
+    const { type, origin, destination, cargo, invoice_id } = req.body;
     if (!type || !origin || !destination) {
       return res.status(400).json({ error: 'type, origin, and destination are required' });
     }
@@ -76,6 +77,7 @@ router.post('/', async (req, res) => {
       driver_id: req.user.id,
       driver_name: driver?.display_name || req.user.username,
       vehicle_number: driver?.username || '',
+      invoice_id: invoice_id || null,
       type,
       status: 'active',
       legs: [{
@@ -96,13 +98,27 @@ router.post('/', async (req, res) => {
     const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
     for (const sup of supervisors) {
       await Notification.create({
-        user_id: sup._id,
-        type: 'system',
+        sender_id: req.user.id,
+        sender_name: `${trip.vehicle_number} - ${trip.driver_name}`,
+        recipient_id: sup._id,
+        recipient_role: 'supervisor',
+        type: 'trip_started',
         title: `🚛 Trip Started — ${driver?.display_name || req.user.username}`,
         message: `${type.toUpperCase()} trip: ${origin} → ${destination}`,
-        priority: 'normal',
+        priority: 'medium',
+        entity_type: 'trip',
+        entity_id: trip._id,
       });
     }
+
+    // Log activity
+    await logActivity(req, {
+      action: 'create',
+      entity_type: 'trip',
+      entity_id: trip._id,
+      entity_name: `${type} — ${origin} → ${destination}`,
+      description: `Trip started by ${driver?.display_name || req.user.username}`,
+    });
 
     res.status(201).json({ success: true, trip });
   } catch (err) {
@@ -135,11 +151,16 @@ router.post('/:id/expense', async (req, res) => {
     const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
     for (const sup of supervisors) {
       await Notification.create({
-        user_id: sup._id,
-        type: 'system',
+        sender_id: req.user.id,
+        sender_name: `${trip.vehicle_number} - ${trip.driver_name}`,
+        recipient_id: sup._id,
+        recipient_role: 'supervisor',
+        type: 'general',
         title: `💰 ${expense_type.toUpperCase()} — ₹${parseFloat(expense_amount).toLocaleString('en-IN')}`,
         message: `Driver ${trip.driver_name} (${trip.vehicle_number}): ${expense_note || expense_type}`,
-        priority: 'normal',
+        priority: 'medium',
+        entity_type: 'trip',
+        entity_id: trip._id,
       });
     }
 
@@ -236,13 +257,27 @@ router.post('/:id/end', async (req, res) => {
     const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
     for (const sup of supervisors) {
       await Notification.create({
-        user_id: sup._id,
-        type: 'system',
+        sender_id: req.user.id,
+        sender_name: `${trip.vehicle_number} - ${trip.driver_name}`,
+        recipient_id: sup._id,
+        recipient_role: 'supervisor',
+        type: 'trip_completed',
         title: `🏁 Trip Completed — ${trip.driver_name}`,
-        message: `Total expenses: ₹${trip.total_expenses.toLocaleString('en-IN')}`,
-        priority: 'normal',
+        message: `Ended at ${new Date().toLocaleTimeString('en-IN')} | Total expenses: ₹${trip.total_expenses.toLocaleString('en-IN')}`,
+        priority: 'medium',
+        entity_type: 'trip',
+        entity_id: trip._id,
       });
     }
+
+    // Log activity
+    await logActivity(req, {
+      action: 'status_change',
+      entity_type: 'trip',
+      entity_id: trip._id,
+      entity_name: trip.driver_name,
+      description: `Trip completed. Total expenses: ₹${trip.total_expenses}`,
+    });
 
     res.json({ success: true, trip });
   } catch (err) {

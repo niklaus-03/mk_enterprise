@@ -431,8 +431,8 @@ a {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  z-index: 200;
-  overflow-y: auto;
+  z-index: 9999;
+  overflow: visible;
 }
 
 .sidebar-brand {
@@ -471,6 +471,7 @@ a {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  overflow-y: auto;
 }
 
 .nav-item {

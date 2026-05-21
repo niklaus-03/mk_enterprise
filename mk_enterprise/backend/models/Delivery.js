@@ -32,6 +32,11 @@ const deliverySchema = new mongoose.Schema({
     enum: ['pending', 'arriving_soon', 'on_the_way', 'delivered', 'not_delivered'],
     default: 'pending',
   },
+  delivery_type: { 
+    type: String, 
+    enum: ['vehicle_incoming', 'walkin_delivery', 'outgoing'], 
+    default: 'vehicle_incoming' 
+  },
   notes: { type: String, default: '' },
   // When delivered, record actual time
   delivered_at: { type: Date, default: null },

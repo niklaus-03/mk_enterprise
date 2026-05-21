@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const StockMovement = require('../models/StockMovement');
 const Setting = require('../models/Setting');
 const auth = require('../middleware/auth');
+const { logActivity } = require('./activityLogs');
 const { formatIST } = require('../utils/timeUtils');
 
 router.use(auth);
@@ -110,6 +111,16 @@ router.post('/', async (req, res) => {
       productData.allowed_managers = allowed_managers;
     }
     const product = await Product.create(productData);
+
+    // Log activity
+    logActivity(req, {
+      action: 'create',
+      entity_type: 'product',
+      entity_id: product._id,
+      entity_name: product.name,
+      description: `Product created. Price: ₹${product.price}, Stock: ${product.stock} ${product.unit}`,
+    });
+
     res.status(201).json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -128,6 +139,16 @@ router.put('/:id', async (req, res) => {
       suggested_price: parseFloat(suggested_price) || 0,
     };
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+
+    // Log activity
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'product',
+      entity_id: product._id,
+      entity_name: product.name,
+      description: `Product updated`,
+    });
+
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -155,6 +176,16 @@ router.patch('/:id/stock', async (req, res) => {
       supplier: supplier || '', notes: notes || '',
       source: 'manual', ist_formatted: formatIST(new Date()),
     });
+
+    // Log activity
+    logActivity(req, {
+      action: 'stock_adjust',
+      entity_type: 'product',
+      entity_id: product._id,
+      entity_name: product.name,
+      description: `Stock ${type}: ${qty} ${qty_unit || product.unit || 'pcs'}. ${stock_before} → ${product.stock}`,
+    });
+
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -166,7 +197,51 @@ router.delete('/:id', async (req, res) => {
     if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
 
     await Product.findByIdAndUpdate(req.params.id, { is_active: false });
+
+    // Log activity
+    logActivity(req, {
+      action: 'delete',
+      entity_type: 'product',
+      entity_id: checkProduct._id,
+      entity_name: checkProduct.name,
+      description: `Product soft-deleted`,
+    });
+
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST delegate product to another manager
+router.post('/:id/delegate', async (req, res) => {
+  try {
+    const { manager_id } = req.body;
+    if (!manager_id) return res.status(400).json({ error: 'manager_id is required' });
+
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    // Only creator or supervisor can delegate
+    if (req.user.role !== 'supervisor' && product.created_by?.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Only the product creator or supervisor can delegate' });
+    }
+
+    // Avoid duplicates
+    const already = product.allowed_managers.some(m => m.toString() === manager_id);
+    if (!already) {
+      product.allowed_managers.push(manager_id);
+      await product.save();
+    }
+
+    // Log activity
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'product',
+      entity_id: product._id,
+      entity_name: product.name,
+      description: `Product delegated to manager ${manager_id}`,
+    });
+
+    res.json({ success: true, allowed_managers: product.allowed_managers });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

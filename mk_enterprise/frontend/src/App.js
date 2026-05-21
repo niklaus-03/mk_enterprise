@@ -17,6 +17,7 @@ import Invoices from './pages/Invoices';
 import StockMovements from './pages/StockMovements';
 import VehicleIncoming from './pages/VehicleIncoming';
 import VehicleDetail from './pages/VehicleDetail';
+import TripView from './pages/TripView';
 import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
 import './App.css';
@@ -25,6 +26,7 @@ import NewOrder from './pages/NewOrder';
 import AdminPanel from './pages/AdminPanel';
 import WalkInDelivery from './pages/WalkInDelivery';
 import DriverDashboard from './pages/DriverDashboard';
+import NotificationDropdown from './components/NotificationDropdown';
 import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell } from 'lucide-react';
 import { tripApi } from './utils/api';
 
@@ -62,7 +64,7 @@ function Sidebar({ open, onClose, onLock }) {
     { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
     { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} /> },
     ...(isAdmin ? [{ to: '/vehicle-incoming', label: 'Vehicles', icon: <Truck size={16} /> }] : []),
-    ...(!isAdmin ? [{ to: '/walkin-delivery', label: 'Walk-in Delivery', icon: <UserCheck size={16} /> }] : []),
+    { to: '/walkin-delivery', label: 'Walk-in Delivery', icon: <UserCheck size={16} /> },
     { to: '/suppliers', label: 'Suppliers', icon: <Building2 size={16} /> },
     { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
     ...(isAdmin ? [{ to: '/admin', label: 'Admin Panel', icon: <Shield size={16} /> }] : []),
@@ -148,43 +150,13 @@ function Sidebar({ open, onClose, onLock }) {
 
             {/* Laptop/Desktop Golden Notification Bell */}
             {user && (
-              <button 
-                onClick={() => {
-                  const role = user.role || 'manager';
-                  if (role === 'driver') {
-                    alert("Notifications:\n• New trip dispatch assigned to you.\n• Please check active trip details.");
-                  } else if (role === 'manager') {
-                    alert("Notifications:\n• Invoice shared with you.\n• Driver trip successfully completed!");
-                  } else {
-                    alert("Notifications:\n• New Invoice created!\n• Database backup complete.");
-                  }
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#C5A059',
-                  padding: '6px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative',
-                  marginLeft: '8px',
-                  flexShrink: 0
-                }}
-                title="Notifications"
-              >
-                <Bell size={18} strokeWidth={2.2} />
-                <span style={{
-                  position: 'absolute',
-                  top: 3, right: 3,
-                  width: 7, height: 7,
-                  background: '#ef4444',
-                  borderRadius: '50%',
-                  boxShadow: '0 0 4px #ef4444'
-                }} />
-              </button>
+              <NotificationDropdown 
+                user={user} 
+                style={{ marginLeft: '8px', flexShrink: 0 }} 
+                iconColor="#C5A059" 
+                bellSize={18} 
+                dropdownAlign="left"
+              />
             )}
           </div>
         </div>
@@ -451,35 +423,13 @@ function AppLayout() {
           </span>
 
           {user ? (
-            <button 
-              className="notification-btn" 
-              onClick={() => {
-                const role = user.role || 'manager';
-                if (role === 'driver') {
-                  alert("Notifications:\n• New trip dispatch assigned to you.\n• Please check active trip details.");
-                } else if (role === 'manager') {
-                  alert("Notifications:\n• Invoice shared with you.\n• Driver trip successfully completed!");
-                } else {
-                  alert("Notifications:\n• New Invoice created!\n• Database backup complete.");
-                }
-              }}
-              style={{
-                justifySelf: 'end',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#0f172a',
-                padding: '6px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative',
-              }}
-            >
-              <Bell size={21} strokeWidth={2.2} />
-              <span className="notification-badge" />
-            </button>
+            <NotificationDropdown 
+              user={user} 
+              className="notification-wrapper" 
+              style={{ justifySelf: 'end' }} 
+              iconColor="#0f172a" 
+              bellSize={21} 
+            />
           ) : (
             <div style={{ width: 33, justifySelf: 'end' }} />
           )}
@@ -575,6 +525,7 @@ function InnerApp() {
         <Route path="/vehicle-incoming" element={<VehicleIncoming />} />
         <Route path="/walkin-delivery" element={<WalkInDelivery />} />
         <Route path="/vehicle/:id" element={<VehicleDetail />} />
+        <Route path="/trip/:id" element={<TripView />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="settings" element={<Settings />} />
         <Route path="orders" element={<Orders />} />
