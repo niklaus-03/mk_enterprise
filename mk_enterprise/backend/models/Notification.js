@@ -25,8 +25,12 @@ const notificationSchema = new mongoose.Schema({
       'driver_cash_given',   // Cash given to driver
       'trip_started',        // Driver started a trip
       'trip_completed',      // Driver completed a trip
+      'trip_progress',       // Driver reached destination or started next leg
+      'expense',             // Trip expense logged
       'driver_dispatch',     // Invoice dispatched to driver for delivery
+      'dispatch_assigned',   // Dispatch assigned to driver
       'invoice_shared',      // Invoice shared with a manager
+      'batch_dispatch',      // Batch of invoices dispatched to driver
       'trip_update',         // General trip update
       'system_alert',        // General system alerts
       'general',             // Generic notification
@@ -42,6 +46,7 @@ const notificationSchema = new mongoose.Schema({
   // Reference to related entity
   entity_type: { type: String, default: '' },
   entity_id: { type: mongoose.Schema.Types.ObjectId, default: null },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
 
   // Status
   is_read: { type: Boolean, default: false },

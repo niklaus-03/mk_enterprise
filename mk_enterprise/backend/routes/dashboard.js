@@ -105,7 +105,7 @@ router.get('/', async (req, res) => {
         { $limit: 5 },
       ]),
       // 12. Today's stock movements
-      StockMovement.find({ date: { $gte: startUTC, $lt: endUTC } }).sort({ date: -1 }).limit(30),
+      StockMovement.find({ ...ownerFilter(req), date: { $gte: startUTC, $lt: endUTC } }).sort({ date: -1 }).limit(30),
       // 13. Walk-in invoices with unpaid balance — all time
       Invoice.find({
         ...notCancelled,

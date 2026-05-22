@@ -11,7 +11,7 @@ import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet,
 
 const newItem = () => ({
   _key: Date.now() + Math.random(),
-  product_id: '', product_name: '', qty: 0, price: '0', gst: 0,
+  product_id: '', product_name: '', qty: 0, weight: '', price: '0', gst: 0,
   taxable_amount: 0, cgst: 0, sgst: 0, total: 0, adjustment: 0,
 });
 
@@ -257,6 +257,7 @@ export default function NewInvoice() {
   const [vehicleCharge, setVehicleCharge] = useState('');
   const [labourCharge, setLabourCharge] = useState('');
   const [isManualBill, setIsManualBill] = useState(false);
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false);
 
   const getISTDateTime = () => {
     const now = new Date();
@@ -271,6 +272,9 @@ export default function NewInvoice() {
   const [manualBillRef, setManualBillRef] = useState('');
 
   useEffect(() => {
+    if (!isDraftLoaded) return;
+    const hasProgress = items.some(i => i.product_name) || walkIn.name || walkIn.phone || customerId;
+    if (!hasProgress) return;
     const draft = {
       items, customerMode, customerId, walkIn, payments, discount,
       concessionReason, notes, driverName, vehicleNumber, totalWeight, vehicleCharge,
@@ -278,7 +282,7 @@ export default function NewInvoice() {
     };
     localStorage.setItem(AUTO_DRAFT_KEY, JSON.stringify(draft));
   }, [items, customerMode, customerId, walkIn, payments, discount, notes,
-    driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge, billDate, isManualBill, manualBillRef]);
+    driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge, billDate, isManualBill, manualBillRef, isDraftLoaded]);
 
   // Load customers
   useEffect(() => {
@@ -308,33 +312,35 @@ export default function NewInvoice() {
   // Restore auto-draft
   useEffect(() => {
     const saved = localStorage.getItem(AUTO_DRAFT_KEY);
-    if (!saved) return;
-    try {
-      const draft = JSON.parse(saved);
-      const sevenDays = 7 * 24 * 60 * 60 * 1000;
-      if (Date.now() - draft.savedAt > sevenDays) {
+    if (saved) {
+      try {
+        const draft = JSON.parse(saved);
+        const sevenDays = 7 * 24 * 60 * 60 * 1000;
+        if (Date.now() - draft.savedAt <= sevenDays) {
+          setItems(draft.items || [newItem()]);
+          setCustomerMode(draft.customerMode || 'walkin');
+          setCustomerId(draft.customerId || '');
+          setWalkIn(draft.walkIn || {});
+          setPayments(draft.payments || [{ mode: 'cash', amount: '', reference: '' }]);
+          setDiscount(draft.discount || '');
+          setConcessionReason(draft.concessionReason || '');
+          setNotes(draft.notes || '');
+          setDriverName(draft.driverName || '');
+          setVehicleNumber(draft.vehicleNumber || '');
+          setTotalWeight(draft.totalWeight || '');
+          setVehicleCharge(draft.vehicleCharge || '');
+          setLabourCharge(draft.labourCharge || '');
+          setBillDate(draft.billDate || getISTDateTime());
+          setIsManualBill(draft.isManualBill || false);
+          setManualBillRef(draft.manualBillRef || '');
+        } else {
+          localStorage.removeItem(AUTO_DRAFT_KEY);
+        }
+      } catch {
         localStorage.removeItem(AUTO_DRAFT_KEY);
-        return;
       }
-      setItems(draft.items || [newItem()]);
-      setCustomerMode(draft.customerMode || 'walkin');
-      setCustomerId(draft.customerId || '');
-      setWalkIn(draft.walkIn || {});
-      setPayments(draft.payments || [{ mode: 'cash', amount: '', reference: '' }]);
-      setDiscount(draft.discount || '');
-      setConcessionReason(draft.concessionReason || '');
-      setNotes(draft.notes || '');
-      setDriverName(draft.driverName || '');
-      setVehicleNumber(draft.vehicleNumber || '');
-      setTotalWeight(draft.totalWeight || '');
-      setVehicleCharge(draft.vehicleCharge || '');
-      setLabourCharge(draft.labourCharge || '');
-      setBillDate(draft.billDate || getISTDateTime());
-      setIsManualBill(draft.isManualBill || false);
-      setManualBillRef(draft.manualBillRef || '');
-    } catch {
-      localStorage.removeItem(AUTO_DRAFT_KEY);
     }
+    setIsDraftLoaded(true);
   }, []);
 
   // Previous balance for existing customer
@@ -434,18 +440,17 @@ export default function NewInvoice() {
 
   const onProductSelect = (idx, p) => {
     if (p._isNew) {
-      updateItem(idx, { product_id: '', product_name: p.name, price: 0, gst: 0, qty: 1, unit: p.unit || 'bag', _isNew: true, weight_per_unit: 0 });
+      updateItem(idx, { product_id: '', product_name: p.name, price: 0, gst: 0, qty: 1, weight: '', unit: p.unit || 'bag', _isNew: true, weight_per_unit: 0 });
     } else {
-      updateItem(idx, { product_id: p._id, product_name: p.name, price: p.price, gst: p.gst, qty: 1, unit: p.unit || 'pcs', _isNew: false, weight_per_unit: p.weight_per_unit || 0 });
+      updateItem(idx, { product_id: p._id, product_name: p.name, price: p.price, gst: p.gst, qty: 1, weight: p.weight_per_unit || '', unit: p.unit || 'pcs', _isNew: false, weight_per_unit: p.weight_per_unit || 0 });
     }
   };
 
   // Auto-calculate total weight from items whenever items change
   useEffect(() => {
     const autoWeight = items.reduce((sum, item) => {
-      const wpv = parseFloat(item.weight_per_unit) || 0;
-      const qty = parseFloat(item.qty) || 0;
-      return sum + (wpv * qty);
+      const wpv = parseFloat(item.weight) || 0;
+      return sum + wpv;
     }, 0);
     if (autoWeight > 0) {
       setTotalWeight(parseFloat(autoWeight.toFixed(2)).toString());
@@ -1114,6 +1119,7 @@ export default function NewInvoice() {
                     <tr>
                       <th style={{ minWidth: 200 }}>Product</th>
                       <th style={{ width: 70 }}>Qty</th>
+                      <th style={{ width: 80 }}>Weight</th>
                       <th style={{ width: 100 }}>Rate ₹</th>
                       {gstEnabled && (
                         <>
@@ -1175,7 +1181,10 @@ export default function NewInvoice() {
                             onChange={(e) => {
                               const val = e.target.value;
                               if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
-                                updateItem(idx, { qty: val });
+                                const parsedVal = parseFloat(val) || 0;
+                                const wpu = parseFloat(item.weight_per_unit) || 0;
+                                const newWeight = wpu > 0 ? (parsedVal * wpu).toFixed(2) : item.weight;
+                                updateItem(idx, { qty: val, weight: newWeight });
                               }
                             }}
                             onBlur={() => {
@@ -1185,6 +1194,22 @@ export default function NewInvoice() {
                                 return next;
                               });
                             }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                priceRefs.current[idx]?.focus();
+                              }
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="form-control"
+                            type="text"
+                            inputMode="decimal"
+                            value={item.weight !== undefined ? item.weight : ''}
+                            placeholder="kg/g"
+                            onChange={(e) => updateItem(idx, { weight: e.target.value })}
                             onKeyDown={e => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();

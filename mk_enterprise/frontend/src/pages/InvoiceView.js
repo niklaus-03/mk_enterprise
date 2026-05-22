@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import toast from 'react-hot-toast';
-import { invoiceApi, managerApi, driverApi, notificationApi } from '../utils/api';
+import { invoiceApi, managerApi, driverApi, notificationApi, tripApi } from '../utils/api';
 import { supabase } from '../utils/supabase';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -37,14 +37,14 @@ const fc = formatCurrency;
 export default function InvoiceView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { settings } = useApp();
+  const { settings: appSettings } = useApp();
   const { isManager, user } = useAuth();
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState([]);
-  const [staffData, setStaffData] = useState({ managers: [], drivers: [] });
+  const [staffData, setStaffData] = useState({ managers: [], drivers: [], activeTrips: [] });
   const [fetchingStaff, setFetchingStaff] = useState(false);
   const [sendingDispatch, setSendingDispatch] = useState(false);
   const [emailTo, setEmailTo] = useState('');
@@ -87,11 +87,13 @@ export default function InvoiceView() {
       setFetchingStaff(true);
       Promise.all([
         managerApi.getAll().catch(() => ({ managers: [] })),
-        driverApi.getAll().catch(() => ({ drivers: [] }))
-      ]).then(([mgrRes, drvRes]) => {
+        driverApi.getAll().catch(() => ({ drivers: [] })),
+        tripApi.getAll({ status: 'active' }).catch(() => ({ trips: [] }))
+      ]).then(([mgrRes, drvRes, tripRes]) => {
         setStaffData({ 
           managers: mgrRes.managers || [], 
-          drivers: drvRes.drivers || [] 
+          drivers: drvRes.drivers || [],
+          activeTrips: tripRes.trips || []
         });
         setFetchingStaff(false);
       });
@@ -153,6 +155,7 @@ export default function InvoiceView() {
       }
     } catch (err) {
       // Fallback: open native mailto with invoice summary in body
+      const settings = invoice.company_details || appSettings;
       const subject = encodeURIComponent(`Invoice ${invoice.invoice_number} from ${settings.business_name || 'My Shop'}`);
       const body = encodeURIComponent(
         `Dear ${invoice.customer_name},\n\n` +
@@ -187,6 +190,9 @@ export default function InvoiceView() {
       const itemSummary = invoice.items.map(i => `${i.product_name} x${i.qty}`).join(', ');
       const message = `Items: ${itemSummary}. Collect ₹${invoice.balance_due > 0 ? invoice.balance_due : invoice.total} from ${invoice.customer_name}.${invoice.customer_address ? ' Destination: ' + invoice.customer_address : ''} Total Weight: ${invoice.total_weight || 0} kg.`;
 
+      // Update shared_with array on backend
+      await invoiceApi.share(invoice._id, selectedStaff);
+
       for (const staffId of selectedStaff) {
         const isManager = staffData.managers.some(m => m._id === staffId);
         const role = isManager ? 'manager' : 'driver';
@@ -213,8 +219,8 @@ export default function InvoiceView() {
             customer_name: invoice.customer_name || '',
             destination: invoice.customer_address || '',
             items: invoice.items.map(item => ({
-              goods_type: `${item.item_name} x${item.quantity}`,
-              weight: item.weight ? (parseFloat(item.weight) * parseInt(item.quantity)) : 0
+              goods_type: `${item.product_name} x${item.qty}`,
+              weight: item.weight ? parseFloat(item.weight) : 0
             }))
           }
         });
@@ -254,6 +260,7 @@ export default function InvoiceView() {
     if (phone.length === 10) phone = '91' + phone;
 
     // Build SMS text
+    const settings = invoice.company_details || appSettings;
     const itemLines = (invoice.items || [])
       .map(i => `${i.product_name} x${i.qty} = Rs.${i.total?.toFixed(2)}`)
       .join(', ');
@@ -362,6 +369,8 @@ Thank you! 🙏`
 
   if (loading) return <div className="loading"><span className="spinner" style={{ width: 32, height: 32 }}></span></div>;
   if (!invoice) return null;
+
+  const settings = invoice.company_details || appSettings;
 
   // GST summary by rate
   const gstSummary = {};
@@ -910,7 +919,7 @@ Thank you! 🙏`
                           💼 Managers Present
                         </h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {staffData.managers.map(person => {
+                          {staffData.managers.filter(p => p._id !== user?.id && p._id !== user?._id).map(person => {
                             const isSelected = selectedStaff.includes(person._id);
                             return (
                               <div 
@@ -960,6 +969,7 @@ Thank you! 🙏`
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {staffData.drivers.map(person => {
                             const isSelected = selectedStaff.includes(person._id);
+                            const isEngaged = staffData.activeTrips?.some(t => t.driver_id === person._id);
                             return (
                               <div 
                                 key={person._id}
@@ -967,6 +977,9 @@ Thank you! 🙏`
                                   if (isSelected) {
                                     setSelectedStaff(selectedStaff.filter(id => id !== person._id));
                                   } else {
+                                    if (isEngaged) {
+                                      window.alert(`Driver ${person.display_name || person.username} is currently engaged on an active trip.\nYou can still send them the next trip details, but they cannot start it until they end their current trip in the portal.`);
+                                    }
                                     setSelectedStaff([...selectedStaff, person._id]);
                                   }
                                 }}

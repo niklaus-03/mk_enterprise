@@ -4,6 +4,7 @@ const invoiceItemSchema = new mongoose.Schema({
   product_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null },
   product_name: { type: String, required: true },
   qty: { type: Number, required: true, min: 0 },
+  weight: { type: Number, default: 0 },
   price: { type: Number, required: true, min: 0 },
   gst: { type: Number, default: 0 },
   cgst: { type: Number, default: 0 },
@@ -56,6 +57,7 @@ const invoiceSchema = new mongoose.Schema({
   ist_formatted: { type: String, default: '' },
   signature: { type: String, default: '' },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+  shared_with: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }],
 }, { timestamps: true });
 
 invoiceSchema.pre('save', async function (next) {

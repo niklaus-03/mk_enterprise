@@ -12,6 +12,9 @@ router.get('/', async (req, res) => {
     const { product_id, type, source, limit = 50, page = 1 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const query = {};
+    if (req.user && req.user.role === 'manager') {
+      query.created_by = req.user.id;
+    }
     if (product_id) query.product_id = product_id;
     if (type) query.type = type;
     if (source) query.source = source;
@@ -26,7 +29,11 @@ router.get('/', async (req, res) => {
 router.get('/today', async (req, res) => {
   try {
     const { startUTC, endUTC } = todayUTCRange();
-    const movements = await StockMovement.find({ date: { $gte: startUTC, $lt: endUTC } })
+    const query = { date: { $gte: startUTC, $lt: endUTC } };
+    if (req.user && req.user.role === 'manager') {
+      query.created_by = req.user.id;
+    }
+    const movements = await StockMovement.find(query)
       .sort({ date: -1 }).populate('product_id', 'name unit');
     res.json(movements);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -52,6 +59,7 @@ router.post('/', async (req, res) => {
       vehicle_number: vehicle_number || '', driver_name: driver_name || '',
       supplier: supplier || '', notes: notes || '',
       source: 'manual', ist_formatted: formatIST(new Date()),
+      created_by: req.user ? req.user.id : null,
     });
     res.status(201).json(movement);
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -51,7 +51,15 @@ export default function VehicleIncoming() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadAll(selectedDate, viewAll); }, [selectedDate]);
+  const pollAll = (date, all) => {
+    Promise.all([loadDeliveries(date, all), loadTrips()]);
+  };
+
+  useEffect(() => { 
+    loadAll(selectedDate, viewAll); 
+    const interval = setInterval(() => pollAll(selectedDate, viewAll), 5000);
+    return () => clearInterval(interval);
+  }, [selectedDate, viewAll]);
 
   const statusConfig = {
     pending:        { label: 'Pending',       bg: '#f1f5f9', color: '#475569', border: '#e2e8f0', icon: <Clock size={12} /> },

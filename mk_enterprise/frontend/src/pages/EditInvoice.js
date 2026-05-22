@@ -88,7 +88,21 @@ export default function EditInvoice() {
   }, [id]);
 
   const updateItem = (idx, changes) => {
-    setItems(prev => { const next = [...prev]; next[idx] = calcItem({ ...next[idx], ...changes }, gstEnabled); return next; });
+    setItems(prev => { 
+      const next = [...prev]; 
+      
+      if (changes.qty !== undefined) {
+        const oldItem = original?.items?.find(i => i._id && i._id === next[idx]._id);
+        if (oldItem && parseFloat(oldItem.qty) > 0) {
+          const wpu = (parseFloat(oldItem.weight) || 0) / parseFloat(oldItem.qty);
+          const newQty = parseFloat(changes.qty) || 0;
+          changes.weight = parseFloat((wpu * newQty).toFixed(2));
+        }
+      }
+      
+      next[idx] = calcItem({ ...next[idx], ...changes }, gstEnabled); 
+      return next; 
+    });
   };
 
   const addItem = () => setItems(prev => [...prev, { _key: Date.now(), product_id: '', product_name: '', qty: 1, price: '', gst: 0, returned_qty: 0, is_defective: false, adjustment: 0, taxable_amount: 0, cgst: 0, sgst: 0, total: 0 }]);
@@ -118,6 +132,7 @@ export default function EditInvoice() {
           returned_qty: parseFloat(i.returned_qty) || 0,
           adjustment: parseFloat(i.adjustment) || 0,
         })),
+        total_weight: items.reduce((s, i) => s + (parseFloat(i.weight) || 0), 0),
         payments: payments.filter(p => parseFloat(p.amount) > 0).map(p => ({ ...p, amount: parseFloat(p.amount) })),
         discount: dis,
         notes,

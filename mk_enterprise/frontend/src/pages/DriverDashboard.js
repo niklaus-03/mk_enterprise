@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { tripApi, notificationApi } from '../utils/api';
-import { Car, Truck, History, Settings, Bell, Wallet, MapPin, RefreshCw, CheckCircle, FileText, Play, LogOut, Plus, Package, ArrowLeft, Landmark, Clock, Calendar, Shield, Info, Map, ChevronRight } from 'lucide-react';
+import { tripApi, notificationApi, invoiceApi } from '../utils/api';
+import { Car, Truck, History, Settings, Bell, Wallet, MapPin, RefreshCw, CheckCircle, FileText, Play, LogOut, Plus, Package, ArrowLeft, Landmark, Clock, Calendar, Shield, Info, Map, ChevronRight, Download } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
 
@@ -43,6 +43,157 @@ export default function DriverDashboard() {
   const [nextOrigin, setNextOrigin] = useState('');
   const [nextDest, setNextDest] = useState('');
   const [showEndTripConfirm, setShowEndTripConfirm] = useState(false);
+  const [parsedAmountToCollect, setParsedAmountToCollect] = useState(0);
+
+  const handleDownloadPDF = async (trip) => {
+    let finalPrice = trip.amount_to_collect ? '₹' + trip.amount_to_collect.toLocaleString('en-IN') : 'N/A';
+    let address = '—';
+    let invCustomerName = '';
+    let invCustomerPhone = '';
+    
+    if (trip.invoice_id) {
+       const invId = trip.invoice_id._id || trip.invoice_id;
+       try {
+         const res = await invoiceApi.get(invId);
+         const invData = res.data || res;
+         if (invData) {
+           finalPrice = '₹' + (invData.balance_due || invData.total || 0).toLocaleString('en-IN');
+           address = invData.customer_address || '—';
+           invCustomerName = invData.customer_name || '';
+           invCustomerPhone = invData.customer_phone || '';
+         }
+       } catch (err) {
+         console.error("Could not fetch invoice details for PDF", err);
+       }
+    }
+
+    // Sum amount to collect from cargo if not set at trip level
+    const totalCargoAmount = trip.legs?.reduce((sum, leg) => sum + leg.cargo?.reduce((s, c) => s + (parseFloat(c.amount_to_collect) || 0), 0), 0) || 0;
+    if (!trip.amount_to_collect && totalCargoAmount > 0) {
+      finalPrice = '₹' + totalCargoAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    }
+
+    let rowsHtml = '';
+    let lastDispName = null;
+
+    trip.legs?.forEach(leg => {
+      leg.cargo?.forEach(c => {
+        const items = (c.items && c.items.length > 0) 
+            ? c.items 
+            : [{ name: c.goods_types?.join(', ') || 'Goods', quantity: '-', weight: c.weight }];
+        
+        items.forEach((item) => {
+          const dispName = invCustomerName || c.owner_name || 'N/A';
+          const dispPhone = invCustomerPhone || c.owner_phone || '';
+          const showConsignor = dispName !== lastDispName;
+          
+          rowsHtml += `
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top;">
+                ${showConsignor ? `<strong>${dispName}</strong><br><small>${dispPhone}</small>` : ''}
+              </td>
+              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${item.name}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: right;">${Number(item.weight || c.weight || 0).toFixed(2).replace(/\.00$/, '')} kg</td>
+            </tr>
+          `;
+          lastDispName = dispName;
+        });
+      });
+    });
+
+    const routeFrom = trip.legs?.[0]?.origin || 'Unknown';
+    const routeTo = trip.legs?.[trip.legs?.length - 1]?.destination || 'Unknown';
+    let totalW = trip.legs?.reduce((sum, leg) => sum + leg.cargo?.reduce((s, c) => s + (parseFloat(c.weight) || 0), 0), 0) || 0;
+    totalW = Number(totalW).toFixed(2).replace(/\.00$/, '');
+    
+    if (address === '—') {
+      address = routeTo;
+    }
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>${trip.transport_invoice_number || 'Transport-Invoice'}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; color: #000; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 30px; }
+            h2 { margin: 0; font-size: 26px; font-weight: bold; text-transform: uppercase; }
+            .invoice-no { font-size: 18px; color: #1d4ed8; font-weight: bold; }
+            .details { display: flex; justify-content: space-between; margin-bottom: 30px; font-size: 14px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 14px; }
+            th { padding: 10px; border-bottom: 2px solid #d1d5db; text-align: left; background: #f3f4f6; font-weight: bold; }
+            .summary { margin-top: 30px; font-size: 15px; display: flex; flex-direction: column; align-items: flex-end; }
+            .signatures { margin-top: 80px; display: flex; justify-content: space-between; page-break-inside: avoid; }
+            .sig-line { border-top: 1px solid #000; padding-top: 10px; width: 200px; text-align: center; font-weight: bold; }
+            @media print {
+              body { padding: 20px; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+              thead { display: table-header-group; }
+              tfoot { display: table-footer-group; }
+              .header { page-break-inside: avoid; }
+              .details { page-break-inside: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h2>MK TRANSPORTATION</h2>
+            </div>
+            <div style="text-align: right;">
+              <div class="invoice-no">${trip.transport_invoice_number || 'Transport-Invoice'}</div>
+              <p style="margin: 5px 0 0 0;">Date: ${new Date(trip.started_at || Date.now()).toLocaleDateString('en-IN')}</p>
+            </div>
+          </div>
+          <div class="details">
+            <div>
+              <p style="margin: 0 0 5px 0;"><strong>Deliver To (Address):</strong> ${address}</p>
+              <p style="margin: 0 0 5px 0;"><strong>Route:</strong> ${routeFrom} &rarr; ${routeTo}</p>
+            </div>
+            <div style="text-align: right;">
+              <p style="margin: 0 0 5px 0;"><strong>Vehicle No:</strong> ${(trip.vehicle_number || '').toUpperCase()}</p>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Consignor / Owner</th>
+                <th>Item Name</th>
+                <th style="text-align: center;">Quantity</th>
+                <th style="text-align: right;">Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          <div class="summary">
+            <p style="margin: 0 0 10px 0;"><strong>Total Weight:</strong> ${totalW} kg</p>
+            <p style="margin: 0; font-size: 18px; color: #059669;"><strong>Amount to Collect:</strong> ${finalPrice}</p>
+          </div>
+          <div class="signatures">
+            <div class="sig-line">Driver Signature</div>
+            <div class="sig-line">Receiver Signature</div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    iframe.contentWindow.document.open();
+    iframe.contentWindow.document.write(htmlContent);
+    iframe.contentWindow.document.close();
+    
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 2000);
+    }, 500);
+  };
 
   const loadActiveTrip = useCallback(async () => {
     try {
@@ -73,7 +224,17 @@ export default function DriverDashboard() {
     } catch (_) {}
   }, []);
 
-  useEffect(() => { loadActiveTrip(); loadNotifications(); }, [loadActiveTrip, loadNotifications]);
+  useEffect(() => { 
+    loadActiveTrip(); 
+    loadNotifications(); 
+    
+    // Poll for notifications and active trip updates every 5 seconds for real-time feel
+    const interval = setInterval(() => {
+      loadNotifications();
+      loadActiveTrip();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadActiveTrip, loadNotifications]);
 
   useEffect(() => {
     if (location.state?.dispatchNotif && view === 'home' && !activeTrip) {
@@ -92,14 +253,40 @@ export default function DriverDashboard() {
       const nameMatch = msg.match(/from ([^.]+)/);
       const destMatch = msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/);
       const weightMatch = msg.match(/Weight: (\d+)/);
+      const amountMatch = msg.match(/Collect ₹(\d+(?:\.\d+)?)/);
+
+      const amountToCol = amountMatch ? parseFloat(amountMatch[1]) : 0;
+      setParsedAmountToCollect(amountToCol);
 
       const meta = notif.metadata || {};
       const phone = meta.customer_phone || '';
       
       let newCargo = [];
-      if (meta.items && meta.items.length > 0) {
-        const totalW = meta.items.reduce((sum, item) => sum + (item.weight || 0), 0);
+      if (notif.type === 'driver_dispatch' && meta.invoices) {
+        // Sort alphabetically by customer name (supports Hindi and English)
+        const sortedInvoices = [...meta.invoices].sort((a, b) => 
+          (a.customer_name || '').localeCompare(b.customer_name || '')
+        );
+
+        newCargo = sortedInvoices.map(inv => ({
+          invoice_id: inv.invoice_id,
+          amount_to_collect: inv.amount_to_collect,
+          owner_name: inv.customer_name || '',
+          owner_phone: inv.customer_phone || '',
+          goods_types: [],
+          description: 'Batch Delivery',
+          weight: inv.total_weight || 0,
+          items: (inv.items || []).map(item => ({
+            name: item.goods_type.split(' x')[0],
+            quantity: parseInt(item.goods_type.split(' x')[1]) || 1,
+            weight: item.weight || 0
+          }))
+        }));
+      } else if (meta.items && meta.items.length > 0) {
+        const totalW = meta.items.reduce((sum, item) => sum + (parseFloat(item.weight) || 0), 0);
         newCargo = [{
+          invoice_id: notif.entity_id,
+          amount_to_collect: amountToCol,
           owner_name: meta.customer_name || nameMatch?.[1]?.trim() || '',
           owner_phone: phone,
           goods_types: [],
@@ -113,6 +300,8 @@ export default function DriverDashboard() {
         }];
       } else {
         newCargo = [{
+          invoice_id: notif.entity_id,
+          amount_to_collect: amountToCol,
           owner_name: nameMatch ? nameMatch[1].trim() : '',
           owner_phone: phone,
           goods_types: [],
@@ -126,8 +315,19 @@ export default function DriverDashboard() {
         }];
       }
 
-      setDestination(meta.destination || (destMatch ? destMatch[1].trim() : ''));
-      setOrigin('MK Enterprise Ganai Gangoli');
+      if (notif.type === 'driver_dispatch' && meta.invoices && meta.invoices.length > 0) {
+        // Set destination from the first invoice that has a valid destination
+        const invoiceWithDest = meta.invoices.slice().reverse().find(inv => inv.destination && inv.destination.trim() !== '');
+        setDestination(invoiceWithDest ? invoiceWithDest.destination : 'Local');
+        setOrigin('MK Enterprise Ganai Gangoli');
+        // Sum total amount to collect
+        const totalAmount = meta.invoices.reduce((sum, inv) => sum + (inv.amount_to_collect || 0), 0);
+        setParsedAmountToCollect(totalAmount);
+      } else {
+        setOrigin('MK Enterprise Ganai Gangoli');
+        setDestination(destMatch ? destMatch[1].trim() : (meta.destination || ''));
+      }
+
       setCargoEntries(newCargo);
       
       setView('short'); // Default to short trip when auto-filling
@@ -140,7 +340,7 @@ export default function DriverDashboard() {
   const startTrip = async (type) => {
     if (!origin.trim() || !destination.trim()) return toast.error('Origin and destination are required');
     try {
-      const payload = { type, origin, destination, cargo: cargoEntries.filter(c => c.owner_name) };
+      const payload = { type, origin, destination, cargo: cargoEntries.filter(c => c.owner_name), amount_to_collect: parsedAmountToCollect };
       if (linkedInvoiceId) payload.invoice_id = linkedInvoiceId;
       
       const res = await tripApi.create(payload);
@@ -149,6 +349,7 @@ export default function DriverDashboard() {
       setView('active_trip');
       setOrigin(''); setDestination('');
       setLinkedInvoiceId(null);
+      setParsedAmountToCollect(0);
       setCargoEntries([{ owner_name: '', owner_phone: '', goods_types: [], description: '', weight: '' }]);
       
       // If trip was started from a dispatch notification, mark it as read NOW
@@ -178,6 +379,14 @@ export default function DriverDashboard() {
       const res = await tripApi.markReached(activeTrip._id, { location: activeLeg?.destination || '' });
       setActiveTrip(res.trip);
       toast.success('Destination reached! 📍');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const markCargoDelivered = async (cargoIndex) => {
+    try {
+      const res = await tripApi.markCargoDelivered(activeTrip._id, cargoIndex);
+      setActiveTrip(res.trip);
+      toast.success('Cargo marked as delivered! ✅');
     } catch (err) { toast.error(err.message); }
   };
 
@@ -373,7 +582,17 @@ export default function DriverDashboard() {
               {/* Cargo List Display (Transport Invoice Format) */}
               {activeLeg?.cargo?.length > 0 && (
                 <>
-                  <h5 className="mb-3 fw-bold text-dark d-flex align-items-center gap-2"><Package size={18} className="text-secondary" /> Active Cargo Loaded (Bilty)</h5>
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h5 className="mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                      <Package size={18} className="text-secondary" /> Active Cargo Loaded (Bilty)
+                    </h5>
+                    <button 
+                      onClick={() => handleDownloadPDF(activeTrip)}
+                      className="btn btn-sm btn-outline-primary fw-bold d-flex align-items-center gap-1"
+                    >
+                      <Download size={14} /> Download PDF
+                    </button>
+                  </div>
                   <div className="mb-4">
                     {activeLeg.cargo.map((c, idx) => (
                       <div key={idx} className="bg-light rounded p-3 mb-3 border shadow-sm">
@@ -384,6 +603,17 @@ export default function DriverDashboard() {
                               {c.owner_name} {c.owner_phone && <span className="text-muted fw-normal" style={{fontSize: '13px'}}>({c.owner_phone})</span>}
                             </div>
                           </div>
+                          {c.status === 'delivered' ? (
+                            <span className="badge bg-success" style={{ fontSize: '11px', padding: '6px 10px' }}><CheckCircle size={12} className="me-1" /> Delivered</span>
+                          ) : (
+                            <button 
+                              className="btn btn-sm btn-success fw-bold d-flex align-items-center gap-1"
+                              onClick={() => markCargoDelivered(idx)}
+                              style={{ fontSize: '11px' }}
+                            >
+                              <CheckCircle size={14} /> Mark Delivered
+                            </button>
+                          )}
                         </div>
                         
                         <table className="table table-sm table-borderless mt-2 mb-0" style={{ fontSize: '13px' }}>
@@ -568,7 +798,7 @@ export default function DriverDashboard() {
                 <h6 className="my-0">Vehicle</h6>
                 <small className="text-muted">Registered registration no.</small>
               </div>
-              <span className="font-monospace fw-bold">{activeTrip.vehicle_number || user?.username || '—'}</span>
+              <span className="font-monospace fw-bold">{(activeTrip.vehicle_number || user?.username || '—').toUpperCase()}</span>
             </li>
           </ul>
 
@@ -647,8 +877,22 @@ export default function DriverDashboard() {
                     <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, textAlign: 'left' }}>
                       Started: {new Date(trip.started_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} — Ended: {trip.completed_at ? new Date(trip.completed_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Ongoing'}
                     </div>
+                    <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2, textAlign: 'left', fontWeight: 'bold' }}>
+                      Vehicle: {(trip.vehicle_number || '—').toUpperCase()}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#059669' }}>₹{(trip.total_expenses || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#059669' }}>₹{(trip.total_expenses || 0).toLocaleString('en-IN')}</div>
+                    {expandedTrip === trip._id && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDownloadPDF(trip); }}
+                        className="btn btn-sm btn-outline-primary mt-2"
+                        style={{ fontSize: '11px', padding: '2px 8px' }}
+                      >
+                        <Download size={12} className="me-1" /> PDF
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {expandedTrip === trip._id && (
                   <div style={{ marginTop: 12, borderTop: '1px solid #f3f4f6', paddingTop: 10 }}>
@@ -759,12 +1003,34 @@ export default function DriverDashboard() {
                     
                     const meta = dispatchNotif.metadata || {};
                     const phone = meta.customer_phone || '';
-                    const dest = meta.destination || (msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/) ? msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/)[1].trim() : '');
+                    let dest = meta.destination || (msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/) ? msg.match(/Destination:\s*(.*?)(?=\s*Total Weight:|$)/)[1].trim() : '');
+                    if (dispatchNotif.type === 'driver_dispatch' && meta.invoices && meta.invoices.length > 0) {
+                      const invoiceWithDest = meta.invoices.slice().reverse().find(inv => inv.destination && inv.destination.trim() !== '');
+                      dest = invoiceWithDest ? invoiceWithDest.destination : (dest || 'Local');
+                    }
                     const cName = meta.customer_name || customerName || 'Dispatched Customer';
 
                     let newCargo = [];
-                    if (meta.items && meta.items.length > 0) {
-                      const totalW = meta.items.reduce((sum, item) => sum + (item.weight || 0), 0);
+                    if (dispatchNotif.type === 'driver_dispatch' && meta.invoices) {
+                      const sortedInvoices = [...meta.invoices].sort((a, b) => 
+                        (a.customer_name || '').localeCompare(b.customer_name || '')
+                      );
+                      newCargo = sortedInvoices.map(inv => ({
+                        invoice_id: inv.invoice_id,
+                        amount_to_collect: inv.amount_to_collect,
+                        owner_name: inv.customer_name || '',
+                        owner_phone: inv.customer_phone || '',
+                        goods_types: [],
+                        description: 'Batch Delivery',
+                        weight: inv.total_weight || 0,
+                        items: (inv.items || []).map(item => ({
+                          name: item.goods_type.split(' x')[0],
+                          quantity: parseInt(item.goods_type.split(' x')[1]) || 1,
+                          weight: item.weight || 0
+                        }))
+                      }));
+                    } else if (meta.items && meta.items.length > 0) {
+                      const totalW = meta.items.reduce((sum, item) => sum + (parseFloat(item.weight) || 0), 0);
                       newCargo = [{
                         owner_name: cName,
                         owner_phone: phone,
@@ -803,6 +1069,12 @@ export default function DriverDashboard() {
                     setDestination(dest);
                     setCargoEntries(newCargo);
                     setActiveDispatchId(dispatchNotif._id);
+                    setLinkedInvoiceId(dispatchNotif.entity_id);
+                    
+                    const amountMatch = msg.match(/Collect ₹(\d+(?:\.\d+)?)/);
+                    const amountToCol = amountMatch ? parseFloat(amountMatch[1]) : 0;
+                    setParsedAmountToCollect(amountToCol);
+                    
                     setView('short');
                     
                     toast.success("Loaded dispatch data! Ready to start trip.");
@@ -878,7 +1150,7 @@ export default function DriverDashboard() {
           <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20, color: '#4b5563', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><Settings size={20} /> System Settings</h2>
           <div className="premium-white-card text-start" style={{ borderLeft: '4px solid #4b5563' }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Driver: {user?.display_name || user?.username}</div>
-            <div style={{ fontSize: 13, color: '#6b7280' }}>Vehicle: {user?.username}</div>
+            <div style={{ fontSize: 13, color: '#6b7280' }}>Vehicle: {(user?.username || '').toUpperCase()}</div>
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Role: Driver</div>
             
             <button

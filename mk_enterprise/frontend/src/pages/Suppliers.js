@@ -4,10 +4,12 @@ import toast from 'react-hot-toast';
 import { supplierApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { Building2, Search, Phone, MapPin, Trash2, Plus, X, Edit, CreditCard, FileText, ArrowRight } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-const EMPTY = { name: '', phone: '', address: '', notes: '' };
+const EMPTY = { name: '', phone: '', address: '', notes: '', balance: '' };
 
 export default function Suppliers() {
+  const { isAdmin } = useAuth();
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -141,9 +143,11 @@ export default function Suppliers() {
                     </div>
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 10 }}>
-                    <button onClick={() => openHistory(s)} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                      <CreditCard size={13} /> Payment History <ArrowRight size={12} />
-                    </button>
+                    {isAdmin && (
+                      <button onClick={() => openHistory(s)} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
+                        <CreditCard size={13} /> Payment History <ArrowRight size={12} />
+                      </button>
+                    )}
                     <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(s)} style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }} title="Delete">
                       <Trash2 size={14} />
                     </button>
@@ -160,6 +164,7 @@ export default function Suppliers() {
                     <th style={{ padding: '12px 16px' }}>Name</th>
                     <th style={{ padding: '12px 16px' }}>Phone</th>
                     <th style={{ padding: '12px 16px' }}>Address</th>
+                    {isAdmin && <th style={{ padding: '12px 16px' }}>Balance ₹</th>}
                     <th style={{ padding: '12px 16px' }}>Notes</th>
                     <th style={{ padding: '12px 16px' }}>Actions</th>
                   </tr>
@@ -188,14 +193,21 @@ export default function Suppliers() {
                       <td style={{ padding: '12px 16px', color: '#475569' }} title={s.address}>
                         {s.address ? (s.address.length > 40 ? `${s.address.substring(0, 40)}...` : s.address) : <span style={{ color: '#cbd5e1' }}>—</span>}
                       </td>
+                      {isAdmin && (
+                        <td style={{ padding: '12px 16px', fontWeight: 700, fontFamily: 'monospace', color: (s.balance || 0) > 0 ? '#ef4444' : (s.balance || 0) < 0 ? '#16a34a' : '#475569' }}>
+                          {fc(Math.abs(s.balance || 0))} {(s.balance || 0) > 0 ? '(Due)' : (s.balance || 0) < 0 ? '(Adv)' : ''}
+                        </td>
+                      )}
                       <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 13 }}>
                         {s.notes || <span style={{ color: '#cbd5e1' }}>—</span>}
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <button onClick={() => openHistory(s)} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                            <CreditCard size={12} /> Payments
-                          </button>
+                          {isAdmin && (
+                            <button onClick={() => openHistory(s)} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
+                              <CreditCard size={12} /> Payments
+                            </button>
+                          )}
                           <button className="btn btn-ghost btn-sm" style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }} onClick={() => handleDelete(s)} title="Delete">
                             <Trash2 size={14} />
                           </button>
@@ -239,9 +251,15 @@ export default function Suppliers() {
                     <input className="form-control" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="City / Location" style={{ borderRadius: 8 }} />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Notes (optional)</label>
-                  <input className="form-control" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Any additional info" style={{ borderRadius: 8 }} />
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Notes (optional)</label>
+                    <input className="form-control" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Any additional info" style={{ borderRadius: 8 }} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Opening Balance ₹</label>
+                    <input className="form-control" type="number" step="0.01" value={form.balance} onChange={e => setForm({ ...form, balance: e.target.value })} placeholder="Positive = Due, Negative = Advance" style={{ borderRadius: 8 }} />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
                   <button type="button" className="btn btn-outline" onClick={closeModal} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>Cancel</button>

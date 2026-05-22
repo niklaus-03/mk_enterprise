@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { invoiceApi } from '../utils/api';
+import { invoiceApi, driverApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send } from 'lucide-react';
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
@@ -14,15 +14,60 @@ export default function Invoices() {
   const [page, setPage] = useState(1);
   const [searchParams] = useSearchParams();
   const customer_id = searchParams.get('customer_id');
-  const { isAdmin } = useAuth();
+  const { isAdmin, token } = useAuth();
   const LIMIT = 25;
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Batch dispatch states
+  const [selectedInvoices, setSelectedInvoices] = useState([]);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [staff, setStaff] = useState([]);
+  const [fetchingStaff, setFetchingStaff] = useState(false);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [sendingBatch, setSendingBatch] = useState(false);
+
+  // Long press selection logic
+  const [pressTimer, setPressTimer] = useState(null);
+
+  const handlePressStart = (invId) => {
+    if (selectedInvoices.length > 0) return; // Already in selection mode
+    const timer = setTimeout(() => {
+      setSelectedInvoices([invId]);
+      if (window.navigator.vibrate) window.navigator.vibrate(50);
+    }, 600);
+    setPressTimer(timer);
+  };
+
+  const handlePressEnd = () => {
+    if (pressTimer) clearTimeout(pressTimer);
+  };
+
+  const isSelectionMode = selectedInvoices.length > 0;
+
+  const handleRowClick = (invId) => {
+    if (isSelectionMode) {
+      handleToggleInvoice(invId);
+    }
+  };
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  const loadStaff = async () => {
+    setFetchingStaff(true);
+    try {
+      const res = await driverApi.getAll();
+      setStaff(res.data?.drivers || res.drivers || []);
+    } catch (err) {
+      toast.error('Failed to load drivers');
+      setStaff([]);
+    } finally {
+      setFetchingStaff(false);
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -45,6 +90,36 @@ export default function Invoices() {
   const totalDue = parseFloat(invoices.reduce((s, i) => s + (i.balance_due || 0), 0).toFixed(2));
   const pages = Math.ceil(total / LIMIT);
   const fc = formatCurrency;
+
+  const handleToggleInvoice = (invId) => {
+    setSelectedInvoices(prev => 
+      prev.includes(invId) ? prev.filter(id => id !== invId) : [...prev, invId]
+    );
+  };
+
+  const handleToggleAll = () => {
+    if (selectedInvoices.length === invoices.length) {
+      setSelectedInvoices([]);
+    } else {
+      setSelectedInvoices(invoices.map(i => i._id));
+    }
+  };
+
+  const handleBatchDispatch = async () => {
+    if (!selectedDriverId) return toast.error('Please select a driver');
+    setSendingBatch(true);
+    try {
+      await invoiceApi.batchShare({ invoiceIds: selectedInvoices, driverId: selectedDriverId });
+      toast.success('Batch dispatch sent successfully!');
+      setShowBatchModal(false);
+      setSelectedInvoices([]);
+      setSelectedDriverId('');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSendingBatch(false);
+    }
+  };
 
   const paymentBadge = (payments) => {
     if (!payments?.length) return null;
@@ -79,7 +154,28 @@ export default function Invoices() {
             <input className="form-control" placeholder="Search by customer or invoice number..." value={search}
               onChange={e => setSearch(e.target.value)} style={{ width: 320, paddingLeft: 36 }} />
           </div>
-          {customer_id && <Link to="/invoices" className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1"><X size={12} /> Clear Filter</Link>}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {selectedInvoices.length > 0 && (
+              <>
+                <button 
+                  className="btn btn-outline btn-sm" 
+                  onClick={() => setSelectedInvoices([])}
+                >
+                  <X size={14} className="me-1" /> Cancel
+                </button>
+                <button 
+                  className="btn btn-success btn-sm" 
+                  onClick={() => {
+                    loadStaff();
+                    setShowBatchModal(true);
+                  }}
+                >
+                  Batch Dispatch ({selectedInvoices.length})
+                </button>
+              </>
+            )}
+            {customer_id && <Link to="/invoices" className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1"><X size={12} /> Clear Filter</Link>}
+          </div>
         </div>
         <div className={isMobile ? "card-body" : "card-body no-pad"}>
           {loading ? <div className="loading"><span className="spinner"></span></div> : (
@@ -110,11 +206,30 @@ export default function Invoices() {
                     e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(15,23,42,0.03), 0 2px 4px -1px rgba(15,23,42,0.01)';
                     e.currentTarget.style.borderColor = '#e2e8f0';
-                  }}>
+                  }}
+                  onTouchStart={() => handlePressStart(inv._id)}
+                  onTouchEnd={handlePressEnd}
+                  onMouseDown={() => handlePressStart(inv._id)}
+                  onMouseUp={handlePressEnd}
+                  onMouseLeaveCapture={handlePressEnd}
+                  onClick={() => handleRowClick(inv._id)}
+                  >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 800, fontFamily: 'monospace', fontSize: 15 }}>
-                        {inv.invoice_number}
-                      </Link>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isSelectionMode && (
+                          <div onClick={e => e.stopPropagation()}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedInvoices.includes(inv._id)}
+                              onChange={() => handleToggleInvoice(inv._id)}
+                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                            />
+                          </div>
+                        )}
+                        <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 800, fontFamily: 'monospace', fontSize: 15 }}>
+                          {inv.invoice_number}
+                        </Link>
+                      </div>
                       {getInvoiceStatusBadge(inv)}
                     </div>
 
@@ -162,13 +277,13 @@ export default function Invoices() {
                     </div>
 
                     <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                      <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" onClick={e => e.stopPropagation()} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <Eye size={12} /> View
                       </Link>
-                      <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" onClick={e => e.stopPropagation()} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <Edit size={12} /> Edit
                       </Link>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inv)} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(inv); }} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <Trash2 size={12} /> Cancel
                       </button>
                     </div>
@@ -179,6 +294,16 @@ export default function Invoices() {
               <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
                 <table>
                   <thead><tr>
+                    <th style={{ width: '40px' }}>
+                      {isSelectionMode && (
+                        <input 
+                          type="checkbox" 
+                          checked={invoices.length > 0 && selectedInvoices.length === invoices.length}
+                          onChange={handleToggleAll}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                      )}
+                    </th>
                     <th>Invoice #</th>
                     <th>Date & Time (IST)</th>
                     <th>Customer</th>
@@ -192,12 +317,33 @@ export default function Invoices() {
                   </tr></thead>
                   <tbody>
                     {invoices.length === 0 ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32 }}>
+                      <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32 }}>
                         No invoices found. <Link to="/invoices/new" className="btn btn-outline btn-sm">Create one!</Link>
                       </td></tr>
                     ) : invoices.map(inv => (
-                      <tr key={inv._id}>
+                      <tr 
+                        key={inv._id}
+                        onTouchStart={() => handlePressStart(inv._id)}
+                        onTouchEnd={handlePressEnd}
+                        onMouseDown={() => handlePressStart(inv._id)}
+                        onMouseUp={handlePressEnd}
+                        onMouseLeave={handlePressEnd}
+                        onClick={() => handleRowClick(inv._id)}
+                        style={{ cursor: isSelectionMode ? 'pointer' : 'default', backgroundColor: selectedInvoices.includes(inv._id) ? 'rgba(99, 102, 241, 0.08)' : 'inherit' }}
+                      >
                         <td>
+                          {isSelectionMode && (
+                            <div onClick={e => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedInvoices.includes(inv._id)}
+                                onChange={() => handleToggleInvoice(inv._id)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                            </div>
+                          )}
+                        </td>
+                        <td onClick={e => e.stopPropagation()}>
                           <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace' }}>
                             {inv.invoice_number}
                           </Link>
@@ -225,9 +371,9 @@ export default function Invoices() {
                         </td>
                         <td>
                           <div className="flex gap-2">
-                            <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" title="View"><Eye size={12} /></Link>
-                            <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" title="Edit"><Edit size={12} /></Link>
-                            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inv)} title="Delete"><Trash2 size={12} /></button>
+                            <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" onClick={e => e.stopPropagation()}><Eye size={14}/></Link>
+                            <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" onClick={e => e.stopPropagation()}><Edit size={14}/></Link>
+                            <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(inv); }}><Trash2 size={14}/></button>
                           </div>
                         </td>
                       </tr>
@@ -262,6 +408,82 @@ export default function Invoices() {
           </div>
         )}
       </div>
+
+      {showBatchModal && (
+        <div className="modal-overlay" onClick={() => setShowBatchModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <div className="modal-title d-flex align-items-center gap-2"><Send size={18} className="text-primary" /> Batch Dispatch ({selectedInvoices.length} Invoices)</div>
+              <button className="modal-close" onClick={() => setShowBatchModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px 15px' }}>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 15 }}>
+                Select a driver to instantly dispatch this batch of invoices to their dashboard.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {fetchingStaff ? (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Loading staff list...</div>
+                ) : staff.length === 0 ? (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>No drivers found.</div>
+                ) : (
+                  <>
+                    <div style={{ marginTop: 8 }}>
+                      <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        🚚 Drivers Present
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {staff.map(person => {
+                          const isSelected = selectedDriverId === person._id;
+                          return (
+                            <div 
+                              key={person._id}
+                              onClick={() => setSelectedDriverId(isSelected ? '' : person._id)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '10px 14px',
+                                background: isSelected ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-light)',
+                                border: isSelected ? '1px solid #6366f1' : '1px solid var(--border)',
+                                borderRadius: 8,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <input 
+                                  type="radio" 
+                                  checked={isSelected}
+                                  onChange={() => {}} 
+                                  style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
+                                />
+                                <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.display_name || person.username}</span>
+                              </div>
+                              <span className="badge" style={{ background: '#fef3c7', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div style={{ marginTop: 20 }}>
+                <button
+                  onClick={handleBatchDispatch}
+                  disabled={sendingBatch || !selectedDriverId}
+                  className="btn btn-primary btn-block d-inline-flex align-items-center gap-2"
+                  style={{ justifyContent: 'center', background: '#6366f1', borderColor: '#6366f1' }}
+                >
+                  <Send size={14} /> {sendingBatch ? 'Sending...' : 'Send Batch to Driver'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

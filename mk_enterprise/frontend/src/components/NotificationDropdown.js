@@ -62,7 +62,7 @@ export default function NotificationDropdown({ user, className, style, bellSize 
   useEffect(() => {
     if (user) {
       fetchNotifications();
-      const interval = setInterval(fetchNotifications, 30000);
+      const interval = setInterval(fetchNotifications, 5000); // 5s for real-time feel
       return () => clearInterval(interval);
     }
   }, [user]);
@@ -212,6 +212,17 @@ export default function NotificationDropdown({ user, className, style, bellSize 
               </div>
               {items.map(n => {
                 const { icon, bg } = getIcon(n.type);
+
+                const expenseType = (n.metadata?.expense_type || '').toUpperCase();
+                let borderColor = 'transparent';
+                if (expenseType === 'CHALLAN') borderColor = '#ef4444'; // Red
+                else if (expenseType === 'SERVICE') borderColor = '#f97316'; // Orange
+
+                let roleBg = bg;
+                const senderRole = n.metadata?.sender_role;
+                if (senderRole === 'driver') roleBg = 'linear-gradient(135deg, #10b981, #059669)'; // Green
+                else if (senderRole === 'manager') roleBg = 'linear-gradient(135deg, #8b5cf6, #7c3aed)'; // Purple
+
                 return (
                   <div 
                     key={n._id}
@@ -223,7 +234,8 @@ export default function NotificationDropdown({ user, className, style, bellSize 
                       gap: 14,
                       cursor: 'pointer',
                       transition: 'background 0.2s',
-                      background: '#fff'
+                      background: '#fff',
+                      borderLeft: borderColor !== 'transparent' ? `4px solid ${borderColor}` : '4px solid transparent'
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = '#fff'}
@@ -231,9 +243,10 @@ export default function NotificationDropdown({ user, className, style, bellSize 
                     {/* IG Style Avatar */}
                     <div style={{ 
                       width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                      background: bg,
+                      background: roleBg,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.1)'
+                      boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.1)',
+                      border: borderColor !== 'transparent' ? `2px solid ${borderColor}` : 'none'
                     }}>
                       {icon}
                     </div>
@@ -243,7 +256,7 @@ export default function NotificationDropdown({ user, className, style, bellSize 
                       <span style={{ fontSize: 14, color: '#0f172a' }}>
                         <span style={{ fontWeight: 700 }}>{n.sender_name || 'System'}</span>
                         {' '}
-                        {n.title.includes('—') ? n.title.split('—')[0] : n.title}
+                        {n.title}
                         <span style={{ color: '#64748b' }}> {n.message}</span>
                         <span style={{ color: '#94a3b8', fontSize: 13, marginLeft: 6 }}>{formatTimeAgo(n.createdAt)}</span>
                       </span>

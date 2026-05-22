@@ -78,47 +78,31 @@ export default function StockMovements() {
       {/* ── FILTERS ── */}
       <div className="card" style={{ marginBottom: 24, borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
         <div className="card-body" style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', background: '#f8fafc', borderRadius: 16 }}>
-          
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Filter size={14} /> Movement Type
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Filter size={16} /> Filters
             </span>
-            <div style={{ display: 'flex', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-              {[['', 'All Types'], ['incoming', '↓ Incoming'], ['outgoing', '↑ Outgoing']].map(([v, l]) => (
-                <button 
-                  key={v} 
-                  onClick={() => setFilter(f => ({ ...f, type: v }))}
-                  style={{ 
-                    padding: '8px 16px', fontSize: 13, fontWeight: filter.type === v ? 700 : 600,
-                    background: filter.type === v ? (v === 'incoming' ? '#dcfce7' : v === 'outgoing' ? '#fee2e2' : '#e0e7ff') : 'transparent',
-                    color: filter.type === v ? (v === 'incoming' ? '#16a34a' : v === 'outgoing' ? '#dc2626' : '#4f46e5') : '#64748b',
-                    border: 'none', borderRight: v !== 'outgoing' ? '1px solid #e2e8f0' : 'none',
-                    cursor: 'pointer', transition: 'all 0.2s'
-                  }}
-                >{l}</button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Settings2 size={14} /> Source
-            </span>
-            <div style={{ display: 'flex', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-              {[['', 'All Sources'], ['invoice', 'Invoice'], ['manual', 'Manual'], ['return', 'Return']].map(([v, l], i) => (
-                <button 
-                  key={v} 
-                  onClick={() => setFilter(f => ({ ...f, source: v }))}
-                  style={{ 
-                    padding: '8px 16px', fontSize: 13, fontWeight: filter.source === v ? 700 : 600,
-                    background: filter.source === v ? '#4f46e5' : 'transparent',
-                    color: filter.source === v ? '#fff' : '#64748b',
-                    border: 'none', borderRight: i !== 3 ? '1px solid #e2e8f0' : 'none',
-                    cursor: 'pointer', transition: 'all 0.2s'
-                  }}
-                >{l}</button>
-              ))}
-            </div>
+            <select
+              className="form-control"
+              value={filter.type}
+              onChange={e => setFilter(f => ({ ...f, type: e.target.value }))}
+              style={{ width: 140, borderRadius: 8, fontSize: 13 }}
+            >
+              <option value="">All Types</option>
+              <option value="incoming">Incoming</option>
+              <option value="outgoing">Outgoing</option>
+            </select>
+            <select
+              className="form-control"
+              value={filter.source}
+              onChange={e => setFilter(f => ({ ...f, source: e.target.value }))}
+              style={{ width: 140, borderRadius: 8, fontSize: 13 }}
+            >
+              <option value="">All Sources</option>
+              <option value="invoice">Invoice</option>
+              <option value="manual">Manual</option>
+              <option value="return">Return</option>
+            </select>
           </div>
 
           <div style={{ marginLeft: 'auto', background: '#fff', padding: '6px 12px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
@@ -217,10 +201,14 @@ export default function StockMovements() {
                       </td>
 
                       <td style={{ padding: '14px 20px' }}>
-                        {m.vehicle_number ? (
+                        {(m.vehicle_number || m.driver_name) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {m.vehicle_number}</span>
+                            {m.vehicle_number && <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {m.vehicle_number}</span>}
                             {m.driver_name && <span style={{ fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.driver_name}</span>}
+                          </div>
+                        ) : m.source === 'invoice' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4f46e5', fontWeight: 700, fontSize: 12.5, padding: '4px 8px', background: '#e0e7ff', borderRadius: 6, width: 'fit-content' }}>
+                            <FileText size={13} /> Invoice
                           </div>
                         ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                       </td>

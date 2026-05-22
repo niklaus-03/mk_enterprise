@@ -3,7 +3,7 @@ import axios from 'axios';
 const baseURL =
   window.location.hostname === "localhost"
     ? "http://localhost:5000/api"
-    : "http://192.168.1.35:5000/api";
+    : "http://192.168.1.39:5000/api";
 
 const api = axios.create({
   baseURL,
@@ -86,6 +86,7 @@ export const tripApi = {
   create: (data) => api.post('/trips', data),
   addExpense: (id, data) => api.post(`/trips/${id}/expense`, data),
   markReached: (id, data) => api.post(`/trips/${id}/reached`, data),
+  markCargoDelivered: (id, cargoIndex) => api.post(`/trips/${id}/cargo/${cargoIndex}/deliver`),
   addNextLeg: (id, data) => api.post(`/trips/${id}/next-leg`, data),
   endTrip: (id) => api.post(`/trips/${id}/end`),
 };
@@ -122,6 +123,8 @@ export const invoiceApi = {
   update: (id, data) => api.put(`/invoices/${id}`, data),
   delete: (id) => api.delete(`/invoices/${id}`),
   sendEmail: (id, email) => api.post(`/invoices/${id}/send-email`, { email }),
+  share: (id, staffIds) => api.post(`/invoices/${id}/share`, { staffIds }),
+  batchShare: (data) => api.post(`/invoices/batch-share`, data),
 };
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────

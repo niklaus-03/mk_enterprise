@@ -85,6 +85,10 @@ export default function AdminPanel() {
     loadRecovery();
     loadDrivers();
     loadNotifications();
+    
+    // Poll for notifications every 5 seconds for real-time feel
+    const interval = setInterval(loadNotifications, 5000);
+    return () => clearInterval(interval);
   }, [loadManagers, loadRecovery, loadDrivers, loadNotifications]);
 
   const handleCreate = async (e) => {
@@ -162,94 +166,7 @@ export default function AdminPanel() {
           <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>Manage your team & system access</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', position: 'relative' }}>
-          {/* Notification Bell */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowNotifCenter(!showNotifCenter)}
-              style={{
-                background: '#f3f4f6', border: 'none', borderRadius: '50%', width: 40, height: 40,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                position: 'relative', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', transition: 'transform 0.1s'
-              }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'none'}
-            >
-              <Bell size={18} className="text-secondary" />
-              {unreadCount > 0 && (
-                <span style={{
-                  position: 'absolute', top: -4, right: -4, background: '#ef4444', color: '#fff',
-                  fontSize: 10, fontWeight: 'bold', borderRadius: '50%', minWidth: 18, height: 18,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px',
-                  boxShadow: '0 0 0 2px #fff'
-                }}>
-                  {unreadCount}
-                </span>
-              )}
-            </button>
 
-            {/* Notification Dropdown Panel */}
-            {showNotifCenter && (
-              <div style={{
-                position: 'absolute', top: 48, right: 0, width: 320, background: '#fff',
-                borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb',
-                zIndex: 9999, overflow: 'hidden'
-              }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, fontSize: 13.5, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}><Bell size={14} /> Notifications ({unreadCount})</span>
-                  {unreadCount > 0 && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          await notificationApi.markAllRead();
-                          loadNotifications();
-                          toast.success('All marked as read');
-                        } catch (_) {}
-                      }}
-                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Mark all read
-                    </button>
-                  )}
-                </div>
-                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                  {notifications.length === 0 ? (
-                    <div style={{ padding: '24px 16px', textAlign: 'center', color: '#6b7280', fontSize: 12.5 }}>
-                      No incoming alerts yet.
-                    </div>
-                  ) : (
-                    notifications.map(n => (
-                      <div
-                        key={n._id}
-                        onClick={async () => {
-                          if (!n.is_read) {
-                            try {
-                              await notificationApi.markRead(n._id);
-                              loadNotifications();
-                            } catch (_) {}
-                          }
-                        }}
-                        style={{
-                          padding: '12px 16px', borderBottom: '1px solid #f9fafb', fontSize: 12.5,
-                          background: n.is_read ? '#fff' : '#f8fafc', cursor: 'pointer', transition: 'background 0.1s'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
-                        onMouseLeave={e => e.currentTarget.style.background = n.is_read ? '#fff' : '#f8fafc'}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-                          <span style={{ fontWeight: 700, color: '#1f2937' }}>{n.title}</span>
-                          {!n.is_read && <span style={{ width: 6, height: 6, background: '#2563eb', borderRadius: '50%', flexShrink: 0, marginTop: 4 }}></span>}
-                        </div>
-                        <p style={{ color: '#4b5563', margin: '4px 0 0 0', fontSize: 11.5, lineHeight: 1.4 }}>{n.message}</p>
-                        <span style={{ color: '#9ca3af', fontSize: 10, marginTop: 4, display: 'block' }}>
-                          {new Date(n.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
 
           <span style={{ ...badge('#eff6ff', '#2563eb'), display: 'inline-flex', alignItems: 'center', gap: 4 }}><User size={11} /> {user?.username}</span>
           <span style={{ ...badge('#f0fdf4', '#16a34a'), display: 'inline-flex', alignItems: 'center', gap: 4 }}><Shield size={11} /> Supervisor</span>
@@ -280,7 +197,6 @@ export default function AdminPanel() {
           { id: 'drivers', label: 'Drivers', icon: <Truck size={14} style={{ marginRight: 6 }} />, count: drivers.length },
           { id: 'recovery', label: 'Recovery', icon: <Key size={14} style={{ marginRight: 6 }} />, count: pendingCount },
           { id: 'activity', label: 'Activity Log', icon: <FileText size={14} style={{ marginRight: 6 }} />, count: 0 },
-          { id: 'walkin', label: 'Walk-in Delivery', icon: <UserCheck size={14} style={{ marginRight: 6 }} />, count: 0 },
         ].map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'activity') loadActivityLogs({}); if (t.id === 'walkin') navigate('/walkin-delivery'); }} style={{
             flex: 1, padding: '10px 12px', borderRadius: 8, border: 'none', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',

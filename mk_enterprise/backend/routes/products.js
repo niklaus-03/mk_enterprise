@@ -175,6 +175,7 @@ router.patch('/:id/stock', async (req, res) => {
       vehicle_number: vehicle_number || '', driver_name: driver_name || '',
       supplier: supplier || '', notes: notes || '',
       source: 'manual', ist_formatted: formatIST(new Date()),
+      created_by: req.user.id,
     });
 
     // Log activity

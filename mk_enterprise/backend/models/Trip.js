@@ -1,12 +1,14 @@
 const mongoose = require('mongoose');
 
-// Individual cargo entry
 const cargoSchema = new mongoose.Schema({
+  invoice_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null },
+  amount_to_collect: { type: Number, default: 0 },
   owner_name: { type: String, default: '' },
   owner_phone: { type: String, default: '' },
   goods_types: [{ type: String }], // Legacy fallback
   description: { type: String, default: '' },
   weight: { type: Number, default: 0 }, // kg/tons
+  status: { type: String, enum: ['pending', 'delivered'], default: 'pending' },
   items: [{
     name: { type: String },
     quantity: { type: Number },
@@ -48,7 +50,9 @@ const tripSchema = new mongoose.Schema({
   driver_name: { type: String, default: '' },
   vehicle_number: { type: String, required: true },
   invoice_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null },
+  transport_invoice_number: { type: String, unique: true, sparse: true },
   type: { type: String, enum: ['short', 'long'], required: true },
+  amount_to_collect: { type: Number, default: 0 },
   status: { type: String, enum: ['active', 'completed'], default: 'active' },
 
   // Route legs
@@ -72,11 +76,29 @@ const tripSchema = new mongoose.Schema({
   completed_at: { type: Date, default: null },
 }, { timestamps: true });
 
-// Auto-calculate total expenses before saving
-tripSchema.pre('save', function (next) {
+// Auto-calculate total expenses and generate transport_invoice_number before saving
+tripSchema.pre('save', async function (next) {
   this.total_expenses = this.timeline
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + (t.expense_amount || 0), 0);
+    
+  if (this.vehicle_number) {
+    this.vehicle_number = this.vehicle_number.toUpperCase();
+  }
+
+  if (this.isNew && !this.transport_invoice_number && this.vehicle_number) {
+    try {
+      const vnum = this.vehicle_number.replace(/\s+/g, '');
+      const last4 = vnum.length >= 4 ? vnum.slice(-4) : vnum.padStart(4, '0');
+      
+      const count = await mongoose.model('Trip').countDocuments();
+      const sequence = count + 1;
+      this.transport_invoice_number = `${last4}INV-${String(sequence).padStart(5, '0')}`;
+    } catch (err) {
+      console.error('Error generating transport invoice number:', err);
+    }
+  }
+
   next();
 });
 

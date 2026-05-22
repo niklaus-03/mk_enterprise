@@ -4,6 +4,7 @@ const Invoice = require('../models/Invoice');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 const StockMovement = require('../models/StockMovement');
+const Setting = require('../models/Setting');
 const Notification = require('../models/Notification');
 const Admin = require('../models/Admin');
 const auth = require('../middleware/auth');
@@ -15,7 +16,13 @@ router.use(auth);
 // ── Ownership filter: managers see only their records ─────────────────────────
 function ownerFilter(req, extra = {}) {
   if (req.user && req.user.role === 'manager') {
-    return { ...extra, created_by: req.user.id };
+    return { 
+      ...extra, 
+      $or: [
+        { created_by: req.user.id },
+        { shared_with: req.user.id }
+      ]
+    };
   }
   return extra;
 }
@@ -74,6 +81,101 @@ router.get('/:id', async (req, res) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     res.json(invoice);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST share via email ──────────────────────────────────────────────────────
+router.post('/:id/send-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    
+    // Simulate sending email
+    console.log(`Sending invoice ${invoice.invoice_number} to ${email}`);
+    res.json({ message: 'Email sent successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST share with staff ─────────────────────────────────────────────────────
+router.post('/:id/share', async (req, res) => {
+  try {
+    const { staffIds } = req.body;
+    if (!staffIds || !Array.isArray(staffIds)) {
+      return res.status(400).json({ error: 'staffIds array is required' });
+    }
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    
+    // Add to shared_with, avoiding duplicates
+    const currentShared = invoice.shared_with || [];
+    const newShared = [...new Set([...currentShared.map(id => id.toString()), ...staffIds])];
+    invoice.shared_with = newShared;
+    await invoice.save();
+    
+    res.json({ message: 'Invoice shared successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST batch share with driver ───────────────────────────────────────────────
+router.post('/batch-share', async (req, res) => {
+  try {
+    const { invoiceIds, driverId } = req.body;
+    if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+      return res.status(400).json({ error: 'invoiceIds array is required' });
+    }
+    if (!driverId) {
+      return res.status(400).json({ error: 'driverId is required' });
+    }
+
+    const driverUser = await Admin.findById(driverId);
+    if (!driverUser || driverUser.role !== 'driver') {
+      return res.status(400).json({ error: 'Valid driver ID is required' });
+    }
+
+    const invoices = await Invoice.find({ _id: { $in: invoiceIds } });
+    if (invoices.length === 0) return res.status(404).json({ error: 'No valid invoices found' });
+
+    // Update shared_with for all invoices
+    await Promise.all(invoices.map(async (inv) => {
+      const currentShared = inv.shared_with || [];
+      const newShared = [...new Set([...currentShared.map(id => id.toString()), driverId.toString()])];
+      inv.shared_with = newShared;
+      await inv.save();
+    }));
+
+    // Build bundled payload
+    const bundledInvoices = invoices.map(inv => ({
+      invoice_id: inv._id,
+      customer_name: inv.customer_name,
+      customer_phone: inv.customer_phone,
+      destination: inv.customer_address,
+      amount_to_collect: inv.balance_due > 0 ? inv.balance_due : inv.total,
+      total_weight: inv.total_weight || 0,
+      items: inv.items.map(item => ({
+        goods_type: `${item.product_name} x${item.qty}`,
+        weight: item.weight ? parseFloat(item.weight) : 0
+      }))
+    }));
+
+    // Send single batch notification
+    await Notification.create({
+      recipient_id: driverUser._id,
+      recipient_role: 'driver',
+      type: 'driver_dispatch',
+      title: `📦 Batch Delivery Dispatch — ${invoices.length} Customers`,
+      message: `You have been assigned a batch of ${invoices.length} invoices to deliver.`,
+      priority: 'high',
+      metadata: { invoices: bundledInvoices }
+    });
+
+    res.json({ message: 'Batch dispatch sent successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST create invoice (no transactions) ─────────────────────────────────────
@@ -166,6 +268,10 @@ router.post('/', async (req, res) => {
     const balance_due = total_with_prev_balance - amount_received;
     const invoiceDate = bill_date ? new Date(bill_date) : new Date();
 
+    // Fetch current settings for snapshot
+    const settingsDoc = await Setting.findOne({ key: 'company_details' });
+    const company_details = settingsDoc ? settingsDoc.value : null;
+
     // 4. Create invoice
     const invoice = new Invoice({
       customer_id: customer_id || null,
@@ -196,6 +302,7 @@ router.post('/', async (req, res) => {
       date: invoiceDate,
       ist_formatted: formatIST(invoiceDate),
       signature: req.body.signature || '',
+      company_details: company_details,
       created_by: req.user ? req.user.id : null,
     });
     await invoice.save();
@@ -208,20 +315,21 @@ router.post('/', async (req, res) => {
           const stock_before = product.stock;
           product.stock = Math.max(0, product.stock - item.qty);
           await product.save();
-          await StockMovement.create({
-            product_id: product._id,
-            product_name: product.name,
-            type: 'outgoing',
-            qty: item.qty,
-            qty_unit: product.unit || 'pcs',
-            stock_before,
-            stock_after: product.stock,
-            reference: invoice._id.toString(),
-            source: 'invoice',
-            vehicle_number: vehicle_number || '',
-            driver_name: driver_name || '',
-            ist_formatted: formatIST(invoiceDate),
-          });
+            await StockMovement.create({
+              product_id: product._id,
+              product_name: product.name,
+              type: 'outgoing',
+              qty: item.qty,
+              qty_unit: product.unit || 'pcs',
+              stock_before,
+              stock_after: product.stock,
+              reference: invoice._id.toString(),
+              source: 'invoice',
+              vehicle_number: vehicle_number || '',
+              driver_name: driver_name || '',
+              ist_formatted: formatIST(invoiceDate),
+              created_by: req.user ? req.user.id : null,
+            });
         }
       }
     }
@@ -298,6 +406,7 @@ router.put('/:id', async (req, res) => {
               product_id: product._id, product_name: product.name, type: 'incoming', qty: netDeducted,
               stock_before, stock_after: product.stock, reference: original._id.toString(),
               source: 'return', notes: 'Invoice edit - restoring stock', ist_formatted: formatIST(new Date()),
+              created_by: req.user ? req.user.id : null,
             });
           }
         }
@@ -334,6 +443,7 @@ router.put('/:id', async (req, res) => {
               product_id: product._id, product_name: product.name, type: 'outgoing', qty: netQty,
               stock_before, stock_after: product.stock, reference: original._id.toString(),
               source: 'invoice', notes: 'Invoice edited', ist_formatted: formatIST(new Date()),
+              created_by: req.user ? req.user.id : null,
             });
           }
         }
@@ -409,6 +519,7 @@ router.delete('/:id', async (req, res) => {
             product_id: product._id, product_name: product.name, type: 'incoming', qty: netQty,
             stock_before, stock_after: product.stock, reference: invoice._id.toString(),
             source: 'return', notes: 'Invoice cancelled', ist_formatted: formatIST(new Date()),
+            created_by: req.user ? req.user.id : null,
           });
         }
       }

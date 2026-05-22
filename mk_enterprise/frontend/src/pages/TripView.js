@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { tripApi } from '../utils/api';
 import toast from 'react-hot-toast';
-import { Truck, Car, MapPin, Package, Clock, Landmark, ArrowLeft, Play, Wallet, RefreshCw, CheckCircle, FileText, Phone, User } from 'lucide-react';
+import { Truck, Car, MapPin, Package, Clock, Landmark, ArrowLeft, Play, Wallet, RefreshCw, CheckCircle, FileText, Phone, User, Download } from 'lucide-react';
 
 export default function TripView() {
   const { id } = useParams();
@@ -22,8 +22,8 @@ export default function TripView() {
 
   useEffect(() => {
     fetchTrip();
-    // Auto-refresh every 15 seconds for live tracking
-    const interval = setInterval(fetchTrip, 15000);
+    // Auto-refresh every 5 seconds for live tracking
+    const interval = setInterval(fetchTrip, 5000);
     return () => clearInterval(interval);
   }, [fetchTrip]);
 
@@ -82,12 +82,11 @@ export default function TripView() {
                     <div className="mb-4">
                       <h6 className="fw-bold text-dark d-flex align-items-center gap-2 mb-3" style={{ fontSize: '14px' }}>
                         <Package size={16} className="text-secondary" /> 
-                        {trip.invoice_id ? (
-                          <span>
-                            Linked Invoice: <Link to={`/invoices/${trip.invoice_id._id || trip.invoice_id}`} className="text-primary text-decoration-none">#{trip.invoice_id.invoice_number || 'View'}</Link>
+                        {trip.transport_invoice_number ? `Transport Invoice: ${trip.transport_invoice_number}` : 'Cargo Manifest (Transport Invoice)'}
+                        {trip.invoice_id && (
+                          <span className="ms-auto" style={{ fontSize: '12px', fontWeight: 'normal' }}>
+                            Linked Bill: <Link to={`/invoices/${trip.invoice_id._id || trip.invoice_id}`} className="text-primary text-decoration-none">#{trip.invoice_id.invoice_number || 'View'}</Link>
                           </span>
-                        ) : (
-                          'Cargo Manifest (Transport Invoice)'
                         )}
                       </h6>
                       {leg.cargo.map((c, ci) => (
@@ -98,16 +97,16 @@ export default function TripView() {
                               <span className="text-muted text-uppercase fw-bold" style={{ fontSize: '10px', letterSpacing: '0.5px' }}>Consignor / Owner</span>
                               <div className="fw-bold text-dark mt-1 d-flex align-items-center gap-2" style={{ fontSize: '15px' }}>
                                 <User size={14} className="text-secondary" />
-                                {c.owner_name || 'Unknown'}
-                                {c.owner_phone && (
+                                {trip.invoice_id?.customer_name || c.owner_name || 'Unknown'}
+                                {(trip.invoice_id?.customer_phone || c.owner_phone) && (
                                   <span className="text-muted fw-normal d-inline-flex align-items-center gap-1" style={{ fontSize: '13px' }}>
-                                    <Phone size={12} /> {c.owner_phone}
+                                    <Phone size={12} /> {trip.invoice_id?.customer_phone || c.owner_phone}
                                   </span>
                                 )}
                               </div>
                             </div>
-                            {c.weight > 0 && (
-                              <span className="badge bg-dark px-3 py-2" style={{ fontSize: '13px' }}>Total: {c.weight} kg</span>
+                            {(trip.invoice_id?.total_weight > 0 || c.weight > 0) && (
+                              <span className="badge bg-dark px-3 py-2" style={{ fontSize: '13px' }}>Total: {trip.invoice_id?.total_weight || c.weight} kg</span>
                             )}
                           </div>
 
@@ -141,11 +140,11 @@ export default function TripView() {
                                 <tr><td colSpan="3" className="text-muted text-center py-2" style={{ fontStyle: 'italic', fontSize: '12px' }}>No items specified</td></tr>
                               )}
                             </tbody>
-                            {(c.items && c.items.length > 0) && (
+                            {((c.items && c.items.length > 0) || trip.invoice_id?.total_weight > 0) && (
                               <tfoot>
                                 <tr>
                                   <td colSpan="2" className="text-end fw-bold pt-2" style={{ fontSize: '13px', color: '#1e40af' }}>Total Weight:</td>
-                                  <td className="text-end fw-bold pt-2" style={{ fontSize: '14px', color: '#1e40af' }}>{c.weight || 0} kg</td>
+                                  <td className="text-end fw-bold pt-2" style={{ fontSize: '14px', color: '#1e40af' }}>{trip.invoice_id?.total_weight || c.weight || 0} kg</td>
                                 </tr>
                               </tfoot>
                             )}
@@ -240,6 +239,13 @@ export default function TripView() {
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media print {
+          .hide-print { display: none !important; }
+          body { background: white !important; }
+          .container-fluid { padding: 0 !important; max-width: 100% !important; }
+          .card { border: none !important; box-shadow: none !important; }
+          .alert { display: none !important; }
+        }
       `}</style>
     </div>
   );

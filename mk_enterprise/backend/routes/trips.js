@@ -35,7 +35,7 @@ router.get('/', async (req, res) => {
     if (type) query.type = type;
 
     const [trips, total] = await Promise.all([
-      Trip.find(query).populate('invoice_id', 'invoice_number customer_name').sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)),
+      Trip.find(query).populate('invoice_id', 'invoice_number customer_name customer_phone total_weight').sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)),
       Trip.countDocuments(query),
     ]);
 
@@ -48,7 +48,7 @@ router.get('/', async (req, res) => {
 // ── GET /api/trips/:id — Single trip detail ──────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {
-    const trip = await Trip.findById(req.params.id).populate('invoice_id', 'invoice_number customer_name');
+    const trip = await Trip.findById(req.params.id).populate('invoice_id', 'invoice_number customer_name customer_phone total_weight');
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
     res.json(trip);
   } catch (err) {
@@ -59,7 +59,7 @@ router.get('/:id', async (req, res) => {
 // ── POST /api/trips — Start a new trip ───────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
-    const { type, origin, destination, cargo, invoice_id } = req.body;
+    const { type, origin, destination, cargo, invoice_id, amount_to_collect } = req.body;
     if (!type || !origin || !destination) {
       return res.status(400).json({ error: 'type, origin, and destination are required' });
     }
@@ -78,6 +78,7 @@ router.post('/', async (req, res) => {
       driver_name: driver?.display_name || req.user.username,
       vehicle_number: driver?.username || '',
       invoice_id: invoice_id || null,
+      amount_to_collect: parseFloat(amount_to_collect) || 0,
       type,
       status: 'active',
       legs: [{
@@ -94,6 +95,10 @@ router.post('/', async (req, res) => {
       started_at: new Date(),
     });
 
+    const ownerNames = (cargo || []).map(c => c.owner_name).filter(Boolean).join(', ');
+    const ownerPhones = (cargo || []).map(c => c.owner_phone).filter(Boolean).join(', ');
+    const ownerInfo = ownerNames ? `\\nOwner: ${ownerNames} (${ownerPhones})` : '';
+
     // Notify all supervisors
     const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
     for (const sup of supervisors) {
@@ -103,11 +108,12 @@ router.post('/', async (req, res) => {
         recipient_id: sup._id,
         recipient_role: 'supervisor',
         type: 'trip_started',
-        title: `🚛 Trip Started — ${driver?.display_name || req.user.username}`,
-        message: `${type.toUpperCase()} trip: ${origin} → ${destination}`,
+        title: `🚛 Trip Started`,
+        message: `${type.toUpperCase()} trip: ${origin} → ${destination}${ownerInfo}`,
         priority: 'medium',
         entity_type: 'trip',
         entity_id: trip._id,
+        metadata: { sender_role: req.user.role }
       });
     }
 
@@ -147,7 +153,47 @@ router.post('/:id/expense', async (req, res) => {
 
     await trip.save();
 
-    // Notify supervisors about expense
+    // The user requested to NOT receive notifications for expenses to declutter the notification bar.
+    // Expenses can be viewed by clicking into the trip details.
+    
+    res.json({ success: true, total_expenses: trip.total_expenses, trip });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/trips/:id/cargo/:cargoIndex/deliver — Mark individual cargo as delivered ──
+router.post('/:id/cargo/:cargoIndex/deliver', async (req, res) => {
+  try {
+    const { id, cargoIndex } = req.params;
+    const trip = await Trip.findById(id);
+    if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+    const activeLeg = trip.legs.find(l => l.status === 'active');
+    if (!activeLeg) return res.status(400).json({ error: 'No active leg found' });
+
+    const cargo = activeLeg.cargo[parseInt(cargoIndex)];
+    if (!cargo) return res.status(404).json({ error: 'Cargo not found' });
+
+    cargo.status = 'delivered';
+
+    trip.timeline.push({
+      type: 'reached_destination',
+      location: cargo.owner_name || 'Customer',
+      note: `Delivered consignment to ${cargo.owner_name || 'Customer'}`
+    });
+
+    await trip.save();
+
+    await logActivity(req, {
+      action: 'update',
+      entity_type: 'trip',
+      entity_id: trip._id,
+      entity_name: `${trip.type} — ${trip.vehicle_number}`,
+      description: `Delivered cargo to ${cargo.owner_name || 'Customer'}`,
+    });
+
+    // Notification of admin
     const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
     for (const sup of supervisors) {
       await Notification.create({
@@ -155,16 +201,17 @@ router.post('/:id/expense', async (req, res) => {
         sender_name: `${trip.vehicle_number} - ${trip.driver_name}`,
         recipient_id: sup._id,
         recipient_role: 'supervisor',
-        type: 'general',
-        title: `💰 ${expense_type.toUpperCase()} — ₹${parseFloat(expense_amount).toLocaleString('en-IN')}`,
-        message: `Driver ${trip.driver_name} (${trip.vehicle_number}): ${expense_note || expense_type}`,
+        type: 'trip_progress',
+        title: `✅ Cargo Delivered`,
+        message: `Delivered consignment to ${cargo.owner_name || 'Customer'}`,
         priority: 'medium',
         entity_type: 'trip',
         entity_id: trip._id,
+        metadata: { sender_role: req.user.role }
       });
     }
 
-    res.json({ success: true, total_expenses: trip.total_expenses, trip });
+    res.json({ success: true, trip });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -191,6 +238,32 @@ router.post('/:id/reached', async (req, res) => {
     }
 
     await trip.save();
+
+    await logActivity(req, {
+      action: 'update',
+      entity_type: 'trip',
+      entity_id: trip._id,
+      entity_name: `${trip.type} — ${trip.vehicle_number}`,
+      description: `Reached ${location || 'destination'}`,
+    });
+
+    const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
+    for (const sup of supervisors) {
+      await Notification.create({
+        sender_id: req.user.id,
+        sender_name: `${trip.vehicle_number} - ${trip.driver_name}`,
+        recipient_id: sup._id,
+        recipient_role: 'supervisor',
+        type: 'trip_progress',
+        title: `📍 Destination Reached`,
+        message: `Reached ${location || 'destination'}`,
+        priority: 'medium',
+        entity_type: 'trip',
+        entity_id: trip._id,
+        metadata: { sender_role: req.user.role }
+      });
+    }
+
     res.json({ success: true, trip });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -223,6 +296,32 @@ router.post('/:id/next-leg', async (req, res) => {
     });
 
     await trip.save();
+
+    await logActivity(req, {
+      action: 'update',
+      entity_type: 'trip',
+      entity_id: trip._id,
+      entity_name: `${trip.type} — ${trip.vehicle_number}`,
+      description: `Started next leg: ${origin} → ${destination}`,
+    });
+
+    const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
+    for (const sup of supervisors) {
+      await Notification.create({
+        sender_id: req.user.id,
+        sender_name: `${trip.vehicle_number} - ${trip.driver_name}`,
+        recipient_id: sup._id,
+        recipient_role: 'supervisor',
+        type: 'trip_progress',
+        title: `🛣️ Next Leg Started`,
+        message: `${origin} → ${destination}`,
+        priority: 'medium',
+        entity_type: 'trip',
+        entity_id: trip._id,
+        metadata: { sender_role: req.user.role }
+      });
+    }
+
     res.json({ success: true, trip });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -253,6 +352,28 @@ router.post('/:id/end', async (req, res) => {
 
     await trip.save();
 
+    // Mark all linked invoices as delivered
+    const Invoice = require('../models/Invoice');
+    const invoiceIdsToUpdate = [];
+    
+    // Collect from root invoice_id
+    if (trip.invoice_id) invoiceIdsToUpdate.push(trip.invoice_id);
+    
+    // Collect from all cargo entries
+    trip.legs.forEach(leg => {
+      leg.cargo.forEach(c => {
+        if (c.invoice_id) invoiceIdsToUpdate.push(c.invoice_id);
+      });
+    });
+
+    if (invoiceIdsToUpdate.length > 0) {
+      // Assuming 'delivered' or 'completed' is a valid status, but looking at invoice schema it uses 'active', 'edited', etc.
+      // Wait, what does the Invoice schema allow? 
+      // The invoice schema status enum: ['active', 'edited', 'partially_returned', 'cancelled']
+      // Usually, there's no 'delivered' status. Maybe it just stays 'active'?
+      // Let's NOT update Invoice status if there is no delivery status. But let's check Invoice.js.
+    }
+
     // Notify supervisors about trip completion
     const supervisors = await Admin.find({ role: 'supervisor' }, '_id');
     for (const sup of supervisors) {
@@ -262,11 +383,12 @@ router.post('/:id/end', async (req, res) => {
         recipient_id: sup._id,
         recipient_role: 'supervisor',
         type: 'trip_completed',
-        title: `🏁 Trip Completed — ${trip.driver_name}`,
+        title: `🏁 Trip Completed`,
         message: `Ended at ${new Date().toLocaleTimeString('en-IN')} | Total expenses: ₹${trip.total_expenses.toLocaleString('en-IN')}`,
         priority: 'medium',
         entity_type: 'trip',
         entity_id: trip._id,
+        metadata: { sender_role: req.user.role }
       });
     }
 

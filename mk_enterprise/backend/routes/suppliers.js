@@ -56,7 +56,7 @@ router.get('/:id/history', async (req, res) => {
 // POST create supplier — set created_by
 router.post('/', async (req, res) => {
   try {
-    const { name, phone, address, notes } = req.body;
+    const { name, phone, address, notes, balance } = req.body;
     if (!name) return res.status(400).json({ error: 'Supplier name is required' });
     const existing = await Supplier.findOne({ name: { $regex: `^${name}$`, $options: 'i' }, is_active: true });
     if (existing) return res.status(400).json({ error: 'Supplier with this name already exists' });
@@ -66,6 +66,7 @@ router.post('/', async (req, res) => {
       phone: phone || '',
       address: address || '',
       notes: notes || '',
+      balance: parseFloat(balance) || 0,
       created_by: req.user.id,
     });
 

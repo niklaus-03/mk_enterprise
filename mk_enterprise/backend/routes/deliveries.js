@@ -253,6 +253,7 @@ router.patch('/:id/status', async (req, res) => {
             notes: `Delivery: ${delivery.vehicle_number}${item.weight ? ` | Weight: ${item.weight}kg` : ''}`,
             source: 'manual',
             ist_formatted: formatIST(new Date()),
+            created_by: req.user.id,
           });
         }
 

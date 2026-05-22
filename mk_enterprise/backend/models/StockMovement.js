@@ -23,6 +23,7 @@ const stockMovementSchema = new mongoose.Schema({
   source: { type: String, enum: ['invoice', 'manual', 'return', 'adjustment'], default: 'manual' },
   date: { type: Date, default: Date.now },
   ist_formatted: { type: String, default: '' },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
 }, { timestamps: true });
 
 stockMovementSchema.index({ date: -1 });
