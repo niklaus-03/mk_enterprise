@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Customer = require('../models/Customer');
+const CustomerList = require('../models/CustomerList');
 const Invoice = require('../models/Invoice');
 const auth = require('../middleware/auth');
 const { logActivity } = require('./activityLogs');
@@ -8,7 +9,6 @@ const { logActivity } = require('./activityLogs');
 router.use(auth);
 
 // ── Helper: build ownership filter for managers ────────────────────────────────
-// Managers see customers they created OR are in allowed_managers
 function ownerFilter(req, extra = {}) {
   if (req.user.role === 'manager') {
     return {
@@ -22,18 +22,52 @@ function ownerFilter(req, extra = {}) {
   return extra; // supervisor sees all
 }
 
+// Helper: Apply list overrides to customers
+async function applyCustomerListOverrides(req, customers, listId) {
+  if (!listId) return customers;
+  try {
+    const list = await CustomerList.findById(listId);
+    if (!list) return customers;
+
+    let userOverrides = [];
+    if (req.user.role === 'manager') {
+      const share = list.shares.find(s => s.manager_id.toString() === req.user.id);
+      if (share) userOverrides = share.overrides;
+    }
+
+    const listCustomerIds = list.customers.map(id => id.toString());
+
+    return customers.filter(c => {
+      if (!listCustomerIds.includes(c._id.toString())) return false;
+      const override = userOverrides.find(o => o.customer_id.toString() === c._id.toString());
+      if (override && override.is_excluded) return false;
+      return true;
+    }).map(c => {
+      const override = userOverrides.find(o => o.customer_id.toString() === c._id.toString());
+      if (override) {
+        if (override.custom_balance !== null) c.balance = override.custom_balance;
+        if (override.custom_name) c.name = override.custom_name;
+        if (override.custom_phone) c.phone = override.custom_phone;
+      }
+      return c;
+    });
+  } catch (err) {
+    console.error('List override error:', err);
+    return customers;
+  }
+}
+
 router.get('/', async (req, res) => {
   try {
-    const { search, limit } = req.query;
+    const { search, limit, list_id } = req.query;
     const query = { is_active: true, ...ownerFilter(req) };
     if (search) {
-      // Merge search $or with ownership $or properly
       const searchOr = [
         { name: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
+        { alternate_phones: { $regex: search, $options: 'i' } },
       ];
       if (query.$or) {
-        // Manager filter: use $and to combine both conditions
         const ownerOr = query.$or;
         delete query.$or;
         query.$and = [{ $or: ownerOr }, { $or: searchOr }];
@@ -41,9 +75,17 @@ router.get('/', async (req, res) => {
         query.$or = searchOr;
       }
     }
-    let q = Customer.find(query).sort({ name: 1 });
-    if (limit) q = q.limit(parseInt(limit));
-    const customers = await q;
+    let q = Customer.find(query).populate('created_by', 'username display_name role').sort({ name: 1 }).lean();
+    if (limit && !list_id) q = q.limit(parseInt(limit));
+    else if (list_id) q = q.limit(1000); // get more to filter locally
+
+    let customers = await q;
+
+    if (list_id) {
+      customers = await applyCustomerListOverrides(req, customers, list_id);
+      if (limit) customers = customers.slice(0, parseInt(limit));
+    }
+
     res.json(customers);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -58,7 +100,7 @@ router.get('/pending-dues', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const customer = await Customer.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    const customer = await Customer.findOne({ _id: req.params.id, ...ownerFilter(req) }).populate('created_by', 'username display_name role');
     if (!customer) return res.status(404).json({ error: 'Customer not found or access denied' });
     res.json(customer);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -81,10 +123,29 @@ router.post('/', async (req, res) => {
     const { name, phone, address, balance, gstin, allowed_managers } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
 
+    let was_duplicate = false;
+    if (phone) {
+      const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
+      if (cleanedPhone.length >= 10) {
+        const customerRegex = new RegExp(cleanedPhone);
+        const existing = await Customer.findOne({
+          $or: [
+            { phone: { $regex: customerRegex } },
+            { alternate_phones: { $regex: customerRegex } }
+          ],
+          is_active: true,
+        });
+        if (existing) {
+          was_duplicate = true;
+        }
+      }
+    }
+
     const initialBalance = parseFloat(balance) || 0;
     const customerData = {
       name: name.trim(),
       phone: phone || '',
+      alternate_phones: req.body.alternate_phones || [],
       address: address || '',
       balance: initialBalance,
       gstin: gstin || '',
@@ -112,7 +173,9 @@ router.post('/', async (req, res) => {
       description: `Customer created. Phone: ${customer.phone || 'N/A'}`,
     });
 
-    res.status(201).json(customer);
+    const customerResponse = customer.toJSON();
+    customerResponse.was_duplicate = was_duplicate;
+    res.status(201).json(customerResponse);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -200,6 +263,113 @@ router.post('/:id/delegate', async (req, res) => {
 
     res.json({ success: true, allowed_managers: customer.allowed_managers });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST merge duplicate customers (Supervisor only)
+router.post('/merge', async (req, res) => {
+  try {
+    if (req.user.role !== 'supervisor') {
+      return res.status(403).json({ error: 'Only supervisors can merge customers' });
+    }
+
+    const { primary_id, secondary_ids, merged_data } = req.body;
+    if (!primary_id || !Array.isArray(secondary_ids) || secondary_ids.length === 0) {
+      return res.status(400).json({ error: 'primary_id and non-empty secondary_ids array required' });
+    }
+
+    const primary = await Customer.findById(primary_id);
+    if (!primary) return res.status(404).json({ error: 'Primary customer not found' });
+
+    const secondaries = await Customer.find({ _id: { $in: secondary_ids } });
+    if (secondaries.length === 0) return res.status(404).json({ error: 'Secondary customers not found' });
+
+    for (const sec of secondaries) {
+
+      // Merge manager_balances
+      for (const mb of sec.manager_balances) {
+        const existing = primary.manager_balances.find(pmb => pmb.manager_id.toString() === mb.manager_id.toString());
+        if (existing) {
+          existing.balance += mb.balance;
+        } else {
+          primary.manager_balances.push({ manager_id: mb.manager_id, balance: mb.balance });
+        }
+      }
+
+      // Merge allowed_managers (excluding the created_by)
+      for (const am of sec.allowed_managers) {
+        if (!primary.allowed_managers.some(pam => pam.toString() === am.toString())) {
+          primary.allowed_managers.push(am);
+        }
+      }
+    }
+
+    // Apply merged overrides if provided
+    if (merged_data) {
+      if (merged_data.name) primary.name = merged_data.name;
+      if (merged_data.phone !== undefined) primary.phone = merged_data.phone;
+      if (merged_data.alternate_phones) primary.alternate_phones = merged_data.alternate_phones;
+      if (merged_data.address !== undefined) primary.address = merged_data.address;
+      if (merged_data.gstin !== undefined) primary.gstin = merged_data.gstin;
+    }
+
+    // Recalculate global balance
+    primary.balance = primary.manager_balances.reduce((sum, mb) => sum + mb.balance, 0);
+    await primary.save();
+
+    // Update references in other collections
+    await Invoice.updateMany({ customer_id: { $in: secondary_ids } }, { customer_id: primary_id });
+    
+    // Attempt to update Orders if Order model exists
+    try {
+      const Order = require('../models/Order');
+      if (Order) {
+        await Order.updateMany({ customer_id: { $in: secondary_ids } }, { customer_id: primary_id });
+      }
+    } catch (e) { /* ignore if Order doesn't exist */ }
+
+    // Update CustomerLists
+    const lists = await CustomerList.find({
+      $or: [
+        { customers: { $in: secondary_ids } },
+        { 'shares.overrides.customer_id': { $in: secondary_ids } }
+      ]
+    });
+
+    for (const list of lists) {
+      // Update customers array
+      let updatedCustomers = list.customers.filter(id => !secondary_ids.includes(id.toString()));
+      if (!updatedCustomers.some(id => id.toString() === primary_id.toString())) {
+        updatedCustomers.push(primary_id);
+      }
+      list.customers = updatedCustomers;
+
+      // Update overrides
+      for (const share of list.shares) {
+        for (const override of share.overrides) {
+          if (secondary_ids.includes(override.customer_id.toString())) {
+            override.customer_id = primary_id;
+          }
+        }
+      }
+      await list.save();
+    }
+
+    // Delete the secondary customers
+    await Customer.deleteMany({ _id: { $in: secondary_ids } });
+
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'customer',
+      entity_id: primary._id,
+      entity_name: primary.name,
+      description: `Merged ${secondary_ids.length} duplicate customer(s) into this account.`,
+    });
+
+    res.json({ success: true, primary_customer: primary });
+  } catch (err) {
+    console.error('Merge error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

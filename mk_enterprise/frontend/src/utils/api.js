@@ -102,6 +102,7 @@ export const productApi = {
   update: (id, data) => api.put(`/products/${id}`, data),
   delete: (id) => api.delete(`/products/${id}`),
   adjustStock: (id, data) => api.patch(`/products/${id}/stock`, data),
+  delegate: (id, manager_id) => api.post(`/products/${id}/delegate`, { manager_id }),
 };
 
 // ── Customers ─────────────────────────────────────────────────────────────────
@@ -113,6 +114,28 @@ export const customerApi = {
   create: (data) => api.post('/customers', data),
   update: (id, data) => api.put(`/customers/${id}`, data),
   delete: (id) => api.delete(`/customers/${id}`),
+  merge: (data) => api.post('/customers/merge', data),
+  delegate: (id, manager_id) => api.post(`/customers/${id}/delegate`, { manager_id }),
+};
+
+// ── Product Lists ─────────────────────────────────────────────────────────────
+export const productListApi = {
+  getAll: () => api.get('/product-lists'),
+  get: (id) => api.get(`/product-lists/${id}`),
+  create: (data) => api.post('/product-lists', data),
+  update: (id, data) => api.put(`/product-lists/${id}`, data),
+  share: (id, data) => api.put(`/product-lists/${id}/share`, data),
+  delete: (id) => api.delete(`/product-lists/${id}`),
+};
+
+// ── Customer Lists ────────────────────────────────────────────────────────────
+export const customerListApi = {
+  getAll: () => api.get('/customer-lists'),
+  get: (id) => api.get(`/customer-lists/${id}`),
+  create: (data) => api.post('/customer-lists', data),
+  update: (id, data) => api.put(`/customer-lists/${id}`, data),
+  share: (id, data) => api.put(`/customer-lists/${id}/share`, data),
+  delete: (id) => api.delete(`/customer-lists/${id}`),
 };
 
 // ── Invoices ──────────────────────────────────────────────────────────────────
@@ -132,6 +155,7 @@ export const dashboardApi = {
   get: (date) => api.get('/dashboard', { params: date ? { date } : {} }),
   recordPayment: (data) => api.post('/dashboard/record-payment', data),
   createWalkinDue: (data) => api.post('/dashboard/walkin-due', data),
+  checkPhone: (phone) => api.get('/dashboard/check-phone', { params: { phone } }),
 };
 
 // ── Deliveries ────────────────────────────────────────────────────────────────

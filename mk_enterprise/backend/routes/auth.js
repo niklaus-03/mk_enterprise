@@ -268,10 +268,15 @@ router.post('/managers', auth, requireSupervisor, async (req, res) => {
 // ─── PUT /api/auth/managers/:id ───────────────────────────────────────────────
 router.put('/managers/:id', auth, requireSupervisor, async (req, res) => {
   try {
-    const { display_name, phone, is_active } = req.body;
+    const { display_name, phone, is_active, username } = req.body;
     const manager = await Admin.findOne({ _id: req.params.id, role: 'manager' });
     if (!manager) return res.status(404).json({ error: 'Manager not found.' });
 
+    if (username) {
+      const exists = await Admin.findOne({ username: username.toLowerCase().trim(), _id: { $ne: manager._id } });
+      if (exists) return res.status(400).json({ error: 'Username already taken.' });
+      manager.username = username.toLowerCase().trim();
+    }
     if (display_name !== undefined) manager.display_name = display_name;
     if (phone !== undefined) manager.phone = (phone || '').replace(/\D/g, '');
     if (is_active !== undefined) manager.is_active = is_active;
@@ -417,10 +422,15 @@ router.post('/drivers', auth, requireSupervisor, async (req, res) => {
 // ─── PUT /api/auth/drivers/:id ────────────────────────────────────────────────
 router.put('/drivers/:id', auth, requireSupervisor, async (req, res) => {
   try {
-    const { display_name, phone, is_active } = req.body;
+    const { display_name, phone, is_active, username } = req.body;
     const driver = await Admin.findOne({ _id: req.params.id, role: 'driver' });
     if (!driver) return res.status(404).json({ error: 'Driver not found.' });
 
+    if (username) {
+      const exists = await Admin.findOne({ username: username.toLowerCase().replace(/\s+/g, ''), _id: { $ne: driver._id } });
+      if (exists) return res.status(400).json({ error: 'Vehicle number already taken.' });
+      driver.username = username.toLowerCase().replace(/\s+/g, '');
+    }
     if (display_name !== undefined) driver.display_name = display_name;
     if (phone !== undefined) driver.phone = (phone || '').replace(/\D/g, '');
     if (is_active !== undefined) driver.is_active = is_active;

@@ -63,7 +63,8 @@ router.post('/', async (req, res) => {
 
     const supplier = await Supplier.create({
       name: name.trim(),
-      phone: phone || '',
+      phone: phone || '', // legacy fallback
+      contact_numbers: req.body.contact_numbers || [],
       address: address || '',
       notes: notes || '',
       balance: parseFloat(balance) || 0,

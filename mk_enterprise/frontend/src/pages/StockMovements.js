@@ -153,17 +153,15 @@ export default function StockMovements() {
                         <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{m.ist_formatted ? m.ist_formatted.split(' ').slice(1).join(' ') : formatIST(m.date).split(' ').slice(1).join(' ')}</div>
                       </td>
 
-                      <td style={{ padding: '14px 20px', fontWeight: 800, color: '#0f172a', fontSize: 14 }}>
+                      <td style={{ padding: '14px 20px', fontWeight: 600, color: '#1e293b', fontSize: 14 }}>
                         {m.product_name}
                       </td>
 
                       <td style={{ padding: '14px 20px' }}>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '4px 10px', borderRadius: 20,
-                          background: isIncoming ? '#dcfce7' : '#fee2e2',
-                          color: isIncoming ? '#16a34a' : '#dc2626',
-                          fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px'
+                          color: isIncoming ? '#16a34a' : '#ef4444',
+                          fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px'
                         }}>
                           {isIncoming ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />}
                           {m.type}
@@ -172,14 +170,13 @@ export default function StockMovements() {
 
                       <td style={{ padding: '14px 20px' }}>
                         <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '4px 10px', borderRadius: 20,
-                          background: m.source === 'invoice' ? '#e0e7ff' : m.source === 'manual' ? '#f1f5f9' : '#fef3c7',
-                          color: m.source === 'invoice' ? '#4f46e5' : m.source === 'manual' ? '#475569' : '#d97706',
-                          border: `1px solid ${m.source === 'invoice' ? '#c7d2fe' : m.source === 'manual' ? '#e2e8f0' : '#fde68a'}`,
-                          fontSize: 11, fontWeight: 700, textTransform: 'capitalize'
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          color: '#475569',
+                          fontSize: 12, fontWeight: 600, textTransform: 'capitalize'
                         }}>
-                          {m.source === 'invoice' ? <FileText size={12} /> : m.source === 'manual' ? <Settings2 size={12} /> : <RefreshCcw size={12} />}
+                          <span style={{ color: m.source === 'invoice' ? '#6366f1' : m.source === 'manual' ? '#94a3b8' : '#f59e0b', display: 'flex' }}>
+                            {m.source === 'invoice' ? <FileText size={14} /> : m.source === 'manual' ? <Settings2 size={14} /> : <RefreshCcw size={14} />}
+                          </span>
                           {m.source}
                         </span>
                       </td>
@@ -206,11 +203,11 @@ export default function StockMovements() {
                             {m.vehicle_number && <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {m.vehicle_number}</span>}
                             {m.driver_name && <span style={{ fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.driver_name}</span>}
                           </div>
-                        ) : m.source === 'invoice' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4f46e5', fontWeight: 700, fontSize: 12.5, padding: '4px 8px', background: '#e0e7ff', borderRadius: 6, width: 'fit-content' }}>
-                            <FileText size={13} /> Invoice
-                          </div>
-                        ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4, fontStyle: 'italic' }}>
+                            <User size={12} /> Self Pickup
+                          </span>
+                        )}
                       </td>
 
                       <td style={{ padding: '14px 20px' }}>

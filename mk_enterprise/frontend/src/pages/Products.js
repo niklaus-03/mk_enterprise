@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { productApi, settingsApi } from '../utils/api';
+import { productApi, settingsApi, managerApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
-import { Package, Plus, Trash2, Edit, Check, X, Scale, IndianRupee, AlertTriangle, Save, Sparkles, Info, Search } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Package, Plus, Trash2, Edit, Check, X, Scale, IndianRupee, AlertTriangle, Save, Sparkles, Info, Search, Share2, Clock, List, ArrowDownAZ, CheckSquare, Square, CheckCircle2 } from 'lucide-react';
+import ProductLists from './ProductLists';
+import { productListApi } from '../utils/api';
 
 const DEFAULT_UNITS = ['bag', 'kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'quintal', 'ton', 'mtr', 'dozen', 'pkt', 'strip'];
 
@@ -68,6 +71,8 @@ export default function Products() {
   const navigate = useNavigate();
   const fromDashboard = searchParams.get('action') === 'add';
   const { settings } = useApp();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'supervisor';
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +83,47 @@ export default function Products() {
   const [saving, setSaving] = useState(false);
   const [priceCalculated, setPriceCalculated] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  const [managers, setManagers] = useState([]);
+  const [shareModal, setShareModal] = useState(null);
+  const [selectedManagerId, setSelectedManagerId] = useState('');
+  const [sharing, setSharing] = useState(false);
+
+  // New State for Overhaul
+  const [activeTab, setActiveTab] = useState('products');
+  const [sortBy, setSortBy] = useState('recently_added');
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
+  const [showAddToListModal, setShowAddToListModal] = useState(false);
+  const [addToListMode, setAddToListMode] = useState('existing'); // 'existing' | 'new'
+  const [selectedListId, setSelectedListId] = useState('');
+  const [newListName, setNewListName] = useState('');
+  const [itemLists, setItemLists] = useState([]);
+  const [addingToList, setAddingToList] = useState(false);
+
+  useEffect(() => {
+    managerApi.getAll().then(res => setManagers(res.managers || [])).catch(e => console.error('Failed to load managers', e));
+    if (isAdmin) {
+      productListApi.getAll().then(setItemLists).catch(e => console.error('Failed to load item lists', e));
+    }
+  }, [isAdmin]);
+
+  const handleShareSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedManagerId) return toast.error('Select a manager to share with');
+    setSharing(true);
+    try {
+      await productApi.delegate(shareModal._id, selectedManagerId);
+      toast.success('Product shared successfully');
+      setShareModal(null);
+      setSelectedManagerId('');
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSharing(false);
+    }
+  };
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -85,6 +131,69 @@ export default function Products() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
   const fc = formatCurrency;
+
+  const isNewProduct = (createdAt) => {
+    if (!createdAt) return false;
+    const diffMs = Date.now() - new Date(createdAt).getTime();
+    return diffMs < 3 * 60 * 60 * 1000; // 3 hours
+  };
+
+  const formatLastUpdated = (updatedAt) => {
+    if (!updatedAt) return '';
+    const d = new Date(updatedAt);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+    if (isToday) return `Today, ${time}`;
+    return `${d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}, ${time}`;
+  };
+
+  const sortedProducts = [...products].sort((a, b) => {
+    if (sortBy === 'recently_added') return new Date(b.createdAt) - new Date(a.createdAt);
+    if (sortBy === 'last_updated') return new Date(b.updatedAt) - new Date(a.updatedAt);
+    if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
+    if (sortBy === 'name_desc') return b.name.localeCompare(a.name);
+    if (sortBy === 'price_asc') return a.price - b.price;
+    if (sortBy === 'price_desc') return b.price - a.price;
+    return 0;
+  });
+
+  const handleAddToListSubmit = async (e) => {
+    e.preventDefault();
+    if (selectedProductIds.length === 0) return toast.error('No products selected');
+    setAddingToList(true);
+    try {
+      if (addToListMode === 'new') {
+        if (!newListName.trim()) {
+          setAddingToList(false);
+          return toast.error('New list name is required');
+        }
+        await productListApi.create({ name: newListName.trim(), products: selectedProductIds });
+        toast.success(`Created new list "${newListName}" with ${selectedProductIds.length} items`);
+      } else {
+        if (!selectedListId) {
+          setAddingToList(false);
+          return toast.error('Select an existing list');
+        }
+        const existingList = itemLists.find(l => l._id === selectedListId);
+        if (!existingList) throw new Error('List not found');
+        const existingIds = existingList.products.map(p => p._id || p);
+        const mergedIds = [...new Set([...existingIds, ...selectedProductIds])];
+        await productListApi.update(selectedListId, { products: mergedIds });
+        toast.success(`Added ${selectedProductIds.length} items to "${existingList.name}"`);
+      }
+      // Refresh item lists
+      productListApi.getAll().then(setItemLists).catch(console.error);
+      setSelectedProductIds([]);
+      setShowAddToListModal(false);
+      setNewListName('');
+      setSelectedListId('');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setAddingToList(false);
+    }
+  };
 
   const load = useCallback((q = '') => {
     setLoading(true);
@@ -180,13 +289,14 @@ export default function Products() {
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this product?')) return;
+  const confirmDelete = async () => {
+    if (!deleteConfirmId) return;
     try {
-      await productApi.delete(id);
+      await productApi.delete(deleteConfirmId);
       toast.success('Product deleted');
       load(search);
     } catch (err) { toast.error(err.message); }
+    finally { setDeleteConfirmId(null); }
   };
 
   const threshold = parseInt(settings?.low_stock_threshold) || 10;
@@ -210,7 +320,28 @@ export default function Products() {
         </div>
       </div>
 
-      {/* Add / Edit Form */}
+      <div style={{ display: 'flex', gap: 24, borderBottom: '1.5px solid #e2e8f0', marginBottom: 24, padding: '0 4px' }}>
+        <div 
+          onClick={() => setActiveTab('products')} 
+          style={{ padding: '10px 4px', borderBottom: activeTab === 'products' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'products' ? 700 : 600, color: activeTab === 'products' ? 'var(--primary)' : '#64748b', transition: 'all 0.2s' }}
+        >
+          All Products
+        </div>
+        <div 
+          onClick={() => setActiveTab('lists')} 
+          style={{ padding: '10px 4px', borderBottom: activeTab === 'lists' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'lists' ? 700 : 600, color: activeTab === 'lists' ? 'var(--primary)' : '#64748b', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <List size={16} /> Item Lists
+        </div>
+      </div>
+
+      {activeTab === 'lists' && (
+        <ProductLists />
+      )}
+
+      {activeTab === 'products' && (
+        <>
+          {/* Add / Edit Form */}
       {showForm && (
         <div className="card" style={{ marginBottom: 20, border: '1.5px solid #6366f1', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.15)' }}>
           <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', borderBottom: '1.5px solid #e2e8f0' }}>
@@ -331,19 +462,19 @@ export default function Products() {
         </div>
       )}
 
-      {/* Search */}
+      {/* Search & Sort */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-body" style={{ padding: '12px 16px' }}>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <div className="card-body" style={{ padding: '12px 16px', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 200 }}>
             <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
               <Search size={16} />
             </span>
             <input
               className="form-control"
-              placeholder="Search products by name... (e.g. cement, rice, bag)"
+              placeholder="Search products by name..."
               value={search}
               onChange={e => { setSearch(e.target.value); load(e.target.value); }}
-              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8 }}
+              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8, height: '100%' }}
             />
             {search && (
               <button
@@ -351,6 +482,24 @@ export default function Products() {
                 onClick={() => { setSearch(''); load(''); }}
               >✕</button>
             )}
+          </div>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: isMobile ? '100%' : 'auto' }}>
+            <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
+              <ArrowDownAZ size={16} />
+            </span>
+            <select
+              className="form-control"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8, minWidth: 180, cursor: 'pointer', appearance: 'none' }}
+            >
+              <option value="recently_added">Sort: Recently Added</option>
+              <option value="last_updated">Sort: Last Updated</option>
+              <option value="name_asc">Sort: Name (A - Z)</option>
+              <option value="name_desc">Sort: Name (Z - A)</option>
+              <option value="price_asc">Sort: Price (Low - High)</option>
+              <option value="price_desc">Sort: Price (High - Low)</option>
+            </select>
           </div>
           {products.length > 0 && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
@@ -399,7 +548,7 @@ export default function Products() {
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((p, idx) => {
+                  {sortedProducts.map((p, idx) => {
                     const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0) ? p.custom_low_stock : threshold;
                     const stockColor = p.stock === 0 ? 'var(--danger)' : p.stock <= minStock ? 'var(--warning)' : 'var(--success)';
 
@@ -416,12 +565,20 @@ export default function Products() {
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                             {hl(p.name)}
+                            {isNewProduct(p.createdAt) && <span style={{ fontSize: 9, background: '#ef4444', color: 'white', padding: '2px 6px', borderRadius: 4, fontWeight: 700, letterSpacing: 0.5 }}>NEW</span>}
                             {!p.is_active && <span style={{ fontSize: 10, background: '#f3f4f6', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
                           </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{p.unit}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <span>{p.unit}</span>
+                            {/* Removed shared by label per request */}
+                          </div>
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace' }}>
-                          {fc(p.price)}
+                          <div style={{ fontSize: 14 }}>{fc(p.price)}</div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={10} /> {formatLastUpdated(p.updatedAt)}</div>
+                            {p.last_updated_by && <div style={{ fontSize: 9, color: '#64748b' }}>by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
+                          </div>
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--text-muted)' }}>
                           {p.gst}%
@@ -445,6 +602,15 @@ export default function Products() {
                         </td>
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {isAdmin && (
+                              <button 
+                                className="btn btn-outline btn-sm" 
+                                onClick={() => setShareModal(p)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#3b82f6', borderColor: '#bfdbfe' }}
+                              >
+                                <Share2 size={12} /> Share
+                              </button>
+                            )}
                             <button 
                               className="btn btn-outline btn-sm" 
                               onClick={() => openEdit(p)}
@@ -455,7 +621,7 @@ export default function Products() {
                             <button 
                               className="btn btn-ghost btn-sm" 
                               style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }}
-                              onClick={() => handleDelete(p._id)}
+                              onClick={() => setDeleteConfirmId(p._id)}
                               title="Delete Product"
                             >
                               <Trash2 size={14} />
@@ -471,6 +637,119 @@ export default function Products() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.60)', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: '400px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e2e8f0', margin: '16px', padding: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <div style={{ background: '#fee2e2', color: '#ef4444', padding: 12, borderRadius: '50%', flexShrink: 0 }}>
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Delete Product?</h3>
+                <p style={{ margin: '8px 0 0', fontSize: 14, color: '#64748b', lineHeight: 1.5 }}>Are you sure you want to delete this product? This action cannot be undone.</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+              <button className="btn btn-outline" onClick={() => setDeleteConfirmId(null)} style={{ borderRadius: 8, padding: '8px 16px' }}>Cancel</button>
+              <button className="btn btn-primary" onClick={confirmDelete} style={{ background: '#ef4444', borderColor: '#ef4444', borderRadius: 8, padding: '8px 16px' }}>Yes, Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Modal */}
+      {shareModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h3>Share Product</h3>
+              <button className="btn-close" onClick={() => setShareModal(null)}><X size={20} /></button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px' }}>
+              <p style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>
+                Give a manager access to <strong>{shareModal.name}</strong>.
+              </p>
+              <form onSubmit={handleShareSubmit}>
+                <div className="form-group" style={{ marginBottom: 16 }}>
+                  <label>Select Manager</label>
+                  <select 
+                    className="form-control" 
+                    value={selectedManagerId} 
+                    onChange={e => setSelectedManagerId(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Choose Manager --</option>
+                    {managers.filter(m => m._id !== user._id).map(m => (
+                      <option key={m._id} value={m._id}>{m.display_name || m.username}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShareModal(null)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={sharing}>
+                    {sharing ? 'Sharing...' : 'Share Product'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
+      )}
+
+      {/* Add To List Modal */}
+      {showAddToListModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 450 }}>
+            <div className="modal-header">
+              <h3>Add {selectedProductIds.length} Items to List</h3>
+              <button className="btn-close" onClick={() => setShowAddToListModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px' }}>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+                <div onClick={() => setAddToListMode('existing')} style={{ flex: 1, textAlign: 'center', padding: '10px', background: addToListMode === 'existing' ? '#eff6ff' : '#f8fafc', border: `1px solid ${addToListMode === 'existing' ? '#bfdbfe' : '#e2e8f0'}`, borderRadius: 8, cursor: 'pointer', fontWeight: addToListMode === 'existing' ? 700 : 500, color: addToListMode === 'existing' ? '#1d4ed8' : '#64748b' }}>
+                  Existing List
+                </div>
+                <div onClick={() => setAddToListMode('new')} style={{ flex: 1, textAlign: 'center', padding: '10px', background: addToListMode === 'new' ? '#eff6ff' : '#f8fafc', border: `1px solid ${addToListMode === 'new' ? '#bfdbfe' : '#e2e8f0'}`, borderRadius: 8, cursor: 'pointer', fontWeight: addToListMode === 'new' ? 700 : 500, color: addToListMode === 'new' ? '#1d4ed8' : '#64748b' }}>
+                  Create New List
+                </div>
+              </div>
+
+              {addToListMode === 'existing' ? (
+                <div className="form-group" style={{ marginBottom: 16 }}>
+                  <label>Select List</label>
+                  {itemLists.length > 0 ? (
+                    <select className="form-control" value={selectedListId} onChange={e => setSelectedListId(e.target.value)}>
+                      <option value="">-- Choose a list --</option>
+                      {itemLists.map(l => (
+                        <option key={l._id} value={l._id}>{l.name} ({l.products?.length || 0} items)</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div style={{ color: '#64748b', fontSize: 14, padding: '10px 0' }}>No lists found. Please create a new one.</div>
+                  )}
+                </div>
+              ) : (
+                <div className="form-group" style={{ marginBottom: 16 }}>
+                  <label>New List Name</label>
+                  <input className="form-control" placeholder="e.g. Weekly Items" value={newListName} onChange={e => setNewListName(e.target.value)} autoFocus />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowAddToListModal(false)}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={handleAddToListSubmit} disabled={addingToList}>
+                  {addingToList ? 'Saving...' : 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

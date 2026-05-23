@@ -14,6 +14,7 @@ const productSchema = new mongoose.Schema({
   // Phase 2: Visibility — which managers can see this product
   allowed_managers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }],
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+  last_updated_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
 }, { timestamps: true });
 
 productSchema.index({ name: 1 });

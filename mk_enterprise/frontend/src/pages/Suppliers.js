@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/helpers';
 import { Building2, Search, Phone, MapPin, Trash2, Plus, X, Edit, CreditCard, FileText, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const EMPTY = { name: '', phone: '', address: '', notes: '', balance: '' };
+const EMPTY = { name: '', phone: '', contact_numbers: [], address: '', notes: '', balance: '' };
 
 export default function Suppliers() {
   const { isAdmin } = useAuth();
@@ -38,6 +38,13 @@ export default function Suppliers() {
   useEffect(() => { load(); }, []);
 
   const openAdd = () => { setForm(EMPTY); setShowModal(true); };
+  const openEdit = (s) => { 
+    setForm({ 
+      ...s, 
+      contact_numbers: s.contact_numbers ? JSON.parse(JSON.stringify(s.contact_numbers)) : [] 
+    }); 
+    setShowModal(true); 
+  };
   const closeModal = () => { setShowModal(false); setForm(EMPTY); };
 
   const handleSave = async (e) => {
@@ -45,8 +52,13 @@ export default function Suppliers() {
     if (!form.name.trim()) return toast.error('Supplier name required');
     setSaving(true);
     try {
-      await supplierApi.create(form);
-      toast.success('Supplier added');
+      if (form._id) {
+        await supplierApi.update(form._id, form);
+        toast.success('Supplier updated');
+      } else {
+        await supplierApi.create(form);
+        toast.success('Supplier added');
+      }
       closeModal();
       load(search);
     } catch (err) { toast.error(err.message); }
@@ -134,6 +146,11 @@ export default function Suppliers() {
                           <Phone size={12} /> {s.phone}
                         </a>
                       )}
+                      {s.contact_numbers && s.contact_numbers.map((cn, i) => (
+                        <a key={i} href={`tel:${cn.number}`} style={{ fontSize: 12, color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, marginLeft: s.phone || i > 0 ? 12 : 0, textDecoration: 'none', fontWeight: 600 }}>
+                          <Phone size={12} /> {cn.note ? `${cn.note}: ` : ''}{cn.number}
+                        </a>
+                      ))}
                     </div>
                   </div>
                   {s.address && (
@@ -148,9 +165,14 @@ export default function Suppliers() {
                         <CreditCard size={13} /> Payment History <ArrowRight size={12} />
                       </button>
                     )}
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(s)} style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }} title="Delete">
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(s)} style={{ padding: '6px', borderRadius: 6 }} title="Edit">
+                        <Edit size={14} />
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(s)} style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }} title="Delete">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -182,13 +204,21 @@ export default function Suppliers() {
                         {s.name}
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        {s.phone ? (
-                          <a href={`tel:${s.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
-                            <Phone size={12} /> {s.phone}
-                          </a>
-                        ) : (
-                          <span style={{ color: '#cbd5e1' }}>—</span>
-                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {s.phone && (
+                            <a href={`tel:${s.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
+                              <Phone size={12} /> {s.phone}
+                            </a>
+                          )}
+                          {s.contact_numbers && s.contact_numbers.map((cn, i) => (
+                            <a key={i} href={`tel:${cn.number}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
+                              <Phone size={12} /> {cn.note ? `${cn.note}: ` : ''}{cn.number}
+                            </a>
+                          ))}
+                          {!s.phone && (!s.contact_numbers || s.contact_numbers.length === 0) && (
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 16px', color: '#475569' }} title={s.address}>
                         {s.address ? (s.address.length > 40 ? `${s.address.substring(0, 40)}...` : s.address) : <span style={{ color: '#cbd5e1' }}>—</span>}
@@ -208,6 +238,9 @@ export default function Suppliers() {
                               <CreditCard size={12} /> Payments
                             </button>
                           )}
+                          <button className="btn btn-ghost btn-sm" style={{ padding: '6px', borderRadius: 6 }} onClick={() => openEdit(s)} title="Edit">
+                            <Edit size={14} />
+                          </button>
                           <button className="btn btn-ghost btn-sm" style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }} onClick={() => handleDelete(s)} title="Delete">
                             <Trash2 size={14} />
                           </button>
@@ -228,8 +261,10 @@ export default function Suppliers() {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e2e8f0', margin: '16px' }}>
             <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', borderBottom: '1px solid #e2e8f0' }}>
               <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '16px', color: '#1e293b' }}>
-                <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}><Plus size={18} /></span>
-                Add New Supplier
+                <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
+                  {form._id ? <Edit size={18} /> : <Plus size={18} />}
+                </span>
+                {form._id ? 'Edit Supplier' : 'Add New Supplier'}
               </div>
               <button className="modal-close" onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}>
                 <X size={18} />
@@ -242,9 +277,32 @@ export default function Suppliers() {
                   <input className="form-control" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Ramesh Traders" autoFocus style={{ borderRadius: 8 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Phone Number</label>
-                    <input className="form-control" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="Mobile number" style={{ borderRadius: 8 }} />
+                  <div className="form-group" style={{ gridColumn: isMobile ? '1' : '1 / span 2' }}>
+                    <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                      Contact Numbers
+                      <button type="button" onClick={() => setForm({ ...form, contact_numbers: [...(form.contact_numbers || []), { note: '', number: '' }] })} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>+ Add Number</button>
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <input className="form-control" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="Primary Mobile number (legacy)" style={{ borderRadius: 8 }} />
+                      {(form.contact_numbers || []).map((cn, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: 8 }}>
+                          <input className="form-control" value={cn.note} onChange={e => {
+                            const newCn = [...form.contact_numbers];
+                            newCn[idx].note = e.target.value;
+                            setForm({ ...form, contact_numbers: newCn });
+                          }} placeholder="Note (e.g. Work)" style={{ borderRadius: 8, flex: 1 }} />
+                          <input className="form-control" type="tel" value={cn.number} onChange={e => {
+                            const newCn = [...form.contact_numbers];
+                            newCn[idx].number = e.target.value;
+                            setForm({ ...form, contact_numbers: newCn });
+                          }} placeholder="Number" style={{ borderRadius: 8, flex: 2 }} />
+                          <button type="button" onClick={() => {
+                            const newCn = form.contact_numbers.filter((_, i) => i !== idx);
+                            setForm({ ...form, contact_numbers: newCn });
+                          }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 8px' }}><Trash2 size={16} /></button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Address</label>
@@ -264,7 +322,7 @@ export default function Suppliers() {
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
                   <button type="button" className="btn btn-outline" onClick={closeModal} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>
-                    {saving ? 'Saving...' : 'Add Supplier'}
+                    {saving ? 'Saving...' : form._id ? 'Save Changes' : 'Add Supplier'}
                   </button>
                 </div>
               </form>

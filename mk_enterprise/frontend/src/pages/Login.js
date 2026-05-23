@@ -131,13 +131,24 @@ export default function Login() {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            width: 64, height: 64, borderRadius: 18,
-            background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+            width: 72, height: 72, borderRadius: '50%', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 14px',
-            boxShadow: '0 8px 24px rgba(37,99,235,0.4)',
-            color: '#fff',
-          }}><Briefcase size={30} /></div>
+            overflow: 'hidden', background: '#F8F9FA',
+            boxShadow: '0 4px 16px rgba(197,160,89,0.4)',
+            border: '2px solid #C5A059',
+            margin: '0 auto 16px',
+          }}>
+            <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="60" cy="60" r="48" stroke="#C5A059" strokeWidth="3.5" />
+              <circle cx="60" cy="60" r="41" stroke="#C5A059" strokeWidth="1" />
+              <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" strokeWidth="1" />
+              <path d="M19 60 H101" stroke="#C5A059" strokeWidth="1" />
+              <path d="M60 19 V101" stroke="#C5A059" strokeWidth="1" />
+              <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
+              <circle cx="60" cy="60" r="26" stroke="#C5A059" strokeWidth="2" />
+              <text x="60" y="75" fontFamily="Georgia, 'Times New Roman', serif" fontSize="42" fontWeight="bold" textAnchor="middle" fill="#0B132B" letterSpacing="-2">MK</text>
+            </svg>
+          </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: -0.5 }}>MK Enterprise</div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>Business Billing & Management</div>
         </div>

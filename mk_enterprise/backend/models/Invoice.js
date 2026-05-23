@@ -56,6 +56,7 @@ const invoiceSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now },
   ist_formatted: { type: String, default: '' },
   signature: { type: String, default: '' },
+  company_details: { type: mongoose.Schema.Types.Mixed, default: null }, // Snapshot of business settings at time of creation
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   shared_with: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }],
 }, { timestamps: true });

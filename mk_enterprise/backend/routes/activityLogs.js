@@ -66,6 +66,11 @@ router.get('/user/:userId', requireSupervisor, async (req, res) => {
       const start = new Date(date + 'T00:00:00.000+05:30');
       const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
       query.timestamp = { $gte: start, $lt: end };
+    } else if (req.query.days) {
+      const start = new Date();
+      start.setDate(start.getDate() - parseInt(req.query.days));
+      start.setHours(0, 0, 0, 0);
+      query.timestamp = { ...query.timestamp, $gte: start };
     }
 
     const [logs, total] = await Promise.all([

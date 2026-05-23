@@ -8,6 +8,7 @@ import { useLocation } from 'react-router-dom';
 import { orderApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet, Play, CheckCircle, AlertTriangle, Plus, Trash2, Monitor, Check, ArrowLeft, Maximize2, Receipt, FolderOpen, Inbox, Clock, Tag, Wallet, Smartphone, Globe, CreditCard, PenTool, Save, Package } from 'lucide-react';
+import { parseCustomerName, formatCustomerName, isHindi, titleCase, getPrefixOptions, applyAutoSuffix } from '../utils/nameFormatter';
 
 const newItem = () => ({
   _key: Date.now() + Math.random(),
@@ -52,7 +53,7 @@ function calcItemFromTotal(item, gstEnabled, newTotal) {
   };
 }
 
-const PAYMENT_MODES = ['cash', 'upi', 'online', 'others'];
+const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'others'];
 
 function ProductAutocomplete({ value, onSelect, onNameChange, inputRef, onEnter }) {
   const [query, setQuery] = useState(value || '');
@@ -205,7 +206,8 @@ export default function NewInvoice() {
       try {
         const order = await orderApi.getById(orderId);
         setCustomerMode('walkin');
-        setWalkIn({ name: order.customer_name, phone: order.customer_phone, address: '' });
+        const parsed = parseCustomerName(order.customer_name);
+        setWalkIn({ prefix: parsed.prefix, name: parsed.name, phone: order.customer_phone, address: '' });
         const orderItems = order.items.map(i => {
           const base = newItem();
           const filled = { ...base, product_id: i.product_id || '', product_name: i.product_name, qty: i.qty || 1, price: i.price || '' };
@@ -240,10 +242,11 @@ export default function NewInvoice() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerList, setShowCustomerList] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 300 });
-  const [walkIn, setWalkIn] = useState({ name: '', phone: '', address: '' });
+  const [walkIn, setWalkIn] = useState({ prefix: 'Shree', name: '', phone: '', address: '' });
   const [prevBalance, setPrevBalance] = useState(0);
   const [walkinMatch, setWalkinMatch] = useState(null);
   const [showWalkinMatchModal, setShowWalkinMatchModal] = useState(false);
+  const [walkinWarningModal, setWalkinWarningModal] = useState(null);
   const [allPendingDues, setAllPendingDues] = useState([]);
   const [payments, setPayments] = useState([{ mode: 'cash', amount: '', reference: '' }]);
   const [discount, setDiscount] = useState('');
@@ -356,35 +359,53 @@ export default function NewInvoice() {
   // Walk-in detection — phone is PRIMARY key
   useEffect(() => {
     if (customerMode !== 'walkin') return;
-    const phone = (walkIn.phone || '').replace(/\D/g, '');
-    if (phone.length !== 10) { setWalkinMatch(null); return; }
+    let phoneRaw = (walkIn.phone || '').replace(/\D/g, '');
+    
+    // Normalize phone number (strip leading 0 or 91, take last 10 digits)
+    let phone = phoneRaw;
+    if (phone.length > 10 && phone.startsWith('91')) phone = phone.slice(2);
+    else if (phone.length > 10 && phone.startsWith('0')) phone = phone.slice(1);
+    if (phone.length > 10) phone = phone.slice(-10);
 
-    const registeredMatch = customers.find(c =>
-      (c.phone || '').replace(/\D/g, '') === phone
-    );
+    if (phone.length < 10) { setWalkinMatch(null); return; }
+
+    const registeredMatch = customers.find(c => {
+      let cp = (c.phone || '').replace(/\D/g, '');
+      if (cp.length > 10 && cp.startsWith('91')) cp = cp.slice(2);
+      else if (cp.length > 10 && cp.startsWith('0')) cp = cp.slice(1);
+      if (cp.length > 10) cp = cp.slice(-10);
+      return cp === phone;
+    });
+
     if (registeredMatch) {
+      setWalkinWarningModal({
+        title: "⚠️ DISCLAIMER:",
+        message: `This phone number belongs to registered customer "${registeredMatch.name}" (Balance: ₹${registeredMatch.balance?.toFixed(2) || 0}).\n\nAutomatically switching to their account to prevent duplicate walk-in entries.`
+      });
       setCustomerMode('existing');
       setCustomerId(registeredMatch._id);
       setCustomerSearch(`${registeredMatch.name} (${registeredMatch.phone || ''})`);
       setPrevBalance(registeredMatch.balance || 0);
       setWalkinMatch(null);
-      if (registeredMatch.balance > 0.01) {
-        toast(`✅ Switched to ${registeredMatch.name} · Due: ₹${registeredMatch.balance?.toFixed(2)} carried forward`, { duration: 4000 });
-      } else {
-        toast.success(`✅ Switched to registered customer: ${registeredMatch.name}`);
-      }
       return;
     }
 
-    const walkinDueMatch = allPendingDues.find(c =>
-      c.type === 'walkin' &&
-      (c.phone || '').replace(/\D/g, '') === phone &&
-      (c.balance || 0) > 0.01
-    );
+    const walkinDueMatch = allPendingDues.find(c => {
+      if (c.type !== 'walkin' || (c.balance || 0) <= 0.01) return false;
+      let cp = (c.phone || '').replace(/\D/g, '');
+      if (cp.length > 10 && cp.startsWith('91')) cp = cp.slice(2);
+      else if (cp.length > 10 && cp.startsWith('0')) cp = cp.slice(1);
+      if (cp.length > 10) cp = cp.slice(-10);
+      return cp === phone;
+    });
+
     if (walkinDueMatch) {
+      setWalkinWarningModal({
+        title: "⚠️ DISCLAIMER:",
+        message: `This phone number already has pending walk-in dues of ₹${walkinDueMatch.balance?.toFixed(2)} under the name "${walkinDueMatch.name}".\n\nCarrying this balance forward to the current bill!`
+      });
       setPrevBalance(walkinDueMatch.balance || 0);
       setWalkinMatch(null);
-      toast(`⚠️ Pending due ₹${walkinDueMatch.balance?.toFixed(2)} from ${walkinDueMatch.name} carried forward`, { icon: '⚠️', duration: 5000 });
       const nameToUse = walkIn.name?.trim() || walkinDueMatch.name?.trim();
       if (nameToUse && phone) {
         customerApi.create({
@@ -423,7 +444,7 @@ export default function NewInvoice() {
     if (!Array.isArray(existing)) existing = [];
     const customerName = customerMode === 'existing'
       ? customers.find(c => c._id === customerId)?.name || 'Customer'
-      : walkIn?.name || 'Walk-in Customer';
+      : (walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : 'Walk-in Customer');
     const validItems = items.filter(i => i.product_name && i.price && parseFloat(i.qty) > 0);
     const totalAmount = validItems.reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0);
     const newDraft = {
@@ -479,7 +500,12 @@ export default function NewInvoice() {
       const c = customers.find(c => c._id === customerId);
       return { customer_id: customerId, customer_name: c?.name || '', customer_phone: c?.phone || '', customer_address: c?.address || '' };
     }
-    return { customer_id: null, customer_name: walkIn.name || 'Walk-in Customer', customer_phone: walkIn.phone, customer_address: walkIn.address };
+    return { 
+      customer_id: null, 
+      customer_name: walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : 'Walk-in Customer', 
+      customer_phone: walkIn.phone, 
+      customer_address: walkIn.address 
+    };
   };
 
   const loadDraft = (draft) => {
@@ -490,7 +516,7 @@ export default function NewInvoice() {
       const customer = customers.find(c => c._id === draft.customerId);
       setCustomerSearch(customer ? `${customer.name} (${customer.phone || ''})` : draft.customerName || '');
     }
-    setWalkIn(draft.walkIn || {});
+    setWalkIn(draft.walkIn || { prefix: 'Shree', name: '', phone: '', address: '' });
     setPayments(draft.payments || [{ mode: 'cash', amount: '', reference: '' }]);
     setDiscount(draft.discount || '');
     setNotes(draft.notes || '');
@@ -584,7 +610,7 @@ export default function NewInvoice() {
         );
         if (!alreadyExists) {
           customerApi.create({
-            name: walkIn.name.trim(),
+            name: formatCustomerName(walkIn.prefix, walkIn.name).trim(),
             phone: walkIn.phone,
             address: walkIn.address?.trim() || '',
             balance: invoice.balance_due > 0.01 ? invoice.balance_due : 0,
@@ -619,6 +645,10 @@ export default function NewInvoice() {
       (c.phone || '').toLowerCase().includes(q)
     );
   });
+
+  const handleWalkInNameBlur = () => {
+    setWalkIn(prev => ({ ...prev, name: applyAutoSuffix(prev.name) }));
+  };
 
   return (
     <div>
@@ -955,20 +985,53 @@ export default function NewInvoice() {
                   )}
                 </div>
               ) : (
-                <div className="form-row">
+                <div className="form-row" style={{ alignItems: 'flex-end' }}>
                   <div className="form-group">
-                    <label className="form-label">Name</label>
-                    <input
-                      ref={nameRef}
-                      className="form-control"
-                      value={walkIn.name}
-                      onChange={e => {
-                        const val = e.target.value.replace(/\b\w/g, c => c.toUpperCase());
-                        setWalkIn({ ...walkIn, name: val });
-                      }}
-                      placeholder="Customer name"
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); phoneRef.current?.focus(); } }}
-                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                      <label className="form-label" style={{ margin: 0 }}>Name</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#475569' }}>
+                        {getPrefixOptions(walkIn.name).map(opt => (
+                          <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', margin: 0 }}>
+                            <input 
+                              type="radio" 
+                              name="walkinPrefix" 
+                              value={opt.value}
+                              checked={walkIn.prefix === opt.value}
+                              onChange={e => setWalkIn({ ...walkIn, prefix: e.target.value })}
+                              style={{ margin: 0, cursor: 'pointer' }}
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <input
+                        ref={nameRef}
+                        className="form-control"
+                        value={walkIn.name}
+                        onChange={e => {
+                          const newName = e.target.value;
+                          const wasH = isHindi(walkIn.name);
+                          const isH = isHindi(newName);
+                          let newPrefix = walkIn.prefix || 'Shree';
+                          if (wasH !== isH) {
+                            if (isH) {
+                              if (newPrefix === 'Shree' || newPrefix === 'Mr.') newPrefix = 'श्री';
+                              else if (newPrefix === 'Shreemati' || newPrefix === 'Mrs.') newPrefix = 'श्रीमती';
+                            } else {
+                              if (newPrefix === 'श्री') newPrefix = 'Shree';
+                              else if (newPrefix === 'श्रीमती') newPrefix = 'Shreemati';
+                            }
+                          }
+                          setWalkIn({ ...walkIn, name: newName, prefix: newPrefix });
+                        }}
+                        onBlur={handleWalkInNameBlur}
+                        placeholder="Customer name"
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); phoneRef.current?.focus(); } }}
+                        style={{ flex: 1, borderRadius: 8 }}
+                      />
+                    </div>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Phone</label>
@@ -1850,6 +1913,29 @@ export default function NewInvoice() {
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>
                   Total Items: {items.filter(i => i.product_name && parseFloat(i.qty) > 0).length} · Subtotal: <span style={{ color: 'var(--success)' }}>{fc(subtotal)}</span>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {walkinWarningModal && (
+        <div className="modal-overlay" onClick={() => setWalkinWarningModal(null)} style={{ zIndex: 99999 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--danger)' }}>
+                {walkinWarningModal.title}
+              </div>
+              <button className="modal-close" onClick={() => setWalkinWarningModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ fontSize: 14, lineHeight: '1.5', marginBottom: 20, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+                {walkinWarningModal.message}
+              </div>
+              <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
+                <button className="btn btn-primary" onClick={() => setWalkinWarningModal(null)}>
+                  OK
+                </button>
               </div>
             </div>
           </div>

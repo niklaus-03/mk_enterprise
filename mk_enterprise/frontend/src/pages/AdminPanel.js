@@ -24,6 +24,16 @@ export default function AdminPanel() {
   const [resolveModal, setResolveModal] = useState(null);
   const [resolvePassword, setResolvePassword] = useState('');
 
+  // Edit User Modal
+  const [editUserModal, setEditUserModal] = useState(null);
+  const [editForm, setEditForm] = useState({ username: '', display_name: '', phone: '', role: '' });
+  const [editingUser, setEditingUser] = useState(false);
+
+  // User Activity Modal
+  const [userActivityModal, setUserActivityModal] = useState(null);
+  const [userActivityLogs, setUserActivityLogs] = useState({});
+  const [loadingUserActivity, setLoadingUserActivity] = useState(false);
+
   // Notification states
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -142,6 +152,42 @@ export default function AdminPanel() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editForm.username) return toast.error('Username/Vehicle number is required');
+    setEditingUser(true);
+    try {
+      if (editForm.role === 'manager') {
+        await managerApi.update(editUserModal._id, { username: editForm.username, display_name: editForm.display_name, phone: editForm.phone });
+        toast.success('Manager updated successfully');
+        loadManagers();
+      } else if (editForm.role === 'driver') {
+        await driverApi.update(editUserModal._id, { username: editForm.username, display_name: editForm.display_name, phone: editForm.phone });
+        toast.success('Driver updated successfully');
+        loadDrivers();
+      }
+      setEditUserModal(null);
+    } catch (err) { toast.error(err.message); }
+    finally { setEditingUser(false); }
+  };
+
+  const viewUserActivity = async (u, role) => {
+    setUserActivityModal({ ...u, role });
+    setLoadingUserActivity(true);
+    try {
+      const res = await activityLogApi.getByUser(u._id, { days: 10, limit: 500 });
+      // Group by date
+      const grouped = {};
+      (res.logs || []).forEach(log => {
+        const d = new Date(log.timestamp).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
+        if (!grouped[d]) grouped[d] = [];
+        grouped[d].push(log);
+      });
+      setUserActivityLogs(grouped);
+    } catch (err) { toast.error('Failed to load activity'); }
+    finally { setLoadingUserActivity(false); }
+  };
+
   const pendingCount = recoveryRequests.filter(r => r.status === 'pending').length;
 
   if (!isAdmin) return null;
@@ -173,22 +219,6 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* ── Stats Row ──────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Total Managers', value: total, icon: <Users size={20} className="text-primary" />, color: '#2563eb', bg: '#eff6ff' },
-          { label: 'Total Drivers', value: drivers.length, icon: <Truck size={20} className="text-purple" style={{ color: '#7c3aed' }} />, color: '#7c3aed', bg: '#f5f3ff' },
-          { label: 'Recovery Requests', value: pendingCount, icon: <Key size={20} className="text-warning" style={{ color: '#f59e0b' }} />, color: pendingCount > 0 ? '#f59e0b' : '#6b7280', bg: pendingCount > 0 ? '#fffbeb' : '#f9fafb' },
-        ].map((s, i) => (
-          <div key={i} style={{ ...card, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.icon}</div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: s.color, fontFamily: 'monospace' }}>{s.value}</div>
-              <div style={{ fontSize: 11.5, color: '#9ca3af', fontWeight: 600, marginTop: 1 }}>{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
 
       {/* ── Tab Bar ─────────────────────────────── */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f3f4f6', borderRadius: 10, padding: 4, flexWrap: 'wrap' }}>
@@ -254,6 +284,11 @@ export default function AdminPanel() {
                     <button onClick={() => handleToggleActive(m)} style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {m.is_active ? <><Pause size={12} /> Disable</> : <><Play size={12} /> Enable</>}
                     </button>
+                    <button onClick={() => {
+                      setEditUserModal(m);
+                      setEditForm({ username: m.username, display_name: m.display_name || '', phone: m.phone || '', role: 'manager' });
+                    }} style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: 4 }}><User size={12} /> Edit</button>
+                    <button onClick={() => viewUserActivity(m, 'manager')} style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: 4 }}><FileText size={12} /> Activity</button>
                     <button onClick={() => { setResetModal(m); setResetPassword(''); }} style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: 4 }}><Key size={12} /> Reset PW</button>
                     <button onClick={() => handleDelete(m)} style={{ ...btnDanger, display: 'flex', alignItems: 'center', gap: 4 }}><Trash2 size={13} /> Delete</button>
                   </div>
@@ -351,6 +386,11 @@ export default function AdminPanel() {
                         .catch(err => toast.error(err.message));
                     }} style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: 4 }}>{d.is_active ? <><Pause size={12} /> Disable</> : <><Play size={12} /> Enable</>}</button>
                     <button onClick={() => {
+                      setEditUserModal(d);
+                      setEditForm({ username: d.username, display_name: d.display_name || '', phone: d.phone || '', role: 'driver' });
+                    }} style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} /> Edit</button>
+                    <button onClick={() => viewUserActivity(d, 'driver')} style={{ ...btnOutline, display: 'flex', alignItems: 'center', gap: 4 }}><FileText size={12} /> Activity</button>
+                    <button onClick={() => {
                       const pw = prompt('New password for driver:');
                       if (!pw || pw.length < 4) return toast.error('Min 4 chars');
                       driverApi.resetPassword(d._id, pw)
@@ -409,40 +449,57 @@ export default function AdminPanel() {
               <div style={{ color: '#6b7280', fontSize: 14 }}>No activity logged yet. Actions will appear here as they happen.</div>
             </div>
           ) : (
-            <div style={{ padding: '4px 0', maxHeight: 500, overflowY: 'auto' }}>
-              {activityLogs.map((log, idx) => {
-                const rcMap = { supervisor: { bg: '#eff6ff', color: '#2563eb' }, manager: { bg: '#f0fdf4', color: '#16a34a' }, driver: { bg: '#fef3c7', color: '#d97706' } };
-                const rc = rcMap[log.user_role] || { bg: '#f3f4f6', color: '#374151' };
-                const icons = {
-                  create: <Plus size={14} style={{ color: '#16a34a' }} />,
-                  update: <FileText size={14} style={{ color: '#2563eb' }} />,
-                  delete: <Trash2 size={14} style={{ color: '#dc2626' }} />,
-                  login: <Key size={14} style={{ color: '#d97706' }} />,
-                  payment: <CreditCard size={14} style={{ color: '#16a34a' }} />,
-                  stock_adjust: <Package size={14} style={{ color: '#0284c7' }} />,
-                  other: <FileText size={14} style={{ color: '#4b5563' }} />
-                };
-                return (
-                  <div key={log._id} style={{ padding: '12px 20px', borderBottom: idx < activityLogs.length - 1 ? '1px solid #f3f4f6' : 'none', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {icons[log.action] || <FileText size={14} style={{ color: '#4b5563' }} />}
+            <div style={{ padding: '16px 0', maxHeight: 600, overflowY: 'auto' }}>
+              {(() => {
+                const grouped = {};
+                activityLogs.forEach(log => {
+                  const d = new Date(log.timestamp).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
+                  if (!grouped[d]) grouped[d] = [];
+                  grouped[d].push(log);
+                });
+                return Object.entries(grouped).map(([dateStr, logs]) => (
+                  <div key={dateStr} style={{ marginBottom: 28, padding: '0 20px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '2px solid #e5e7eb', paddingBottom: 6, marginBottom: 12 }}>
+                      {dateStr}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ color: '#2563eb' }}>{log.username}</span>
-                        <span style={{ ...badge(rc.bg, rc.color) }}>{log.user_role}</span>
-                        <span style={{ color: '#6b7280', fontWeight: 400 }}>{log.action}d</span>
-                        <span style={{ ...badge('#f1f5f9', '#374151'), fontWeight: 600 }}>{log.entity_type}</span>
-                        {log.entity_name && <span style={{ color: '#374151' }}>"{log.entity_name}"</span>}
-                      </div>
-                      {log.description && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{log.description}</div>}
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
-                        {new Date(log.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
-                      </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {logs.map(log => {
+                        const rcMap = { supervisor: { bg: '#eff6ff', color: '#2563eb' }, manager: { bg: '#f0fdf4', color: '#16a34a' }, driver: { bg: '#fffbeb', color: '#d97706' } };
+                        const rc = rcMap[log.user_role] || { bg: '#f3f4f6', color: '#374151' };
+                        const icons = {
+                          create: <Plus size={14} style={{ color: '#16a34a' }} />,
+                          update: <FileText size={14} style={{ color: '#2563eb' }} />,
+                          delete: <Trash2 size={14} style={{ color: '#dc2626' }} />,
+                          login: <Key size={14} style={{ color: '#d97706' }} />,
+                          payment: <CreditCard size={14} style={{ color: '#16a34a' }} />,
+                          stock_adjust: <Package size={14} style={{ color: '#0284c7' }} />,
+                          other: <FileText size={14} style={{ color: '#4b5563' }} />
+                        };
+                        return (
+                          <div key={log._id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: rc.bg, padding: '12px 16px', borderRadius: 10, border: `1px solid ${rc.color}30` }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${rc.color}40` }}>
+                              {icons[log.action] || <FileText size={14} style={{ color: '#4b5563' }} />}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span style={{ color: rc.color, fontWeight: 800 }}>{log.username}</span>
+                                <span style={{ ...badge('#fff', rc.color), border: `1px solid ${rc.color}40` }}>{log.user_role}</span>
+                                <span style={{ color: '#6b7280', fontWeight: 500 }}>{log.action}d</span>
+                                <span style={{ ...badge('#fff', '#374151'), border: '1px solid #d1d5db' }}>{log.entity_type}</span>
+                                {log.entity_name && <span style={{ color: '#111827', fontWeight: 700 }}>"{log.entity_name}"</span>}
+                              </div>
+                              {log.description && <div style={{ fontSize: 12, color: '#4b5563', marginTop: 4 }}>{log.description}</div>}
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6, fontWeight: 600 }}>
+                                {new Date(log.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })}
+                ));
+              })()}
             </div>
           )}
         </div>
@@ -515,6 +572,105 @@ export default function AdminPanel() {
             <div style={{ display: 'flex', gap: 10 }}>
               <button type="button" onClick={() => setResolveModal(null)} style={{ ...btnOutline, flex: 1, padding: '10px' }}>Cancel</button>
               <button onClick={handleResolve} style={{ ...btnPrimary, flex: 1, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><CheckCircle size={14} /> Reset & Resolve</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit User Modal ────────────────────── */}
+      {editUserModal && (
+        <div style={modalOverlay} onClick={() => setEditUserModal(null)}>
+          <div style={modalBox} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}><User size={18} className="text-primary" /> Edit {editForm.role === 'manager' ? 'Manager' : 'Driver'} Details</div>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>
+              Update the account profile and login information.
+            </div>
+            <form onSubmit={handleEditSubmit}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>{editForm.role === 'manager' ? 'Username' : 'Vehicle Number (Username)'} *</label>
+                <input style={inputStyle} value={editForm.username} onChange={e => setEditForm({ ...editForm, username: e.target.value })} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>Display Name</label>
+                <input style={inputStyle} value={editForm.display_name} onChange={e => setEditForm({ ...editForm, display_name: e.target.value })} />
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>Phone Number</label>
+                <input style={inputStyle} value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" onClick={() => setEditUserModal(null)} style={{ ...btnOutline, flex: 1, padding: '10px' }}>Cancel</button>
+                <button type="submit" disabled={editingUser} style={{ ...btnPrimary, flex: 1, padding: '10px', opacity: editingUser ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  {editingUser ? 'Saving...' : <><CheckCircle size={14} /> Save Changes</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── User Activity Modal ─────────────── */}
+      {userActivityModal && (
+        <div style={modalOverlay} onClick={() => setUserActivityModal(null)}>
+          <div style={{...modalBox, maxWidth: 600, maxHeight: '80vh', display: 'flex', flexDirection: 'column'}} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: '#111827', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <FileText size={20} className="text-primary" /> Activity Log (Last 10 Days)
+                </div>
+                <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                  For: <strong>{userActivityModal.display_name || userActivityModal.username}</strong> ({userActivityModal.role})
+                </div>
+              </div>
+              <button onClick={() => setUserActivityModal(null)} style={{ background: '#f1f5f9', border: 'none', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', paddingRight: 8 }}>
+              {loadingUserActivity ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading activity...</div>
+              ) : Object.keys(userActivityLogs).length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                  <div style={{ color: '#6b7280', fontSize: 14 }}>No activity found for this user in the last 10 days.</div>
+                </div>
+              ) : (
+                Object.entries(userActivityLogs).map(([dateStr, logs]) => (
+                  <div key={dateStr} style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '2px solid #e5e7eb', paddingBottom: 6, marginBottom: 12 }}>
+                      {dateStr}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {logs.map((log) => {
+                        const icons = {
+                          create: <Plus size={14} style={{ color: '#16a34a' }} />,
+                          update: <FileText size={14} style={{ color: '#2563eb' }} />,
+                          delete: <Trash2 size={14} style={{ color: '#dc2626' }} />,
+                          login: <Key size={14} style={{ color: '#d97706' }} />,
+                          payment: <CreditCard size={14} style={{ color: '#16a34a' }} />,
+                          stock_adjust: <Package size={14} style={{ color: '#0284c7' }} />,
+                          other: <FileText size={14} style={{ color: '#4b5563' }} />
+                        };
+                        return (
+                          <div key={log._id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: '#f8fafc', padding: '10px 14px', borderRadius: 10 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #e2e8f0' }}>
+                              {icons[log.action] || <FileText size={12} style={{ color: '#4b5563' }} />}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>
+                                <span style={{ color: '#6b7280', fontWeight: 400 }}>{log.action}d</span> <span style={{ color: '#374151', fontWeight: 600 }}>{log.entity_type}</span>
+                                {log.entity_name && <span style={{ color: '#374151' }}> "{log.entity_name}"</span>}
+                              </div>
+                              {log.description && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{log.description}</div>}
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                                {new Date(log.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

@@ -7,7 +7,8 @@ import { supabase } from '../utils/supabase';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, numToWords, formatIST } from '../utils/helpers';
-import { FileText, ArrowLeft, AlertTriangle, Edit, Share2, Trash2, Printer, Phone, Mail, CheckCircle, Wallet, Smartphone, Globe, CreditCard, MessageSquare, Info, Truck, User, Tag, Download, Send } from 'lucide-react';
+import { FileText, ArrowLeft, AlertTriangle, Edit, Share2, Trash2, Printer, Phone, Mail, CheckCircle, Wallet, Smartphone, Globe, CreditCard, MessageSquare, Info, Truck, User, Tag, Download, Send, X } from 'lucide-react';
+import { parseCustomerName, formatCustomerName, isHindi, titleCase, getPrefixOptions, applyAutoSuffix, FormattedName } from '../utils/nameFormatter';
 
 
 const uploadPDF = async (pdfBlob, invoiceNumber) => {
@@ -55,7 +56,41 @@ export default function InvoiceView() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [scale, setScale] = useState(1);
   const [zoomIn, setZoomIn] = useState(false);
+  const [driverWarningModal, setDriverWarningModal] = useState(null);
   const containerRef = useRef(null);
+  
+  const [showEditNameModal, setShowEditNameModal] = useState(false);
+  const [editNameForm, setEditNameForm] = useState({ prefix: 'Shree', name: '' });
+  const [savingName, setSavingName] = useState(false);
+  const editNameRef = useRef(null);
+
+  useEffect(() => {
+    if (invoice && invoice.customer_name === 'Walk-in Customer') {
+      setShowEditNameModal(true);
+      setEditNameForm({ prefix: 'Shree', name: '' });
+    }
+  }, [invoice]);
+
+  const handleEditNameBlur = () => {
+    setEditNameForm(prev => ({ ...prev, name: applyAutoSuffix(prev.name) }));
+  };
+
+  const handleSaveName = async (e) => {
+    if (e) e.preventDefault();
+    if (!editNameForm.name.trim()) return toast.error('Name is required');
+    setSavingName(true);
+    try {
+      const formattedName = formatCustomerName(editNameForm.prefix, editNameForm.name);
+      await invoiceApi.update(invoice._id, { customer_name: formattedName });
+      setInvoice({ ...invoice, customer_name: formattedName });
+      setShowEditNameModal(false);
+      toast.success('Customer name updated');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -588,7 +623,18 @@ Thank you! 🙏`
           <div style={{ flex: 1 }}>
             <div className="inv-section-title">Bill To</div>
             <div className="inv-bill-to">
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{invoice.customer_name}</div>
+              <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {invoice.customer_name}
+                {invoice.customer_name === 'Walk-in Customer' && (
+                  <button 
+                    onClick={() => setShowEditNameModal(true)}
+                    className="no-print"
+                    style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, outline: 'none' }}
+                  >
+                    <Edit size={10} /> Edit Name Required
+                  </button>
+                )}
+              </div>
               {invoice.customer_phone && <div style={{ fontSize: 13, marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {invoice.customer_phone}</div>}
               {invoice.customer_address && <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{invoice.customer_address}</div>}
             </div>
@@ -978,7 +1024,10 @@ Thank you! 🙏`
                                     setSelectedStaff(selectedStaff.filter(id => id !== person._id));
                                   } else {
                                     if (isEngaged) {
-                                      window.alert(`Driver ${person.display_name || person.username} is currently engaged on an active trip.\nYou can still send them the next trip details, but they cannot start it until they end their current trip in the portal.`);
+                                      setDriverWarningModal({
+                                        title: '⚠️ Driver Engaged',
+                                        message: `Driver ${person.display_name || person.username} is currently engaged on an active trip.\n\nYou can still send them the next trip details, but they cannot start it until they end their current trip in the portal.`
+                                      });
                                     }
                                     setSelectedStaff([...selectedStaff, person._id]);
                                   }
@@ -1067,6 +1116,105 @@ Thank you! 🙏`
                   Submit Escalation
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Driver Engaged Warning Modal */}
+      {driverWarningModal && (
+        <div className="modal-overlay" onClick={() => setDriverWarningModal(null)} style={{ zIndex: 99999 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--danger)' }}>
+                {driverWarningModal.title}
+              </div>
+              <button className="modal-close" onClick={() => setDriverWarningModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ fontSize: 14, lineHeight: '1.5', marginBottom: 20, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+                {driverWarningModal.message}
+              </div>
+              <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
+                <button className="btn btn-primary" onClick={() => setDriverWarningModal(null)}>
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Customer Name Modal */}
+      {showEditNameModal && (
+        <div className="modal-overlay no-print">
+          <div className="modal" style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <div className="modal-title">Update Customer Name</div>
+              {invoice.customer_name !== 'Walk-in Customer' && (
+                <button className="modal-close" onClick={() => setShowEditNameModal(false)}><X size={18} /></button>
+              )}
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: 12, fontSize: 13, color: '#b91c1c', background: '#fef2f2', padding: '8px 12px', borderRadius: 8, border: '1px solid #fecaca' }}>
+                Customer name is mandatory to view or print this invoice.
+              </div>
+              <form onSubmit={handleSaveName}>
+                <div className="form-group">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                    <label className="form-label" style={{ margin: 0 }}>Full Name *</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#475569' }}>
+                      {getPrefixOptions(editNameForm.name).map(opt => (
+                        <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', margin: 0 }}>
+                          <input 
+                            type="radio" 
+                            name="editNamePrefix" 
+                            value={opt.value}
+                            checked={editNameForm.prefix === opt.value}
+                            onChange={e => setEditNameForm({ ...editNameForm, prefix: e.target.value })}
+                            style={{ margin: 0, cursor: 'pointer' }}
+                          />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <input
+                      ref={editNameRef}
+                      autoFocus
+                      className="form-control"
+                      value={editNameForm.name}
+                      onChange={e => {
+                        const newName = e.target.value;
+                        const wasH = isHindi(editNameForm.name);
+                        const isH = isHindi(newName);
+                        let newPrefix = editNameForm.prefix || 'Shree';
+                        if (wasH !== isH) {
+                          if (isH) {
+                            if (newPrefix === 'Shree' || newPrefix === 'Mr.') newPrefix = 'श्री';
+                            else if (newPrefix === 'Shreemati' || newPrefix === 'Mrs.') newPrefix = 'श्रीमती';
+                          } else {
+                            if (newPrefix === 'श्री') newPrefix = 'Shree';
+                            else if (newPrefix === 'श्रीमती') newPrefix = 'Shreemati';
+                          }
+                        }
+                        setEditNameForm({ ...editNameForm, name: newName, prefix: newPrefix });
+                      }}
+                      onBlur={handleEditNameBlur}
+                      placeholder="Customer name"
+                      style={{ flex: 1, borderRadius: 8 }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+                  {invoice.customer_name !== 'Walk-in Customer' && (
+                    <button type="button" className="btn btn-outline" onClick={() => setShowEditNameModal(false)}>Cancel</button>
+                  )}
+                  <button type="submit" className="btn btn-primary" disabled={savingName || !editNameForm.name.trim()}>
+                    {savingName ? 'Saving...' : 'Save Name'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

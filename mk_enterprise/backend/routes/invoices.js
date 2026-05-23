@@ -7,6 +7,7 @@ const StockMovement = require('../models/StockMovement');
 const Setting = require('../models/Setting');
 const Notification = require('../models/Notification');
 const Admin = require('../models/Admin');
+const Settlement = require('../models/Settlement');
 const auth = require('../middleware/auth');
 const { logActivity } = require('./activityLogs');
 const { formatIST } = require('../utils/timeUtils');
@@ -247,9 +248,27 @@ router.post('/', async (req, res) => {
         if (!product) {
           return res.status(400).json({ error: `Product not found: ${item.product_name}` });
         }
-        if (product.stock < parseFloat(item.qty)) {
+        
+        let stockToUse = product.stock;
+        
+        // Handle list override if provided
+        if (req.body.product_list_id) {
+          const ProductList = require('../models/ProductList');
+          const list = await ProductList.findById(req.body.product_list_id);
+          if (list) {
+            const share = list.shares.find(s => s.manager_id.toString() === (req.user ? req.user.id : ''));
+            if (share) {
+               const override = share.overrides.find(o => o.product_id.toString() === product._id.toString());
+               if (override && override.custom_stock !== null) {
+                  stockToUse = override.custom_stock;
+               }
+            }
+          }
+        }
+        
+        if (stockToUse < parseFloat(item.qty)) {
           return res.status(400).json({
-            error: `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${item.qty}`,
+            error: `Insufficient stock for "${product.name}". Available: ${stockToUse}, Requested: ${item.qty}`,
           });
         }
       }
@@ -264,8 +283,23 @@ router.post('/', async (req, res) => {
     const total = itemsTotal + vc + lc;
     const total_with_prev_balance = baseTotal + vc + lc;
 
-    const amount_received = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-    const balance_due = total_with_prev_balance - amount_received;
+    let amount_received = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    
+    // Auto-apply advance balance if customer has any
+    if (prevBalance < 0) {
+      let advance_applied = Math.min(total, Math.abs(prevBalance));
+      if (advance_applied > 0) {
+        amount_received += advance_applied;
+        payments.push({
+          mode: 'advance_credit',
+          amount: advance_applied,
+          reference: 'Auto-applied from ledger',
+          date: new Date()
+        });
+      }
+    }
+
+    const balance_due = Math.max(0, total - amount_received);
     const invoiceDate = bill_date ? new Date(bill_date) : new Date();
 
     // Fetch current settings for snapshot
@@ -307,6 +341,14 @@ router.post('/', async (req, res) => {
     });
     await invoice.save();
 
+    // Bypass Mongoose strict schema to ensure company_details saves even if server isn't restarted
+    if (company_details) {
+      await Invoice.collection.updateOne(
+        { _id: invoice._id }, 
+        { $set: { company_details: company_details } }
+      );
+    }
+
     // 5. Deduct stock and log movements sequentially
     for (const item of processedItems) {
       if (item.product_id && item.product_id.toString().length === 24) {
@@ -315,21 +357,40 @@ router.post('/', async (req, res) => {
           const stock_before = product.stock;
           product.stock = Math.max(0, product.stock - item.qty);
           await product.save();
-            await StockMovement.create({
-              product_id: product._id,
-              product_name: product.name,
-              type: 'outgoing',
-              qty: item.qty,
-              qty_unit: product.unit || 'pcs',
-              stock_before,
-              stock_after: product.stock,
-              reference: invoice._id.toString(),
-              source: 'invoice',
-              vehicle_number: vehicle_number || '',
-              driver_name: driver_name || '',
-              ist_formatted: formatIST(invoiceDate),
-              created_by: req.user ? req.user.id : null,
-            });
+          
+          // Deduct from list override custom_stock if applicable
+          if (req.body.product_list_id) {
+            const ProductList = require('../models/ProductList');
+            const list = await ProductList.findById(req.body.product_list_id);
+            if (list) {
+              const share = list.shares.find(s => s.manager_id.toString() === (req.user ? req.user.id : ''));
+              if (share) {
+                 const override = share.overrides.find(o => o.product_id.toString() === product._id.toString());
+                 if (override && override.custom_stock !== null) {
+                    override.custom_stock = Math.max(0, override.custom_stock - item.qty);
+                    // Mongoose needs markModified for deep nested arrays sometimes
+                    list.markModified('shares');
+                    await list.save();
+                 }
+              }
+            }
+          }
+
+          await StockMovement.create({
+            product_id: product._id,
+            product_name: product.name,
+            type: 'outgoing',
+            qty: item.qty,
+            qty_unit: product.unit || 'pcs',
+            stock_before,
+            stock_after: product.stock,
+            reference: invoice._id.toString(),
+            source: 'invoice',
+            vehicle_number: vehicle_number || '',
+            driver_name: driver_name || '',
+            ist_formatted: formatIST(invoiceDate),
+            created_by: req.user ? req.user.id : null,
+          });
         }
       }
     }
@@ -342,6 +403,31 @@ router.post('/', async (req, res) => {
         customer.balance = balance_due;
       }
       await customer.save();
+    }
+
+    // 7. Auto-create Settlement records for received payments
+    if (payments && payments.length > 0) {
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(invoiceDate.getTime() + IST_OFFSET_MS);
+      const ist_date = istDate.toISOString().slice(0, 10);
+
+      for (const p of payments) {
+        if (parseFloat(p.amount) > 0) {
+          await Settlement.create({
+            type: 'other_income',
+            received_category: 'today_invoice',
+            party_name: (customer_name || 'Walk-in Customer').trim(),
+            amount: parseFloat(p.amount),
+            mode: p.mode || 'cash',
+            reference: p.reference || invoice.invoice_number,
+            notes: `Auto-recorded from invoice ${invoice.invoice_number}`,
+            date: invoiceDate,
+            ist_date,
+            ist_formatted: formatIST(invoiceDate),
+            created_by: req.user ? req.user.id : null,
+          });
+        }
+      }
     }
 
     res.status(201).json(invoice);
@@ -453,9 +539,16 @@ router.put('/:id', async (req, res) => {
     // 4. Recalculate totals
     const { processedItems, subtotal, gst_total, total, total_with_prev_balance } =
       buildTotals(items, discount, original.previous_balance, gst_enabled);
-    const amount_received = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-    const balance_due = total_with_prev_balance - amount_received;
+    let amount_received = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    // Note: Since this is an edit, we don't automatically pull more advance credit.
+    // If they want to use advance credit on edit, they should add a payment manually.
+    const balance_due = Math.max(0, total - amount_received);
     const hasReturns = items.some(i => (i.returned_qty || 0) > 0 || i.is_defective);
+
+    // Fetch current settings to update the snapshot on edit
+    const Setting = require('../models/Setting');
+    const settingsDoc = await Setting.findOne({ key: 'company_details' });
+    const company_details = settingsDoc ? settingsDoc.value : null;
 
     // 5. Update invoice
     const updated = await Invoice.findByIdAndUpdate(req.params.id, {
@@ -470,15 +563,26 @@ router.put('/:id', async (req, res) => {
       status: hasReturns ? 'partially_returned' : 'edited',
     }, { new: true });
 
+    // Bypass strict schema to ensure snapshot updates on edit
+    if (company_details) {
+      await Invoice.collection.updateOne(
+        { _id: updated._id }, 
+        { $set: { company_details: company_details } }
+      );
+      updated.company_details = company_details;
+    }
+
     // 6. Update customer balance (per-manager ledger)
     const custId = customer_id || original.customer_id;
     if (custId) {
       const cust = await Customer.findById(custId);
       if (cust) {
+        const difference = total - original.total;
         if (cust.setManagerBalance) {
-          cust.setManagerBalance(req.user.id, balance_due);
+          const currentBal = cust.getManagerBalance(req.user.id) || 0;
+          cust.setManagerBalance(req.user.id, currentBal + difference);
         } else {
-          cust.balance = balance_due;
+          cust.balance = (cust.balance || 0) + difference;
         }
         await cust.save();
       }
@@ -530,9 +634,10 @@ router.delete('/:id', async (req, res) => {
       const cust = await Customer.findById(invoice.customer_id);
       if (cust) {
         if (cust.setManagerBalance && invoice.created_by) {
-          cust.setManagerBalance(invoice.created_by, invoice.previous_balance);
+          const currentBal = cust.getManagerBalance(invoice.created_by) || 0;
+          cust.setManagerBalance(invoice.created_by, currentBal - invoice.total);
         } else {
-          cust.balance = invoice.previous_balance;
+          cust.balance = (cust.balance || 0) - invoice.total;
         }
         await cust.save();
       }

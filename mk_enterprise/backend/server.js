@@ -23,7 +23,9 @@ app.use('/api/seed', require('./routes/seed')); // only for initial setup
 
 // ── Protected Routes ──────────────────────────────────────────────────────────
 app.use('/api/products', require('./routes/products'));
+app.use('/api/product-lists', require('./routes/productLists'));
 app.use('/api/customers', require('./routes/customers'));
+app.use('/api/customer-lists', require('./routes/customerLists'));
 app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/settings', require('./routes/settings'));

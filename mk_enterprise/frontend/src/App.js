@@ -27,7 +27,7 @@ import AdminPanel from './pages/AdminPanel';
 import WalkInDelivery from './pages/WalkInDelivery';
 import DriverDashboard from './pages/DriverDashboard';
 import NotificationDropdown from './components/NotificationDropdown';
-import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell } from 'lucide-react';
+import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List } from 'lucide-react';
 import { tripApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────

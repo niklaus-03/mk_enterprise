@@ -9,6 +9,7 @@ const managerBalanceSchema = new mongoose.Schema({
 const customerSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   phone: { type: String, default: '', trim: true },
+  alternate_phones: [{ type: String, trim: true }],
   address: { type: String, default: '', trim: true },
   balance: { type: Number, default: 0 }, // global aggregate (sum of all manager_balances)
   gstin: { type: String, default: '', trim: true },

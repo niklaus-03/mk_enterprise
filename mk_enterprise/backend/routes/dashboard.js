@@ -4,8 +4,10 @@ const Invoice = require('../models/Invoice');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 const StockMovement = require('../models/StockMovement');
+const Settlement = require('../models/Settlement');
 const auth = require('../middleware/auth');
-const { todayUTCRange } = require('../utils/timeUtils');
+const { todayUTCRange, formatIST } = require('../utils/timeUtils');
+const { logActivity } = require('./activityLogs');
 
 router.use(auth);
 
@@ -155,6 +157,8 @@ router.get('/', async (req, res) => {
     );
     const walkinPending = (walkinPendingInvoices || []).map(inv => ({
       _id: inv._id,
+      invoice_id: inv._id,
+      customer_id: null,
       name: inv.customer_name || 'Walk-in Customer',
       phone: inv.customer_phone || '',
       balance: inv.balance_due || 0,
@@ -167,6 +171,8 @@ router.get('/', async (req, res) => {
     // Selected-date pending dues
     const selectedDatePendingDues = (selectedDatePendingInvoices || []).map(inv => ({
       _id: inv._id,
+      invoice_id: inv._id,
+      customer_id: inv.customer_id || null,
       name: inv.customer_name || 'Walk-in Customer',
       phone: inv.customer_phone || '',
       balance: inv.balance_due || 0,
@@ -259,87 +265,148 @@ router.post('/record-payment', async (req, res) => {
     }
 
     const { formatIST } = require('../utils/timeUtils');
-    let invoice = null;
+    let paid = parseFloat(amount) || 0;
+    const now = new Date();
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + IST_OFFSET_MS);
+    const ist_date = istDate.toISOString().slice(0, 10);
 
-    // Fix 3: Try to find invoice by invoice_id first
-    if (invoice_id) {
-      try { invoice = await Invoice.findById(invoice_id); } catch (e) { /* invalid id format */ }
+    let customer = null;
+    if (customer_id) {
+      customer = await Customer.findById(customer_id);
     }
 
-    // Fix 3: For registered customers — find their latest unpaid invoice
-    if (!invoice && customer_id) {
-      invoice = await Invoice.findOne({
+    let invoicesToPay = [];
+
+    // 1. If invoice_id is provided, we pay ONLY that specific invoice
+    if (invoice_id) {
+      try { 
+        const specificInvoice = await Invoice.findById(invoice_id); 
+        if (specificInvoice) invoicesToPay.push(specificInvoice);
+      } catch (e) { /* invalid id format */ }
+    } 
+    // 2. If no invoice_id but we have customer_id, we fetch ALL unpaid invoices for cascading
+    else if (customer_id) {
+      invoicesToPay = await Invoice.find({
         customer_id: customer_id,
         balance_due: { $gt: 0.01 },
         status: { $ne: 'cancelled' },
-      }).sort({ date: -1 });
+      }).sort({ date: 1 }); // SORT BY OLDEST FIRST!
     }
 
-    // Fix 3: Still not found — update customer balance directly
-    if (!invoice) {
-      // Customer-only payment (no specific invoice — reduce customer balance)
-      if (customer_id) {
-        const paid = parseFloat(amount) || 0;
-        const customer = await Customer.findById(customer_id);
-        if (!customer) return res.status(404).json({ error: 'Customer not found' });
-
-        const advance = Math.max(0, paid - customer.balance);
-        customer.balance = Math.max(0, customer.balance - paid);
-        await customer.save();
-
-        return res.json({
-          success: true,
-          balance_due: 0,
-          amount_received: paid,
-          advance_stored: advance,
-          message: advance > 0
-            ? `Due cleared. ₹${advance.toFixed(2)} stored as advance.`
-            : `₹${paid.toFixed(2)} recorded for customer.`,
-        });
-      }
+    if (invoicesToPay.length === 0 && !customer) {
       return res.status(404).json({ error: 'Invoice not found and no customer specified' });
     }
 
-    const paid = parseFloat(amount) || 0;
-    const currentDue = invoice.balance_due || 0;
-
-    invoice.payments.push({ mode, amount: paid, reference: reference || '' });
-    invoice.amount_received = (invoice.amount_received || 0) + paid;
-
+    // 3. Cascade payment across invoices
     let advance = 0;
-    if (paid >= currentDue) {
-      // Clears full due; any extra becomes advance
-      advance = paid - currentDue;
-      invoice.balance_due = 0;
-    } else {
-      invoice.balance_due = currentDue - paid;
-    }
-    await invoice.save();
+    let originalPaid = paid;
 
-    // Update registered customer balance
-    // Positive balance = customer owes us; Negative = advance paid by customer
-    const custId = customer_id || invoice.customer_id;
-    if (custId) {
-      const customer = await Customer.findById(custId);
-      if (customer) {
-        if (advance > 0) {
-          // Subtract advance from balance (makes it negative = customer credit)
-          customer.balance = customer.balance - paid;
-        } else {
-          customer.balance = Math.max(0, customer.balance - paid);
-        }
-        await customer.save();
-      }
+    for (let invoice of invoicesToPay) {
+      if (paid <= 0) break; // Payment exhausted
+      
+      const currentDue = invoice.balance_due || 0;
+      const amountToApply = Math.min(paid, currentDue);
+
+      invoice.payments.push({ mode, amount: amountToApply, reference: reference || '' });
+      invoice.amount_received = (invoice.amount_received || 0) + amountToApply;
+      invoice.balance_due = currentDue - amountToApply;
+      await invoice.save();
+
+      paid -= amountToApply;
     }
+
+    // 4. Any remaining payment becomes advance credit on the customer's ledger
+    advance = paid;
+
+    // 5. Update the customer's ledger balance
+    if (customer) {
+      // originalPaid is the full amount they handed us. It always reduces their ledger balance.
+      if (advance > 0 && invoicesToPay.length === 0) {
+        // If they had no invoices at all, the entire amount might push them into negative (credit)
+        const pureAdvance = Math.max(0, originalPaid - customer.balance);
+        customer.balance = Math.max(0, customer.balance - originalPaid);
+        if(pureAdvance > 0) customer.balance -= pureAdvance; // negative balance
+      } else {
+        // Reduce balance by the total amount they paid.
+        // If they pay 10,000 and balance was 6,000, new balance is -4,000 (advance)
+        customer.balance = customer.balance - originalPaid;
+      }
+      await customer.save();
+    }
+
+    // 6. Record the Settlement entry
+    const partyName = customer ? customer.name : (invoicesToPay[0] ? invoicesToPay[0].customer_name : 'Walk-in Customer');
+    const ref = reference || (invoicesToPay.length === 1 ? invoicesToPay[0].invoice_number : (invoicesToPay.length > 1 ? 'Multiple Invoices' : ''));
+    
+    await Settlement.create({
+      type: 'other_income',
+      received_category: advance > 0 && originalPaid === advance ? 'advance_payment' : 'due_cleared',
+      party_name: partyName,
+      amount: originalPaid,
+      mode: mode || 'cash',
+      reference: ref,
+      notes: 'Auto-recorded payment',
+      date: now,
+      ist_date,
+      ist_formatted: formatIST(now),
+      created_by: req.user ? req.user.id : null,
+    });
+
+    // 7. Log Activity
+    const entityType = invoicesToPay.length === 1 && !customer_id ? 'invoice' : 'customer';
+    const entityId = invoicesToPay.length === 1 && !customer_id ? invoicesToPay[0]._id : (customer ? customer._id : null);
+    
+    await logActivity(req, {
+      action: 'payment',
+      entity_type: entityType,
+      entity_id: entityId,
+      entity_name: partyName,
+      description: `Collected ₹${originalPaid.toFixed(2)} via ${mode || 'cash'}. ${advance > 0 ? `₹${advance.toFixed(2)} stored as advance.` : 'Applied to due.'}`
+    });
 
     res.json({
       success: true,
-      balance_due: invoice.balance_due,
-      amount_received: invoice.amount_received,
+      amount_received: originalPaid,
       advance_stored: advance > 0 ? advance : 0,
       message: advance > 0
-        ? `Due cleared. ₹${advance.toFixed(2)} stored as advance for this customer.`
-        : `₹${paid.toFixed(2)} recorded successfully.`,
+        ? `Payment recorded. ₹${advance.toFixed(2)} stored as advance credit.`
+        : `₹${originalPaid.toFixed(2)} recorded successfully.`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/dashboard/check-phone — check if a phone number already belongs to a registered customer or has walk-in dues
+router.get('/check-phone', async (req, res) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) return res.json({ registered: null, walkin_invoices: [] });
+
+    const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
+    if (!cleanedPhone || cleanedPhone.length < 10) return res.json({ registered: null, walkin_invoices: [] });
+
+    // 1. Check for registered customer
+    // We use regex to match the last 10 digits to handle leading zeros or +91
+    const customerRegex = new RegExp(`${cleanedPhone}$`);
+    const registered = await Customer.findOne({
+      phone: { $regex: customerRegex },
+      is_active: true,
+    });
+
+    // 2. Check for unpaid walk-in invoices
+    const walkin_invoices = await Invoice.find({
+      customer_id: null,
+      customer_phone: { $regex: customerRegex },
+      balance_due: { $gt: 0.01 },
+      status: { $ne: 'cancelled' },
+    });
+
+    res.json({
+      registered: registered ? { id: registered._id, name: registered.name, balance: registered.balance } : null,
+      walkin_invoices: walkin_invoices.map(i => ({ invoice_number: i.invoice_number, balance_due: i.balance_due, name: i.customer_name })),
+      total_walkin_due: walkin_invoices.reduce((sum, i) => sum + i.balance_due, 0)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -349,7 +416,7 @@ router.post('/record-payment', async (req, res) => {
 // POST /api/dashboard/walkin-due — create a walk-in due without an invoice
 router.post('/walkin-due', async (req, res) => {
   try {
-    const { name, amount, phone, notes } = req.body;
+    const { name, amount, phone, notes, force_walkin } = req.body;
     if (!name || !amount || parseFloat(amount) <= 0) {
       return res.status(400).json({ error: 'name and amount are required' });
     }
@@ -358,8 +425,8 @@ router.post('/walkin-due', async (req, res) => {
     const dueAmount = parseFloat(amount);
     const customerPhone = phone && phone.trim() ? phone.trim() : 'Not Available';
 
-    // Phone lookup: if phone provided, check for existing registered customer
-    if (customerPhone !== 'Not Available') {
+    // Phone lookup: if phone provided and NOT force_walkin, check for existing registered customer
+    if (customerPhone !== 'Not Available' && !force_walkin) {
       const existingCustomer = await Customer.findOne({
         phone: customerPhone,
         is_active: true,
@@ -401,6 +468,15 @@ router.post('/walkin-due', async (req, res) => {
         const prevBalance = existingCustomer.getManagerBalance(req.user.id);
         existingCustomer.setManagerBalance(req.user.id, prevBalance + dueAmount);
         await existingCustomer.save();
+
+        // Log Activity
+        logActivity(req, {
+          action: 'create',
+          entity_type: 'invoice',
+          entity_id: invoice._id,
+          entity_name: invoice.invoice_number,
+          description: `Due entry added for ${existingCustomer.name}. Amount: ₹${dueAmount.toFixed(2)}`,
+        });
 
         return res.status(201).json({
           success: true,
@@ -445,6 +521,15 @@ router.post('/walkin-due', async (req, res) => {
     });
 
     await invoice.save();
+
+    // Log Activity
+    logActivity(req, {
+      action: 'create',
+      entity_type: 'invoice',
+      entity_id: invoice._id,
+      entity_name: invoice.invoice_number,
+      description: `Walk-in due entry created for ${name}. Amount: ₹${dueAmount.toFixed(2)}`,
+    });
 
     res.status(201).json({
       success: true,

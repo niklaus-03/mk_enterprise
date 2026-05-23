@@ -28,7 +28,7 @@ const activityLogSchema = new mongoose.Schema({
 
   // Metadata
   ip_address: { type: String, default: '' },
-  timestamp: { type: Date, default: Date.now },
+  timestamp: { type: Date, default: Date.now, expires: '30d' }, // Auto-deletes 30 days after this date
 }, { timestamps: true });
 
 activityLogSchema.index({ timestamp: -1 });

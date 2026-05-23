@@ -9,31 +9,92 @@ const { formatIST } = require('../utils/timeUtils');
 
 router.use(auth);
 
-// Helper: managers see ONLY products they created or are explicitly allowed to view
-function ownerFilter(req, extra = {}) {
-  if (req.user.role === 'manager') {
-    return {
-      ...extra,
-      $or: [
-        { created_by: req.user.id },
-        { allowed_managers: req.user.id },
-      ],
-    };
-  }
-  return extra; // supervisor sees all
-}
-
 // Helper: get global low stock threshold from settings
 async function getGlobalThreshold() {
   const row = await Setting.findOne({ key: 'low_stock_threshold' });
   return row ? (parseInt(row.value) || 10) : 10;
 }
 
+const ProductList = require('../models/ProductList');
+
+// Helper: managers see ONLY products they created, are explicitly allowed to view, or are part of a shared ProductList
+async function getOwnerFilter(req, extra = {}) {
+  if (req.user.role === 'manager') {
+    const sharedLists = await ProductList.find({ 'shares.manager_id': req.user.id });
+    let sharedProductIds = [];
+    sharedLists.forEach(list => {
+      const share = list.shares.find(s => s.manager_id.toString() === req.user.id);
+      if (share) {
+        list.products.forEach(pId => {
+          const override = share.overrides.find(o => o.product_id.toString() === pId.toString());
+          if (!override || !override.is_excluded) {
+            sharedProductIds.push(pId);
+          }
+        });
+      }
+    });
+
+    return {
+      ...extra,
+      $or: [
+        { created_by: req.user.id },
+        { allowed_managers: req.user.id },
+        { _id: { $in: sharedProductIds } }
+      ],
+    };
+  }
+  return extra; // supervisor sees all
+}
+
+
+
+// Helper: Apply list overrides to a list of products
+async function applyListOverrides(req, products, listId) {
+  if (!listId) return products;
+  try {
+    const list = await ProductList.findById(listId);
+    if (!list) return products;
+
+    // Determine the share overrides for this user
+    let userOverrides = [];
+    if (req.user.role === 'manager') {
+      const share = list.shares.find(s => s.manager_id.toString() === req.user.id);
+      if (share) userOverrides = share.overrides;
+    } else {
+      // If admin, we don't apply overrides unless we want to simulate a manager, but for now we won't.
+    }
+
+    // Filter to only products in the list
+    const listProductIds = list.products.map(id => id.toString());
+    
+    return products.filter(p => {
+      // Must be in the list
+      if (!listProductIds.includes(p._id.toString())) return false;
+      
+      // Must not be excluded
+      const override = userOverrides.find(o => o.product_id.toString() === p._id.toString());
+      if (override && override.is_excluded) return false;
+      
+      return true;
+    }).map(p => {
+      const override = userOverrides.find(o => o.product_id.toString() === p._id.toString());
+      if (override) {
+        if (override.custom_price !== null) p.price = override.custom_price;
+        if (override.custom_stock !== null) p.stock = override.custom_stock;
+      }
+      return p;
+    });
+  } catch (err) {
+    console.error('List override error:', err);
+    return products;
+  }
+}
+
 // GET all products
 router.get('/', async (req, res) => {
   try {
-    const { search, limit = 200 } = req.query;
-    const query = { is_active: true, ...ownerFilter(req) };
+    const { search, limit = 200, list_id } = req.query;
+    const query = { is_active: true, ...(await getOwnerFilter(req)) };
     if (search) {
       const searchFilter = { name: { $regex: search.trim(), $options: 'i' } };
       if (query.$or) {
@@ -44,7 +105,15 @@ router.get('/', async (req, res) => {
         Object.assign(query, searchFilter);
       }
     }
-    const products = await Product.find(query).sort({ name: 1 }).limit(parseInt(limit));
+    
+    // If we have a list_id, we might just query all allowed products then filter in memory since limit is small anyway
+    // Or we query base products then apply overrides
+    let products = await Product.find(query).populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role').sort({ name: 1 }).limit(list_id ? 1000 : parseInt(limit)).lean();
+    
+    if (list_id) {
+      products = await applyListOverrides(req, products, list_id);
+    }
+    
     res.json(products);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -52,8 +121,8 @@ router.get('/', async (req, res) => {
 // GET autocomplete - returns products visible to user
 router.get('/autocomplete', async (req, res) => {
   try {
-    const { q = '' } = req.query;
-    const query = { is_active: true, ...ownerFilter(req) };
+    const { q = '', list_id } = req.query;
+    const query = { is_active: true, ...(await getOwnerFilter(req)) };
     if (q.trim()) {
       const searchFilter = { name: { $regex: q.trim(), $options: 'i' } };
       if (query.$or) {
@@ -64,7 +133,13 @@ router.get('/autocomplete', async (req, res) => {
         Object.assign(query, searchFilter);
       }
     }
-    const products = await Product.find(query, { name: 1, price: 1, gst: 1, unit: 1, stock: 1 }).limit(20);
+    let products = await Product.find(query, { name: 1, price: 1, gst: 1, unit: 1, stock: 1 }).limit(list_id ? 1000 : 20).lean();
+    
+    if (list_id) {
+      products = await applyListOverrides(req, products, list_id);
+      products = products.slice(0, 20); // re-limit after overrides
+    }
+    
     res.json(products);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -86,7 +161,7 @@ router.get('/low-stock', async (req, res) => {
 // GET single product
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    const product = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) }).populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role');
     if (!product) return res.status(404).json({ error: 'Product not found or access denied' });
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -102,7 +177,7 @@ router.post('/', async (req, res) => {
       name: name.trim(), price, stock, gst,
       unit: unit || 'pcs',
       hsn_code: hsn_code || '',
-      custom_low_stock: (custom_low_stock !== '' && custom_low_stock !== undefined) ? parseFloat(custom_low_stock) : null,
+      custom_low_stock: (custom_low_stock != null && custom_low_stock !== '') ? parseFloat(custom_low_stock) : null,
       weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
       created_by: req.user.id,
@@ -128,15 +203,16 @@ router.post('/', async (req, res) => {
 // PUT update product
 router.put('/:id', async (req, res) => {
   try {
-    const checkProduct = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    const checkProduct = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
 
     const { custom_low_stock, weight_per_unit, suggested_price, ...rest } = req.body;
     const updateData = {
       ...rest,
-      custom_low_stock: (custom_low_stock !== '' && custom_low_stock !== undefined) ? parseFloat(custom_low_stock) : null,
+      custom_low_stock: (custom_low_stock != null && custom_low_stock !== '') ? parseFloat(custom_low_stock) : null,
       weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
+      last_updated_by: req.user.id,
     };
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
 
@@ -156,7 +232,7 @@ router.put('/:id', async (req, res) => {
 // PATCH stock adjustment
 router.patch('/:id/stock', async (req, res) => {
   try {
-    const product = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    const product = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!product) return res.status(404).json({ error: 'Product not found or access denied' });
 
     const { qty, type, qty_unit, vehicle_number, driver_name, supplier, notes } = req.body;
@@ -188,6 +264,41 @@ router.patch('/:id/stock', async (req, res) => {
     });
 
     res.json(product);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST delegate product to another manager
+router.post('/:id/delegate', async (req, res) => {
+  try {
+    const { manager_id } = req.body;
+    if (!manager_id) return res.status(400).json({ error: 'manager_id is required' });
+
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    // Only creator or supervisor can delegate
+    if (req.user.role !== 'supervisor' && product.created_by?.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Only the product creator or supervisor can delegate' });
+    }
+
+    // Avoid duplicates in allowed_managers
+    const already = product.allowed_managers.some(m => m.toString() === manager_id);
+    if (!already) {
+      product.allowed_managers.push(manager_id);
+    }
+
+    await product.save();
+
+    // Log activity
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'product',
+      entity_id: product._id,
+      entity_name: product.name,
+      description: `Product delegated to manager ${manager_id}`,
+    });
+
+    res.json({ success: true, allowed_managers: product.allowed_managers });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
