@@ -1,0 +1,45 @@
+# Settlement Data Flow & Grouping Logic
+
+Here is the current architecture of how Settlements are generated, fetched, and grouped in the Admin profile.
+
+1. How Settlements are Created
+   - User generates Invoice -> Auto-creates Settlement Entry (Type: Income, Cat: today_invoice)
+   - User clears Pending Due -> Auto-creates Settlement Entry (Type: Income, Cat: due_cleared)
+   - User clicks 'Add Entry' -> Manually creates Settlement Entry (Expense / Income / Supplier)
+
+2. Backend Database
+   - Stores in MongoDB: Settlements Collection
+   - Fields: Amount, Mode, Notes, Type, Manager ID
+
+3. Admin Dashboard (Real-time Fetching)
+   - 10-second polling to Backend API
+   - Fetches Data & Manager Names to Admin Dashboard
+
+4. Admin UI Display
+   - Summary Cards (Total Received, Paid Out, Net)
+   - Full History Table (Lists ALL individual entries)
+   - Click Received/Paid Out -> Dropdown Summary Panel
+     - Groups by Manager Name
+       - Groups by Mode of Payment (CASH, UPI, CHEQUE)
+         - Displays Total Amount for that Mode
+         - Displays List of specific Notes / Invoices
+
+-----------------------------------------------------
+Breakdown of the Summary Dropdown Structure:
+When you click on the Received or Paid Out boxes in the Admin Dashboard, the current grouping looks exactly like this:
+
+- Admin / System
+  - CASH: +₹65,713.22
+    - Invoice Auto-recorded from invoice 300005
+    - Invoice Auto-recorded from invoice 300004
+  - UPI: +₹12,150.00
+    - Invoice Auto-recorded from invoice 100037
+
+- Manager Name (e.g. Rahul)
+  - UPI: +₹5,000.00
+    - Advance payment from John
+  - CHEQUE: +₹10,000.00
+    - Due cleared
+-----------------------------------------------------
+
+Please edit this text file directly to show me how you want it changed!

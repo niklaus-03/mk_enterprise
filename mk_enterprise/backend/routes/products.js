@@ -9,6 +9,18 @@ const { formatIST } = require('../utils/timeUtils');
 
 router.use(auth);
 
+// Middleware: check if manager has permission to edit stock/prices (Problem 6)
+const checkProductEditPermission = async (req, res, next) => {
+  if (req.user.role === 'manager') {
+    const Admin = require('../models/Admin');
+    const user = await Admin.findById(req.user.id);
+    if (!user || !user.can_edit_products) {
+      return res.status(403).json({ error: "You don't have permission to edit stock or prices. Please contact the Admin." });
+    }
+  }
+  next();
+};
+
 // Helper: get global low stock threshold from settings
 async function getGlobalThreshold() {
   const row = await Setting.findOne({ key: 'low_stock_threshold' });
@@ -93,7 +105,7 @@ async function applyListOverrides(req, products, listId) {
 // GET all products
 router.get('/', async (req, res) => {
   try {
-    const { search, limit = 200, list_id } = req.query;
+    const { search, limit = 200, list_id, paginate, page = 1, sort } = req.query;
     const query = { is_active: true, ...(await getOwnerFilter(req)) };
     if (search) {
       const searchFilter = { name: { $regex: search.trim(), $options: 'i' } };
@@ -106,9 +118,46 @@ router.get('/', async (req, res) => {
       }
     }
     
-    // If we have a list_id, we might just query all allowed products then filter in memory since limit is small anyway
-    // Or we query base products then apply overrides
-    let products = await Product.find(query).populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role').sort({ name: 1 }).limit(list_id ? 1000 : parseInt(limit)).lean();
+    // Determine sorting logic
+    let sortObj = { name: 1 };
+    if (sort === 'recently_added') sortObj = { createdAt: -1 };
+    else if (sort === 'last_updated') sortObj = { updatedAt: -1 };
+    else if (sort === 'name_asc') sortObj = { name: 1 };
+    else if (sort === 'name_desc') sortObj = { name: -1 };
+    else if (sort === 'price_asc') sortObj = { price: 1 };
+    else if (sort === 'price_desc') sortObj = { price: -1 };
+
+    if (paginate === 'true') {
+      const limitNum = parseInt(limit) || 25;
+      const pageNum = parseInt(page) || 1;
+      const skip = (pageNum - 1) * limitNum;
+      
+      const [products, total] = await Promise.all([
+        Product.find(query)
+          .populate('created_by', 'username display_name role')
+          .populate('last_updated_by', 'username display_name role')
+          .sort(sortObj)
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        Product.countDocuments(query)
+      ]);
+      
+      return res.json({ 
+        products, 
+        total, 
+        pages: Math.ceil(total / limitNum),
+        currentPage: pageNum 
+      });
+    }
+
+    // Legacy unpaginated behavior
+    let products = await Product.find(query)
+      .populate('created_by', 'username display_name role')
+      .populate('last_updated_by', 'username display_name role')
+      .sort(sortObj)
+      .limit(list_id ? 1000 : parseInt(limit))
+      .lean();
     
     if (list_id) {
       products = await applyListOverrides(req, products, list_id);
@@ -144,6 +193,17 @@ router.get('/autocomplete', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET distinct categories
+router.get('/categories', async (req, res) => {
+  try {
+    const filter = { is_active: true, ...(await getOwnerFilter(req)) };
+    const categories = await Product.distinct('category', filter);
+    // Filter out empty strings, sort alphabetically
+    const sorted = categories.filter(c => c && c.trim()).sort((a, b) => a.localeCompare(b, 'hi'));
+    res.json(sorted);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET low stock - respects per-product OR global threshold
 router.get('/low-stock', async (req, res) => {
   try {
@@ -168,9 +228,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST create product
-router.post('/', async (req, res) => {
+router.post('/', checkProductEditPermission, async (req, res) => {
   try {
-    const { name, price, stock, gst, unit, hsn_code, custom_low_stock, weight_per_unit, suggested_price, allowed_managers } = req.body;
+    const { name, price, stock, gst, unit, hsn_code, custom_low_stock, weight_per_unit, suggested_price, allowed_managers, category } = req.body;
     if (!name || price === undefined || stock === undefined || gst === undefined)
       return res.status(400).json({ error: 'name, price, stock, gst required' });
     const productData = {
@@ -180,6 +240,7 @@ router.post('/', async (req, res) => {
       custom_low_stock: (custom_low_stock != null && custom_low_stock !== '') ? parseFloat(custom_low_stock) : null,
       weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
+      category: (category || '').trim(),
       created_by: req.user.id,
     };
     if (allowed_managers && Array.isArray(allowed_managers)) {
@@ -201,19 +262,22 @@ router.post('/', async (req, res) => {
 });
 
 // PUT update product
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkProductEditPermission, async (req, res) => {
   try {
     const checkProduct = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
 
-    const { custom_low_stock, weight_per_unit, suggested_price, ...rest } = req.body;
+    const { custom_low_stock, weight_per_unit, suggested_price, category, ...rest } = req.body;
     const updateData = {
       ...rest,
       custom_low_stock: (custom_low_stock != null && custom_low_stock !== '') ? parseFloat(custom_low_stock) : null,
       weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
+      category: category !== undefined ? (category || '').trim() : undefined,
       last_updated_by: req.user.id,
     };
+    // Remove undefined keys
+    Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
 
     // Log activity
@@ -230,7 +294,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // PATCH stock adjustment
-router.patch('/:id/stock', async (req, res) => {
+router.patch('/:id/stock', checkProductEditPermission, async (req, res) => {
   try {
     const product = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!product) return res.status(404).json({ error: 'Product not found or access denied' });
@@ -303,9 +367,9 @@ router.post('/:id/delegate', async (req, res) => {
 });
 
 // DELETE (soft)
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkProductEditPermission, async (req, res) => {
   try {
-    const checkProduct = await Product.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    const checkProduct = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
 
     await Product.findByIdAndUpdate(req.params.id, { is_active: false });
@@ -323,38 +387,5 @@ router.delete('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST delegate product to another manager
-router.post('/:id/delegate', async (req, res) => {
-  try {
-    const { manager_id } = req.body;
-    if (!manager_id) return res.status(400).json({ error: 'manager_id is required' });
-
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
-
-    // Only creator or supervisor can delegate
-    if (req.user.role !== 'supervisor' && product.created_by?.toString() !== req.user.id) {
-      return res.status(403).json({ error: 'Only the product creator or supervisor can delegate' });
-    }
-
-    // Avoid duplicates
-    const already = product.allowed_managers.some(m => m.toString() === manager_id);
-    if (!already) {
-      product.allowed_managers.push(manager_id);
-      await product.save();
-    }
-
-    // Log activity
-    logActivity(req, {
-      action: 'update',
-      entity_type: 'product',
-      entity_id: product._id,
-      entity_name: product.name,
-      description: `Product delegated to manager ${manager_id}`,
-    });
-
-    res.json({ success: true, allowed_managers: product.allowed_managers });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
 module.exports = router;

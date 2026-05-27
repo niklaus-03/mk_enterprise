@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Settlement = require('../models/Settlement');
+const ActivityLog = require('../models/ActivityLog');
+const Notification = require('../models/Notification');
 const auth = require('../middleware/auth');
 const { formatIST, todayUTCRange } = require('../utils/timeUtils');
 
@@ -63,7 +65,7 @@ router.get('/', async (req, res) => {
     if (sort_date === 'asc') sortObj.date = 1;
     else sortObj.date = -1; // default
 
-    const settlements = await Settlement.find(query).sort(sortObj).limit(200);
+    const settlements = await Settlement.find(query).sort(sortObj).limit(200).populate('created_by', 'display_name username role');
 
     // Fix 4: Totals for the fetched period (daily or all-time)
     const totalOut = settlements
@@ -104,6 +106,44 @@ router.post('/', async (req, res) => {
       ist_formatted: formatIST(entryDate),
       created_by: req.user.id,
     });
+
+    // Create Activity Log
+    const isPaidOut = type !== 'other_income';
+    const actionDesc = isPaidOut ? `Paid Out: ₹${amount} to ${party_name || 'Supplier'} via ${mode.toUpperCase()} (Ref: ${reference || 'N/A'}) - ${notes}` 
+                                 : `Received: ₹${amount} from ${party_name || 'Customer'} via ${mode.toUpperCase()} (Ref: ${reference || 'N/A'}) - ${notes}`;
+                                 
+    await ActivityLog.create({
+      user_id: req.user.id,
+      username: req.user.username,
+      user_role: req.user.role,
+      action: 'payment',
+      entity_type: 'settlement',
+      entity_id: settlement._id,
+      entity_name: party_name || (isPaidOut ? 'Supplier' : 'Customer'),
+      description: actionDesc,
+      ip_address: req.ip
+    });
+
+    // Send Notification if Paid Out
+    if (isPaidOut) {
+      await Notification.create({
+        recipient_role: 'supervisor',
+        sender_id: req.user.id,
+        sender_name: req.user.username,
+        type: 'general',
+        title: `Payment Made: ₹${amount}`,
+        message: `To ${party_name || 'Supplier'} via ${mode.toUpperCase()}. Ref: ${reference || 'N/A'} - ${notes}`,
+        priority: 'high',
+        entity_type: 'settlement',
+        entity_id: settlement._id,
+        metadata: {
+          is_paid_out: true,
+          amount,
+          party_name,
+          mode
+        }
+      });
+    }
 
     res.status(201).json(settlement);
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -18,7 +18,7 @@ const invoiceItemSchema = new mongoose.Schema({
 });
 
 const paymentSchema = new mongoose.Schema({
-  mode: { type: String, enum: ['cash', 'upi', 'online', 'others'], required: true },
+  mode: { type: String, enum: ['cash', 'upi', 'bank_transfer', 'cheque', 'advance_credit', 'online', 'others'], required: true },
   amount: { type: Number, required: true, min: 0 },
   reference: { type: String, default: '' },
 }, { _id: false });
@@ -65,42 +65,34 @@ invoiceSchema.pre('save', async function (next) {
   if (!this.invoice_number) {
     try {
       const Admin = mongoose.model('Admin');
-      let levelDigit = 1; // default for supervisor
+      let prefix = 'INV-';
 
       if (this.created_by) {
         const creator = await Admin.findById(this.created_by);
         if (creator) {
           if (creator.role === 'supervisor') {
-            levelDigit = 1;
+            prefix = 'INV-';
           } else if (creator.role === 'manager') {
-            // Find sequential index among all active managers sorted by creation date
-            const allManagers = await Admin.find(
-              { role: 'manager', is_active: true },
-              { _id: 1 }
-            ).sort({ createdAt: 1 });
-            const managerIndex = allManagers.findIndex(
-              m => m._id.toString() === creator._id.toString()
-            );
-            // First manager = 3, second = 4, etc.
-            levelDigit = 3 + Math.max(0, managerIndex);
+            const nameToUse = creator.display_name || creator.username || 'M';
+            const firstLetter = nameToUse.charAt(0).toUpperCase();
+            prefix = `${firstLetter}INV-`;
           }
         }
       }
 
-      // Count existing invoices with the same level digit prefix
-      const prefix = levelDigit.toString();
+      // Count existing invoices with the same prefix
       const InvoiceModel = mongoose.model('Invoice');
       const count = await InvoiceModel.countDocuments({
         invoice_number: { $regex: `^${prefix}` },
       });
 
-      // Format as 6-digit: e.g. 100001, 300001, 400002
+      // Format as 6-digit: e.g. MINV-000001, INV-000001
       const sequence = count + 1;
-      this.invoice_number = `${prefix}${String(sequence).padStart(5, '0')}`;
+      this.invoice_number = `${prefix}${String(sequence).padStart(6, '0')}`;
     } catch (err) {
       // Fallback: global count-based
       const count = await mongoose.model('Invoice').countDocuments();
-      this.invoice_number = `1${String(count + 1).padStart(5, '0')}`;
+      this.invoice_number = `INV-${String(count + 1).padStart(6, '0')}`;
     }
   }
   next();

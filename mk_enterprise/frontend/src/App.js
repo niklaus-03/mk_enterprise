@@ -27,6 +27,8 @@ import AdminPanel from './pages/AdminPanel';
 import WalkInDelivery from './pages/WalkInDelivery';
 import DriverDashboard from './pages/DriverDashboard';
 import NotificationDropdown from './components/NotificationDropdown';
+import MobileGlobalSearch from './components/MobileGlobalSearch';
+import { ThemeProvider } from './context/ThemeContext';
 import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List } from 'lucide-react';
 import { tripApi } from './utils/api';
 
@@ -50,6 +52,13 @@ function SupervisorRoute({ children }) {
   return isAdmin ? children : <Navigate to="/" replace />;
 }
 
+// ── Vehicle Access Route wrapper ──────────────────────────────────────────────
+function VehicleRoute({ children }) {
+  const { isAdmin, user } = useAuth();
+  const hasAccess = isAdmin || user?.can_edit_products;
+  return hasAccess ? children : <Navigate to="/" replace />;
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 function Sidebar({ open, onClose, onLock }) {
   const { logout, admin, isAdmin, user } = useAuth();
@@ -63,12 +72,14 @@ function Sidebar({ open, onClose, onLock }) {
     { to: '/invoices', label: lang ? hi.invoices : 'Invoice History', icon: <ClipboardList size={16} />, exact: true },
     { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
     { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} /> },
-    ...(isAdmin ? [{ to: '/vehicle-incoming', label: 'Vehicles', icon: <Truck size={16} /> }] : []),
-    { to: '/walkin-delivery', label: 'Walk-in Delivery', icon: <UserCheck size={16} /> },
-    { to: '/suppliers', label: 'Suppliers', icon: <Building2 size={16} /> },
-    { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
-    ...(isAdmin ? [{ to: '/admin', label: 'Admin Panel', icon: <Shield size={16} /> }] : []),
     { to: '/settings', label: lang ? hi.settings : 'Settings', icon: <SettingsIcon size={16} /> },
+    ...(isAdmin ? [
+      { to: '/vehicle-incoming', label: 'Vehicles', icon: <Truck size={16} /> },
+      { to: '/walkin-delivery', label: 'Walk-in Delivery', icon: <UserCheck size={16} /> },
+      { to: '/suppliers', label: 'Suppliers', icon: <Building2 size={16} /> },
+      { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
+      { to: '/admin', label: 'Admin Panel', icon: <Shield size={16} /> },
+    ] : []),
   ];
 
   return (
@@ -147,17 +158,6 @@ function Sidebar({ open, onClose, onLock }) {
                 </div>
               </div>
             </div>
-
-            {/* Laptop/Desktop Golden Notification Bell */}
-            {user && (
-              <NotificationDropdown 
-                user={user} 
-                style={{ marginLeft: '8px', flexShrink: 0 }} 
-                iconColor="#C5A059" 
-                bellSize={18} 
-                dropdownAlign="left"
-              />
-            )}
           </div>
         </div>
         <nav className="sidebar-nav">
@@ -423,13 +423,14 @@ function AppLayout() {
           </span>
 
           {user ? (
-            <NotificationDropdown 
-              user={user} 
-              className="notification-wrapper" 
-              style={{ justifySelf: 'end' }} 
-              iconColor="#0f172a" 
-              bellSize={21} 
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifySelf: 'end' }}>
+              <MobileGlobalSearch />
+              <NotificationDropdown 
+                user={user} 
+                iconColor="#0f172a" 
+                bellSize={21} 
+              />
+            </div>
           ) : (
             <div style={{ width: 33, justifySelf: 'end' }} />
           )}
@@ -438,6 +439,24 @@ function AppLayout() {
         <div className="app-content">
           <Outlet />
         </div>
+
+        {/* Facebook Style Bottom Nav — Manager only, mobile only */}
+        {!isAdmin && (
+          <div className="fb-bottom-nav">
+            <NavLink to="/invoices/new" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <FileText size={26} strokeWidth={isActive ? 2.5 : 2} />}
+            </NavLink>
+            <NavLink to="/invoices" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <ClipboardList size={26} strokeWidth={isActive ? 2.5 : 2} />}
+            </NavLink>
+            <NavLink to="/customers" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <Users size={26} strokeWidth={isActive ? 2.5 : 2} />}
+            </NavLink>
+            <NavLink to="/products" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <Package size={26} strokeWidth={isActive ? 2.5 : 2} />}
+            </NavLink>
+          </div>
+        )}
       </div>
     </>
   );
@@ -522,9 +541,9 @@ function InnerApp() {
         <Route path="invoices/:id" element={<InvoiceView />} />
         <Route path="invoices/:id/edit" element={<EditInvoice />} />
         <Route path="/stock-movements" element={<StockMovements />} />
-        <Route path="/vehicle-incoming" element={<VehicleIncoming />} />
+        <Route path="/vehicle-incoming" element={<VehicleRoute><VehicleIncoming /></VehicleRoute>} />
         <Route path="/walkin-delivery" element={<WalkInDelivery />} />
-        <Route path="/vehicle/:id" element={<VehicleDetail />} />
+        <Route path="/vehicle/:id" element={<VehicleRoute><VehicleDetail /></VehicleRoute>} />
         <Route path="/trip/:id" element={<TripView />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="settings" element={<Settings />} />
@@ -543,11 +562,13 @@ function InnerApp() {
 // ── Root export ────────────────────────────────────────────────────────────────
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Toaster position="top-right" toastOptions={{ duration: 3500, style: { fontSize: 13.5 } }} />
-        <InnerApp />
-      </AuthProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <Toaster position="top-right" toastOptions={{ duration: 3500, style: { fontSize: 13.5 } }} />
+          <InnerApp />
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }

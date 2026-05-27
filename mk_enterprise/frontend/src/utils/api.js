@@ -3,7 +3,7 @@ import axios from 'axios';
 const baseURL =
   window.location.hostname === "localhost"
     ? "http://localhost:5000/api"
-    : "http://192.168.1.39:5000/api";
+    : "http://192.168.100.100:5000/api";
 
 const api = axios.create({
   baseURL,
@@ -103,6 +103,7 @@ export const productApi = {
   delete: (id) => api.delete(`/products/${id}`),
   adjustStock: (id, data) => api.patch(`/products/${id}/stock`, data),
   delegate: (id, manager_id) => api.post(`/products/${id}/delegate`, { manager_id }),
+  getCategories: () => api.get('/products/categories'),
 };
 
 // ── Customers ─────────────────────────────────────────────────────────────────

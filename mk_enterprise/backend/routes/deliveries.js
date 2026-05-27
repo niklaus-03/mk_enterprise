@@ -10,6 +10,17 @@ const { formatIST, todayUTCRange } = require('../utils/timeUtils');
 
 router.use(auth);
 
+// Middleware: check if manager has permission to edit stock/prices (Problem 6)
+const checkProductEditPermission = async (req, res, next) => {
+  if (req.user.role === 'manager') {
+    const user = await Admin.findById(req.user.id);
+    if (!user || !user.can_edit_products) {
+      return res.status(403).json({ error: "You don't have permission to adjust vehicles or incoming stock. Please contact Admin." });
+    }
+  }
+  next();
+};
+
 // Helper: get IST date string from a Date object
 function getISTDateStr(date) {
   return new Date(date.getTime() + 5.5 * 60 * 60 * 1000)
@@ -80,7 +91,7 @@ router.get('/', async (req, res) => {
 /**
  * POST /api/deliveries — create new delivery entry
  */
-router.post('/', async (req, res) => {
+router.post('/', checkProductEditPermission, async (req, res) => {
   try {
     const { vehicle_number, driver_name, supplier, expected_arrival, items, notes } = req.body;
     if (!vehicle_number || !expected_arrival || !items?.length) {
@@ -151,7 +162,7 @@ router.get('/:id', async (req, res) => {
  * PATCH /api/deliveries/:id/status — update status
  * body: { status: 'delivered' | 'not_delivered' | 'pending' }
  */
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', checkProductEditPermission, async (req, res) => {
   try {
     const { status } = req.body;
     const delivery = await Delivery.findById(req.params.id);
@@ -270,7 +281,7 @@ router.patch('/:id/status', async (req, res) => {
 /**
  * PUT /api/deliveries/:id — update delivery details
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkProductEditPermission, async (req, res) => {
   try {
     const { vehicle_number, driver_name, supplier, expected_arrival, items, notes } = req.body;
     const delivery = await Delivery.findById(req.params.id);
@@ -358,7 +369,7 @@ router.patch('/:id/payment', async (req, res) => {
 /**
  * DELETE /api/deliveries/:id
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkProductEditPermission, async (req, res) => {
   try {
     const delivery = await Delivery.findById(req.params.id);
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });

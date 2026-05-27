@@ -54,14 +54,14 @@ export const FormattedName = ({ fullName, style = {}, className = "" }) => {
 };
 
 export const parseCustomerName = (fullName) => {
-  if (!fullName) return { prefix: 'Shree', name: '' };
+  if (!fullName) return { prefix: 'Mr.', name: '' };
   
-  const prefixes = ['Shree', 'Shreemati', 'Mr.', 'Mrs.', 'Ms.', 'श्री', 'श्रीमती'];
+  const prefixes = ['Shree', 'Shreemati', 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'श्री', 'श्रीमती'];
   let matchedPrefix = null;
   let name = fullName.trim();
   
   for (const p of prefixes) {
-    if (name.startsWith(p + ' ')) {
+    if (name.toLowerCase().startsWith(p.toLowerCase() + ' ')) {
       matchedPrefix = p;
       name = name.slice(p.length + 1).trim();
       break;
@@ -69,7 +69,7 @@ export const parseCustomerName = (fullName) => {
   }
   
   return { 
-    prefix: matchedPrefix || (isHindi(fullName) ? 'श्री' : 'Shree'), 
+    prefix: matchedPrefix || (isHindi(fullName) ? 'श्री' : 'Mr.'), 
     name 
   };
 };
@@ -77,7 +77,7 @@ export const parseCustomerName = (fullName) => {
 export const formatCustomerName = (prefix, nameRaw) => {
   if (!nameRaw) return '';
   let name = titleCase(nameRaw.trim());
-  if (!prefix || prefix === 'Other') return name;
+  if (!prefix || prefix === 'Other' || prefix === 'Other (None)') return name;
   return `${prefix} ${name}`;
 };
 
@@ -91,8 +91,9 @@ export const getPrefixOptions = (name) => {
     ];
   }
   return [
-    { value: 'Shree', label: 'Shree' },
-    { value: 'Shreemati', label: 'Shreemati' },
+    { value: 'Mr.', label: 'Mr.' },
+    { value: 'Mrs.', label: 'Mrs.' },
+    { value: 'Miss', label: 'Miss' },
     { value: 'Other', label: 'Other (None)' }
   ];
 };
@@ -102,14 +103,14 @@ export const applyAutoSuffix = (nameRaw) => {
   if (!name) return name;
   
   const isH = isHindi(name);
-  const endsWithJi = /ji$|jii$|जी$/i.test(name);
+  if (!isH) {
+    // English names must not get a "jii" or "ji" suffix appended (Problem 8)
+    return name;
+  }
   
+  const endsWithJi = /ji$|jii$|जी$/i.test(name);
   if (!endsWithJi) {
-    if (isH) {
-      name = name + ' जी';
-    } else {
-      name = name + ' jii';
-    }
+    name = name + ' जी';
   }
   return name;
 };

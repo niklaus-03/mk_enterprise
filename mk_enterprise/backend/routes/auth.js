@@ -253,6 +253,7 @@ router.post('/managers', auth, requireSupervisor, async (req, res) => {
       role: 'manager',
       is_active: true,
       created_by: req.user.id,
+      can_edit_products: req.body.can_edit_products === true || req.body.can_edit_products === 'true',
     });
 
     const result = manager.toObject();
@@ -268,7 +269,7 @@ router.post('/managers', auth, requireSupervisor, async (req, res) => {
 // ─── PUT /api/auth/managers/:id ───────────────────────────────────────────────
 router.put('/managers/:id', auth, requireSupervisor, async (req, res) => {
   try {
-    const { display_name, phone, is_active, username } = req.body;
+    const { display_name, phone, is_active, username, can_edit_products } = req.body;
     const manager = await Admin.findOne({ _id: req.params.id, role: 'manager' });
     if (!manager) return res.status(404).json({ error: 'Manager not found.' });
 
@@ -280,6 +281,9 @@ router.put('/managers/:id', auth, requireSupervisor, async (req, res) => {
     if (display_name !== undefined) manager.display_name = display_name;
     if (phone !== undefined) manager.phone = (phone || '').replace(/\D/g, '');
     if (is_active !== undefined) manager.is_active = is_active;
+    if (can_edit_products !== undefined) {
+      manager.can_edit_products = can_edit_products === true || can_edit_products === 'true';
+    }
     await manager.save();
 
     const result = manager.toObject();

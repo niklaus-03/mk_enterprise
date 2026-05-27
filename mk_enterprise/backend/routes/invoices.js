@@ -115,6 +115,15 @@ router.post('/:id/share', async (req, res) => {
     invoice.shared_with = newShared;
     await invoice.save();
     
+    // Log activity
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'invoice',
+      entity_id: invoice._id,
+      entity_name: invoice.invoice_number,
+      description: `Shared invoice with ${staffIds.length} staff member(s)`,
+    });
+
     res.json({ message: 'Invoice shared successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -147,6 +156,15 @@ router.post('/batch-share', async (req, res) => {
       inv.shared_with = newShared;
       await inv.save();
     }));
+
+    // Log activity
+    logActivity(req, {
+      action: 'update',
+      entity_type: 'invoice',
+      entity_id: null,
+      entity_name: `Batch of ${invoices.length} invoices`,
+      description: `Batch shared with driver ${driverUser.display_name || driverUser.username}`,
+    });
 
     // Build bundled payload
     const bundledInvoices = invoices.map(inv => ({
@@ -302,9 +320,33 @@ router.post('/', async (req, res) => {
     const balance_due = Math.max(0, total - amount_received);
     const invoiceDate = bill_date ? new Date(bill_date) : new Date();
 
-    // Fetch current settings for snapshot
-    const settingsDoc = await Setting.findOne({ key: 'company_details' });
-    const company_details = settingsDoc ? settingsDoc.value : null;
+    // Overhaul: Fetch all current settings for a full snapshot (freeze print history)
+    const settingsDocs = await Setting.find({});
+    const company_details = {};
+    settingsDocs.forEach(doc => {
+      company_details[doc.key] = doc.value;
+    });
+
+    const DEFAULTS = {
+      business_name: 'My Shop',
+      business_address: '123, Main Street, Your City - 000000',
+      business_phone: '9800000000',
+      business_gstin: '22AAAAA0000A1Z5',
+      business_state: 'Uttarakhand',
+      business_email: '',
+      upi_id: '',
+      upi_name: 'My Shop',
+      invoice_prefix: 'INV',
+      bank_name: '',
+      bank_account: '',
+      bank_ifsc: '',
+      bank_branch: '',
+    };
+    Object.keys(DEFAULTS).forEach(k => {
+      if (company_details[k] === undefined) {
+        company_details[k] = DEFAULTS[k];
+      }
+    });
 
     // 4. Create invoice
     const invoice = new Invoice({
@@ -397,10 +439,15 @@ router.post('/', async (req, res) => {
 
     // 6. Update customer balance (per-manager ledger)
     if (customer) {
+      let actual_payments_made = payments
+        .filter(p => p.mode !== 'advance_credit')
+        .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+      let newBalance = prevBalance + total - actual_payments_made;
+
       if (customer.setManagerBalance) {
-        customer.setManagerBalance(req.user.id, balance_due);
+        customer.setManagerBalance(req.user.id, newBalance);
       } else {
-        customer.balance = balance_due;
+        customer.balance = newBalance;
       }
       await customer.save();
     }
@@ -412,6 +459,7 @@ router.post('/', async (req, res) => {
       const ist_date = istDate.toISOString().slice(0, 10);
 
       for (const p of payments) {
+        if (p.mode === 'advance_credit') continue;
         if (parseFloat(p.amount) > 0) {
           await Settlement.create({
             type: 'other_income',
@@ -598,6 +646,48 @@ router.put('/:id', async (req, res) => {
       entity_name: updated.invoice_number,
       description: `Invoice edited. New total: ₹${updated.total}${hasReturns ? ' (has returns)' : ''}`,
     });
+
+    // 7. Security: Notify creator if edited by someone else
+    if (updated.created_by && req.user && updated.created_by.toString() !== req.user.id.toString()) {
+      const editorName = req.user.display_name || req.user.username || 'Another user';
+      
+      // Notify creator
+      Notification.create({
+        sender_id: req.user.id,
+        sender_name: editorName,
+        recipient_id: updated.created_by,
+        recipient_role: 'manager', // Assuming creator is a manager, Admin will still receive it
+        type: 'invoice_edit',
+        title: `⚠️ Invoice Edited`,
+        message: `${editorName} edited your invoice ${updated.invoice_number}`,
+        priority: 'high',
+        entity_type: 'invoice',
+        entity_id: updated._id,
+        metadata: { sender_role: req.user.role }
+      }).catch(err => console.error('Error notifying creator:', err));
+
+      // Notify supervisors
+      Admin.find({ role: 'supervisor' }, '_id').then(supervisors => {
+        supervisors.forEach(sup => {
+          // Don't send double notification if the creator is a supervisor
+          if (sup._id.toString() !== updated.created_by.toString()) {
+            Notification.create({
+              sender_id: req.user.id,
+              sender_name: editorName,
+              recipient_id: sup._id,
+              recipient_role: 'supervisor',
+              type: 'invoice_edit',
+              title: `⚠️ Shared Invoice Edited`,
+              message: `${editorName} edited invoice ${updated.invoice_number}`,
+              priority: 'medium',
+              entity_type: 'invoice',
+              entity_id: updated._id,
+              metadata: { sender_role: req.user.role }
+            }).catch(() => {});
+          }
+        });
+      }).catch(() => {});
+    }
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

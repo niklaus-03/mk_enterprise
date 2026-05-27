@@ -3348,11 +3348,11 @@ export default function ManagerDashboard() {
                     </tr>
                   </thead>
                 </table>
-                {/* Scrollable body — max 8 rows visible */}
-                <div>
+                {/* Scrollable body */}
+                <div style={{ maxHeight: 350, overflowY: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                     <tbody>
-                      {(showMoreDues ? data.todayPendingDues : data.todayPendingDues.slice(0, 7)).map((c, idx) => (
+                      {data.todayPendingDues.map((c, idx) => (
                         <tr key={c._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                           <td style={{ padding: '10px 14px' }}>
                             <Link to={`/invoices/${c._id}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace', fontSize: 12.5 }}>
@@ -3379,19 +3379,6 @@ export default function ManagerDashboard() {
                     </tbody>
                   </table>
                 </div>
-                {data.todayPendingDues.length > 7 && (
-                  <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                      onClick={() => setShowMoreDues(d => !d)}
-                    >
-                      {showMoreDues
-                        ? `▲ Show Less`
-                        : `▼ Show ${data.todayPendingDues.length - 7} More`}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -3436,7 +3423,7 @@ export default function ManagerDashboard() {
             ) : (
               <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
                 {/* One item per row — clean layout, no overflow */}
-                <div style={{ maxHeight: showMoreLowStock ? 480 : 320, overflowY: 'auto', transition: 'max-height 0.3s ease', padding: '4px 0' }}>
+                <div style={{ maxHeight: 350, overflowY: 'auto', padding: '4px 0' }}>
                   {data.lowStockProducts.map((p, idx) => {
                     const toOrder = getOrderQty(p);
                     return (
@@ -3475,17 +3462,6 @@ export default function ManagerDashboard() {
               </div>
 
             )}
-            {data.lowStockProducts.length > 7 && (
-              <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                  onClick={() => setShowMoreLowStock(d => !d)}
-                >
-                  {showMoreLowStock ? '▲ Collapse' : `▼ Expand all ${data.lowStockProducts.length} items`}
-                </button>
-              </div>
-            )}
 
           </div>
         </div>
@@ -3500,16 +3476,16 @@ export default function ManagerDashboard() {
             {!data.todayMovements?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No stock movements today</div>
             ) : (
-              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+              <div className="table-wrap" style={{ border: 'none', borderRadius: 0, maxHeight: 350, overflowY: 'auto' }}>
                 <table>
-                  <thead><tr>
+                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}><tr>
                     <th>Product</th>
                     <th>Type</th>
                     <th className="tr">Qty</th>
                     <th>Reference</th>
                   </tr></thead>
                   <tbody>
-                    {(showMoreMovements ? data.todayMovements : data.todayMovements.slice(0, 7)).map(m => (
+                    {data.todayMovements.map(m => (
                       <tr key={m._id}>
                         <td>{m.product_name}</td>
                         <td>
@@ -3520,12 +3496,10 @@ export default function ManagerDashboard() {
                         <td className="tr mono">{m.qty}</td>
                         <td>
                           {m.vehicle_number ? (
-                            /* Vehicle reference */
                             <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-muted)' }}>
                               <><Truck size={14} style={{ marginRight: 4 }} /> {m.vehicle_number}</>
                             </span>
                           ) : m.invoice_id ? (
-                            /* Fallback: link to invoice */
                             <Link to={`/invoices/${m.invoice_id}`}
                               style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--primary)' }}>
                               {m.invoice_number || 'INV'}
@@ -3538,17 +3512,6 @@ export default function ManagerDashboard() {
                     ))}
                   </tbody>
                 </table>
-                {data.todayMovements.length > 7 && (
-                  <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                      onClick={() => setShowMoreMovements(d => !d)}
-                    >
-                      {showMoreMovements ? `▲ Show Less` : `▼ Show ${data.todayMovements.length - 7} More`}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -3566,22 +3529,17 @@ export default function ManagerDashboard() {
             {!data.salesByDay?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No sales in last 7 days</div>
             ) : (
-              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
-                <table>
+              <div style={{ maxHeight: 350, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr><th>Date</th><th className="tr">Bills</th><th className="tr">Sales</th></tr></thead>
                   <tbody>
-
                     {(() => {
                       const sorted = [...data.salesByDay].sort((a, b) =>
                         salesSortDesc ? b.day.localeCompare(a.day) : a.day.localeCompare(b.day)
                       );
-
-                      const visible = showMoreSales ? sorted : sorted.slice(0, 7);
-
                       return (
                         <>
-                          {visible.map(d => {
-
+                          {sorted.map(d => {
                             const isToday = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
                             const isYesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
                             const isTodayMatch = d.day === isToday;
@@ -3599,21 +3557,6 @@ export default function ManagerDashboard() {
                               </tr>
                             );
                           })}
-
-                          {sorted.length > 7 && (
-                            <tr>
-                              <td colSpan={3} style={{ textAlign: 'center', borderTop: '1px solid var(--border)' }}>
-                                <button
-                                  className="btn btn-ghost btn-sm"
-                                  onClick={() => setShowMoreSales(d => !d)}
-                                >
-                                  {showMoreSales
-                                    ? '▲ Show Less'
-                                    : `▼ Show ${sorted.length - 7} More`}
-                                </button>
-                              </td>
-                            </tr>
-                          )}
                         </>
                       );
                     })()}
@@ -3631,11 +3574,11 @@ export default function ManagerDashboard() {
             {!data.topProducts?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No sales data yet</div>
             ) : (
-              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
-                <table>
+              <div className="table-wrap" style={{ border: 'none', borderRadius: 0, maxHeight: 350, overflowY: 'auto' }}>
+                <table style={{ margin: 0 }}>
                   <thead><tr><th>#</th><th>Product</th><th className="tr">Qty Sold</th><th className="tr">Revenue</th></tr></thead>
                   <tbody>
-                    {(showMoreTopProducts ? data.topProducts : data.topProducts.slice(0, 7)).map((p, i) => (
+                    {data.topProducts.map((p, i) => (
                       <tr key={i}>
                         <td className="text-muted fw-600">{i + 1}</td>
                         <td><strong>{p.product_name}</strong></td>
@@ -3643,19 +3586,7 @@ export default function ManagerDashboard() {
                         <td className="tr mono fw-600">{fc(p.revenue)}</td>
                       </tr>
                     ))}
-                    {data.topProducts.length > 7 && (
-                      <tr>
-                        <td colSpan={4} style={{ padding: '10px 14px', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                            onClick={() => setShowMoreTopProducts(d => !d)}
-                          >
-                            {showMoreTopProducts ? `▲ Show Less` : `▼ Show ${data.topProducts.length - 7} More`}
-                          </button>
-                        </td>
-                      </tr>
-                    )}
+                    {/* Removed Show More button per user request */}
                   </tbody>
                 </table>
               </div>

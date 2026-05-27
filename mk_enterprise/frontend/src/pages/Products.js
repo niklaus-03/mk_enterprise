@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { Package, Plus, Trash2, Edit, Check, X, Scale, IndianRupee, AlertTriangle, Save, Sparkles, Info, Search, Share2, Clock, List, ArrowDownAZ, CheckSquare, Square, CheckCircle2 } from 'lucide-react';
 import ProductLists from './ProductLists';
 import { productListApi } from '../utils/api';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const DEFAULT_UNITS = ['bag', 'kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'quintal', 'ton', 'mtr', 'dozen', 'pkt', 'strip'];
 
@@ -77,6 +78,10 @@ export default function Products() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const LIMIT = 25;
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -148,15 +153,8 @@ export default function Products() {
     return `${d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}, ${time}`;
   };
 
-  const sortedProducts = [...products].sort((a, b) => {
-    if (sortBy === 'recently_added') return new Date(b.createdAt) - new Date(a.createdAt);
-    if (sortBy === 'last_updated') return new Date(b.updatedAt) - new Date(a.updatedAt);
-    if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
-    if (sortBy === 'name_desc') return b.name.localeCompare(a.name);
-    if (sortBy === 'price_asc') return a.price - b.price;
-    if (sortBy === 'price_desc') return b.price - a.price;
-    return 0;
-  });
+  // Removed local sortedProducts array as sorting is now handled server-side
+  const sortedProducts = products;
 
   const handleAddToListSubmit = async (e) => {
     e.preventDefault();
@@ -195,15 +193,22 @@ export default function Products() {
     }
   };
 
-  const load = useCallback((q = '') => {
+  const load = useCallback((q = '', p = page, s = sortBy) => {
     setLoading(true);
-    productApi.getAll({ search: q })
-      .then(setProducts)
+    productApi.getAll({ search: q, paginate: true, page: p, limit: LIMIT, sort: s })
+      .then(res => {
+        setProducts(res.products || []);
+        setTotalPages(res.pages || 1);
+        setTotalItems(res.total || 0);
+      })
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page, sortBy]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(search, page, sortBy); }, [load, search, page, sortBy]);
+
+  // Reset page when search or sort changes
+  useEffect(() => { setPage(1); }, [search, sortBy]);
 
   useEffect(() => {
     if (fromDashboard) openAdd();
@@ -501,9 +506,9 @@ export default function Products() {
               <option value="price_desc">Sort: Price (High - Low)</option>
             </select>
           </div>
-          {products.length > 0 && (
+          {totalItems > 0 && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-              {products.length} product{products.length !== 1 ? 's' : ''} found
+              {totalItems} product{totalItems !== 1 ? 's' : ''} found
             </div>
           )}
         </div>
@@ -513,7 +518,7 @@ export default function Products() {
       <div className="card">
         <div className="card-header">
           <div className="card-title">All Products</div>
-          <span className="badge badge-primary">{products.length}</span>
+          <span className="badge badge-primary">{totalItems}</span>
         </div>
         <div className="card-body no-pad">
           {loading ? (
@@ -636,6 +641,60 @@ export default function Products() {
             </div></>
           )}
         </div>
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div 
+            className={isMobile ? "card-body" : "card-body flex-between"} 
+            style={{ 
+              paddingTop: 12, 
+              display: 'flex', 
+              flexDirection: isMobile ? 'column' : 'row', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              gap: isMobile ? 12 : 0,
+              borderTop: '1px solid var(--border)'
+            }}
+          >
+            <div className="text-muted fs-13" style={{ textAlign: 'center' }}>
+              Showing {Math.min((page - 1) * LIMIT + 1, totalItems)}–{Math.min(page * LIMIT, totalItems)} of {totalItems}
+            </div>
+            <div className="flex gap-2" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1" 
+                disabled={page <= 1} 
+                onClick={() => setPage(p => p - 1)}
+              >
+                <ChevronLeft size={13} /> Prev
+              </button>
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                // simple pagination window
+                let p = page;
+                if (page <= 3) p = i + 1;
+                else if (page >= totalPages - 2) p = totalPages - 4 + i;
+                else p = page - 2 + i;
+                if (p > 0 && p <= totalPages) {
+                  return (
+                    <button 
+                      key={p} 
+                      className={`btn btn-sm ${p === page ? 'btn-primary' : 'btn-outline'}`} 
+                      onClick={() => setPage(p)}
+                    >
+                      {p}
+                    </button>
+                  );
+                }
+                return null;
+              })}
+              <button 
+                className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1" 
+                disabled={page >= totalPages} 
+                onClick={() => setPage(p => p + 1)}
+              >
+                Next <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}

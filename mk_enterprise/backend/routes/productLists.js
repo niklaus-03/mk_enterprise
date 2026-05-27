@@ -11,7 +11,12 @@ router.get('/', async (req, res) => {
   try {
     let query = {};
     if (req.user.role === 'manager') {
-      query = { created_by: req.user.id };
+      query = {
+        $or: [
+          { created_by: req.user.id },
+          { 'shares.manager_id': req.user.id }
+        ]
+      };
     }
     const lists = await ProductList.find(query)
       .populate('created_by', 'username display_name role')

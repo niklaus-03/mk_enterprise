@@ -70,11 +70,21 @@ export default function NotificationDropdown({ user, className, style, bellSize 
   useEffect(() => {
     if (open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      // Position relative to viewport, expanding to the right
-      setDropdownPos({
-        top: rect.bottom + 12,
-        left: rect.left - 10
-      });
+      const isNearRight = rect.right > window.innerWidth - 350;
+      
+      if (isNearRight) {
+        setDropdownPos({
+          top: rect.bottom + 12,
+          right: window.innerWidth - rect.right - 10,
+          left: 'auto'
+        });
+      } else {
+        setDropdownPos({
+          top: rect.bottom + 12,
+          left: rect.left - 10,
+          right: 'auto'
+        });
+      }
     }
   }, [open]);
 
@@ -223,6 +233,10 @@ export default function NotificationDropdown({ user, className, style, bellSize 
                 if (senderRole === 'driver') roleBg = 'linear-gradient(135deg, #10b981, #059669)'; // Green
                 else if (senderRole === 'manager') roleBg = 'linear-gradient(135deg, #8b5cf6, #7c3aed)'; // Purple
 
+                const isPaidOut = n.metadata?.is_paid_out;
+                const baseBg = isPaidOut ? '#fef2f2' : '#fff';
+                const hoverBg = isPaidOut ? '#fee2e2' : '#f8fafc';
+
                 return (
                   <div 
                     key={n._id}
@@ -234,11 +248,11 @@ export default function NotificationDropdown({ user, className, style, bellSize 
                       gap: 14,
                       cursor: 'pointer',
                       transition: 'background 0.2s',
-                      background: '#fff',
-                      borderLeft: borderColor !== 'transparent' ? `4px solid ${borderColor}` : '4px solid transparent'
+                      background: baseBg,
+                      borderLeft: borderColor !== 'transparent' ? `4px solid ${borderColor}` : (isPaidOut ? '4px solid #ef4444' : '4px solid transparent')
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                    onMouseEnter={e => e.currentTarget.style.background = hoverBg}
+                    onMouseLeave={e => e.currentTarget.style.background = baseBg}
                   >
                     {/* IG Style Avatar */}
                     <div style={{ 

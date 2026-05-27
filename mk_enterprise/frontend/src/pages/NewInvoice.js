@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { productApi, customerApi, invoiceApi, dashboardApi } from '../utils/api';
+import { productApi, customerApi, invoiceApi, dashboardApi, orderApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
-import { useLocation } from 'react-router-dom';
-import { orderApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
-import { User, Users, Phone, MapPin, Calendar, Truck, FileText, FileSpreadsheet, Play, CheckCircle, AlertTriangle, Plus, Trash2, Monitor, Check, ArrowLeft, Maximize2, Receipt, FolderOpen, Inbox, Clock, Tag, Wallet, Smartphone, Globe, CreditCard, PenTool, Save, Package } from 'lucide-react';
-import { parseCustomerName, formatCustomerName, isHindi, titleCase, getPrefixOptions, applyAutoSuffix } from '../utils/nameFormatter';
+import { useAuth } from '../context/AuthContext';
+import { 
+  User, Users, Phone, MapPin, Calendar, Truck, FileText, 
+  FileSpreadsheet, CheckCircle, AlertTriangle, Plus, Trash2, 
+  Monitor, Check, ArrowLeft, Receipt, FolderOpen, Inbox, 
+  Clock, Tag, Wallet, PenTool, Save, Package 
+} from 'lucide-react';
+import { parseCustomerName, formatCustomerName, isHindi, applyAutoSuffix } from '../utils/nameFormatter';
+
+import CustomerSelectStep from '../components/invoice/CustomerSelectStep';
+import ProductGridStep from '../components/invoice/ProductGridStep';
 
 const newItem = () => ({
   _key: Date.now() + Math.random(),
@@ -29,223 +36,39 @@ function calcItem(item, gstEnabled) {
   return { ...item, qty, price, gst, taxable_amount, cgst, sgst, total };
 }
 
-function calcItemFromTotal(item, gstEnabled, newTotal) {
-  const qty = parseFloat(item.qty) || 1;
-  const gst = gstEnabled ? (parseFloat(item.gst) || 0) : 0;
-  const totalNum = parseFloat(newTotal) || 0;
-  const price = gst > 0
-    ? totalNum / qty / (1 + gst / 100)
-    : totalNum / qty;
-  const taxable_amount = qty * price;
-  const gst_amount = (taxable_amount * gst) / 100;
-  const cgst = gst_amount / 2;
-  const sgst = gst_amount / 2;
-  const total = Math.max(0, taxable_amount + gst_amount);
-  return {
-    ...item,
-    qty,
-    price: parseFloat(price.toFixed(4)),
-    taxable_amount: parseFloat(taxable_amount.toFixed(2)),
-    gst_amount: parseFloat(gst_amount.toFixed(2)),
-    cgst: parseFloat(cgst.toFixed(2)),
-    sgst: parseFloat(sgst.toFixed(2)),
-    total: parseFloat(total.toFixed(2)),
-  };
-}
-
 const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'others'];
 
-function ProductAutocomplete({ value, onSelect, onNameChange, inputRef, onEnter }) {
-  const [query, setQuery] = useState(value || '');
-  const [allProducts, setAllProducts] = useState([]);
-  const [results, setResults] = useState([]);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    productApi.getAll({ limit: 500 }).then(res => {
-      const list = Array.isArray(res) ? res : (res?.products || res?.data || []);
-      setAllProducts(list);
-      setResults(list);
-    }).catch(() => { });
-  }, []);
-
-  const filter = useCallback((q) => {
-    const trimmed = q.trim().toLowerCase();
-    if (!trimmed) {
-      setResults(allProducts);
-    } else {
-      setResults(allProducts.filter(p => (p.name || '').toLowerCase().includes(trimmed)));
-    }
-  }, [allProducts]);
-
-  const handleChange = (e) => {
-    const v = e.target.value;
-    setQuery(v);
-    onNameChange(v);
-    filter(v);
-  };
-
-  const handleFocus = () => {
-    filter(query);
-    setOpen(true);
-  };
-
-  const handleSelect = (p) => {
-    setQuery(p.name);
-    setOpen(false);
-    onSelect(p);
-  };
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <input
-        ref={inputRef}
-        className="form-control"
-        value={query}
-        onChange={handleChange}
-        onFocus={handleFocus}
-        onBlur={() => setTimeout(() => setOpen(false), 180)}
-        placeholder="Select or type product..."
-        style={{ fontSize: 13, padding: '6px 8px' }}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            setOpen(false);
-            onEnter && onEnter();
-          }
-        }}
-      />
-      {open && (
-        <div className="autocomplete-dropdown" style={{ maxHeight: 260, overflowY: 'auto' }}>
-          {results.length === 0 ? (
-            <div>
-              {query.trim() ? (
-                <div
-                  onMouseDown={() => {
-                    setOpen(false);
-                    onSelect({
-                      _id: '',
-                      name: query.trim(),
-                      price: 0,
-                      gst: 0,
-                      stock: 0,
-                      unit: 'bag',
-                      _isNew: true,
-                    });
-                  }}
-                  style={{
-                    padding: '10px 14px', cursor: 'pointer',
-                    background: '#eff6ff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    gap: 10, transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#dbeafe'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#eff6ff'}
-                >
-                  <span style={{ fontSize: 13, color: '#6b7280' }}>
-                    No match for <strong style={{ color: '#111827' }}>"{query}"</strong>
-                  </span>
-                  <span style={{
-                    fontSize: 12, fontWeight: 700, color: 'var(--primary)',
-                    background: '#fff', border: '1.5px solid #bfdbfe',
-                    padding: '3px 10px', borderRadius: 8, whiteSpace: 'nowrap', flexShrink: 0,
-                  }}>
-                    <Plus size={12} style={{ marginRight: 3, display: 'inline-block', verticalAlign: 'middle' }} /> Add as new
-                  </span>
-                </div>
-              ) : (
-                <div style={{ padding: '10px 14px', color: 'var(--text-muted)', fontSize: 13 }}>
-                  Type to search products...
-                </div>
-              )}
-            </div>
-          ) : results.map(p => (
-            <div
-              key={p._id}
-              className="autocomplete-item"
-              onMouseDown={() => handleSelect(p)}
-              style={{ opacity: p.stock === 0 ? 0.5 : 1 }}
-            >
-              <div>
-                <div className="autocomplete-item-name">{p.name}</div>
-                <div className="autocomplete-item-meta">
-                  Stock: <span style={{ color: p.stock <= 5 ? 'var(--danger)' : 'inherit' }}>{p.stock}</span> {p.unit}
-                  {' · '}GST: {p.gst}%
-                  {p.stock === 0 && <span style={{ color: 'var(--danger)', marginLeft: 6 }}>OUT OF STOCK</span>}
-                </div>
-              </div>
-              <div style={{ fontWeight: 700, color: 'var(--primary)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                {formatCurrency(p.price)}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function NewInvoice() {
-  const AUTO_DRAFT_KEY = 'invoice_auto_draft';
-  const DRAFTS_KEY = 'invoice_drafts';
+  const { user } = useAuth();
+  const userId = user?._id || 'global';
+  const AUTO_DRAFT_KEY = `invoice_auto_draft_${userId}`;
+  const DRAFTS_KEY = `invoice_drafts_${userId}`;
   const navigate = useNavigate();
   const { settings } = useApp();
   const gstEnabled = settings.gst_enabled !== false;
   const discountEnabled = settings.discount_enabled !== false;
+  
+  const [step, setStep] = useState(1); // Wizard Steps: 1 = Customer Selection, 2 = Product Grid, 3 = Invoice & Payment Details
   const [customers, setCustomers] = useState([]);
-  const createInitialItems = () => Array.from({ length: 2 }, () => newItem());
-  const [items, setItems] = useState(createInitialItems());
-  const [isItemsExpanded, setIsItemsExpanded] = useState(false);
+  const [items, setItems] = useState([newItem()]);
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const orderId = params.get('orderId');
 
-  useEffect(() => {
-    if (!orderId) return;
-    const loadOrder = async () => {
-      try {
-        const order = await orderApi.getById(orderId);
-        setCustomerMode('walkin');
-        const parsed = parseCustomerName(order.customer_name);
-        setWalkIn({ prefix: parsed.prefix, name: parsed.name, phone: order.customer_phone, address: '' });
-        const orderItems = order.items.map(i => {
-          const base = newItem();
-          const filled = { ...base, product_id: i.product_id || '', product_name: i.product_name, qty: i.qty || 1, price: i.price || '' };
-          return calcItem(filled, gstEnabled);
-        });
-        setItems([...orderItems, newItem()]);
-        if (order.advance_paid && order.advance_paid > 0) {
-          setPayments([{ mode: order.advance_mode || 'cash', amount: String(order.advance_paid), reference: 'Advance from order' }]);
-        }
-        toast.success('Order loaded — items, price & advance pre-filled');
-      } catch (err) {
-        console.error(err);
-        toast.error('Failed to load order');
-      }
-    };
-    loadOrder();
-  }, [orderId]);
-
   const sigRef = useRef();
-  const productRefs = useRef([]);
   const nameRef = useRef();
   const phoneRef = useRef();
   const addressRef = useRef();
-  const qtyRefs = useRef([]);
-  const priceRefs = useRef([]);
-  const customerInputRef = useRef(null);
 
   const [customerMode, setCustomerMode] = useState('walkin');
   const [drafts, setDrafts] = useState([]);
   const [showDrafts, setShowDrafts] = useState(false);
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [showCustomerList, setShowCustomerList] = useState(false);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 300 });
   const [walkIn, setWalkIn] = useState({ prefix: 'Shree', name: '', phone: '', address: '' });
   const [prevBalance, setPrevBalance] = useState(0);
   const [walkinMatch, setWalkinMatch] = useState(null);
-  const [showWalkinMatchModal, setShowWalkinMatchModal] = useState(false);
+  const [paymentConfirmModal, setPaymentConfirmModal] = useState(null);
   const [walkinWarningModal, setWalkinWarningModal] = useState(null);
   const [allPendingDues, setAllPendingDues] = useState([]);
   const [payments, setPayments] = useState([{ mode: 'cash', amount: '', reference: '' }]);
@@ -274,6 +97,35 @@ export default function NewInvoice() {
   const [billDate, setBillDate] = useState(getISTDateTime());
   const [manualBillRef, setManualBillRef] = useState('');
 
+  // Load order parameter (if navigated from orders screen)
+  useEffect(() => {
+    if (!orderId) return;
+    const loadOrder = async () => {
+      try {
+        const order = await orderApi.getById(orderId);
+        setCustomerMode('walkin');
+        const parsed = parseCustomerName(order.customer_name);
+        setWalkIn({ prefix: parsed.prefix, name: parsed.name, phone: order.customer_phone, address: '' });
+        const orderItems = order.items.map(i => {
+          const base = newItem();
+          const filled = { ...base, product_id: i.product_id || '', product_name: i.product_name, qty: i.qty || 1, price: i.price || '' };
+          return calcItem(filled, gstEnabled);
+        });
+        setItems(orderItems);
+        if (order.advance_paid && order.advance_paid > 0) {
+          setPayments([{ mode: order.advance_mode || 'cash', amount: String(order.advance_paid), reference: 'Advance from order' }]);
+        }
+        setStep(3); // jump directly to details page when order is loaded
+        toast.success('Order loaded — items, price & advance pre-filled');
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to load order');
+      }
+    };
+    loadOrder();
+  }, [orderId, gstEnabled]);
+
+  // Auto-save progress draft locally
   useEffect(() => {
     if (!isDraftLoaded) return;
     const hasProgress = items.some(i => i.product_name) || walkIn.name || walkIn.phone || customerId;
@@ -291,14 +143,13 @@ export default function NewInvoice() {
   useEffect(() => {
     customerApi.getAll({ limit: 500 }).then(res => {
       const list = Array.isArray(res) ? res : (res?.customers || res?.data || []);
-      console.log('[NewInvoice] customers loaded:', list.length, list[0]);
       setCustomers(list);
     }).catch(err => {
       console.error('[NewInvoice] customer fetch failed:', err);
     });
   }, []);
 
-  // Load pending dues
+  // Load pending dues for walk-ins
   useEffect(() => {
     dashboardApi.get().then(d => {
       setAllPendingDues(d.pendingCustomers || []);
@@ -307,12 +158,12 @@ export default function NewInvoice() {
 
   // Load drafts list
   useEffect(() => {
-    let stored = JSON.parse(localStorage.getItem('invoice_drafts') || '[]');
+    let stored = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]');
     if (!Array.isArray(stored)) stored = [];
     setDrafts(stored);
   }, []);
 
-  // Restore auto-draft
+  // Restore auto-draft on mount
   useEffect(() => {
     const saved = localStorage.getItem(AUTO_DRAFT_KEY);
     if (saved) {
@@ -336,6 +187,17 @@ export default function NewInvoice() {
           setBillDate(draft.billDate || getISTDateTime());
           setIsManualBill(draft.isManualBill || false);
           setManualBillRef(draft.manualBillRef || '');
+          
+          // Determine the logical step to resume
+          if (draft.customerId || draft.customerMode === 'walkin') {
+            if (draft.items && draft.items.length > 0 && draft.items.some(i => i.product_name)) {
+              setStep(3);
+            } else {
+              setStep(2);
+            }
+          } else {
+            setStep(1);
+          }
         } else {
           localStorage.removeItem(AUTO_DRAFT_KEY);
         }
@@ -356,12 +218,11 @@ export default function NewInvoice() {
     }
   }, [customerId, customerMode, customers]);
 
-  // Walk-in detection — phone is PRIMARY key
+  // Walk-in phone duplicate protection and auto-switch
   useEffect(() => {
     if (customerMode !== 'walkin') return;
     let phoneRaw = (walkIn.phone || '').replace(/\D/g, '');
     
-    // Normalize phone number (strip leading 0 or 91, take last 10 digits)
     let phone = phoneRaw;
     if (phone.length > 10 && phone.startsWith('91')) phone = phone.slice(2);
     else if (phone.length > 10 && phone.startsWith('0')) phone = phone.slice(1);
@@ -426,47 +287,6 @@ export default function NewInvoice() {
     setPrevBalance(0);
   }, [walkIn.phone, customerMode, customers, allPendingDues]);
 
-  const updateItem = (idx, changes) => {
-    setItems(prev => {
-      const next = [...prev];
-      const updated = { ...next[idx], ...changes };
-      next[idx] = calcItem(updated, gstEnabled);
-      const item = next[idx];
-      const isLastRow = idx === next.length - 1;
-      const isFilled = item.product_name && item.price && parseFloat(item.qty) > 0;
-      if (isLastRow && isFilled) next.push(newItem());
-      return next;
-    });
-  };
-
-  const saveDraft = () => {
-    let existing = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]');
-    if (!Array.isArray(existing)) existing = [];
-    const customerName = customerMode === 'existing'
-      ? customers.find(c => c._id === customerId)?.name || 'Customer'
-      : (walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : 'Walk-in Customer');
-    const validItems = items.filter(i => i.product_name && i.price && parseFloat(i.qty) > 0);
-    const totalAmount = validItems.reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0);
-    const newDraft = {
-      id: Date.now(), customerName, totalAmount, itemCount: validItems.length,
-      items, customerMode, customerId, walkIn, payments, discount, notes,
-      driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge,
-      billDate, isManualBill, manualBillRef, savedAt: Date.now(),
-    };
-    const updated = [newDraft, ...existing];
-    localStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
-    setDrafts(updated);
-    toast.success('Draft saved!');
-  };
-
-  const onProductSelect = (idx, p) => {
-    if (p._isNew) {
-      updateItem(idx, { product_id: '', product_name: p.name, price: 0, gst: 0, qty: 1, weight: '', unit: p.unit || 'bag', _isNew: true, weight_per_unit: 0 });
-    } else {
-      updateItem(idx, { product_id: p._id, product_name: p.name, price: p.price, gst: p.gst, qty: 1, weight: p.weight_per_unit || '', unit: p.unit || 'pcs', _isNew: false, weight_per_unit: p.weight_per_unit || 0 });
-    }
-  };
-
   // Auto-calculate total weight from items whenever items change
   useEffect(() => {
     const autoWeight = items.reduce((sum, item) => {
@@ -476,37 +296,7 @@ export default function NewInvoice() {
     if (autoWeight > 0) {
       setTotalWeight(parseFloat(autoWeight.toFixed(2)).toString());
     }
-  }, [items.map(i => `${i.product_id}:${i.qty}`).join(',')]);  // eslint-disable-line
-
-  const addItem = () => setItems(prev => [...prev, newItem()]);
-  const removeItem = (idx) => { if (items.length === 1) return; setItems(prev => prev.filter((_, i) => i !== idx)); };
-  const addPayment = () => setPayments(prev => [...prev, { mode: 'cash', amount: '', reference: '' }]);
-  const removePayment = (idx) => { if (payments.length === 1) return; setPayments(prev => prev.filter((_, i) => i !== idx)); };
-  const updatePayment = (idx, changes) => setPayments(prev => { const next = [...prev]; next[idx] = { ...next[idx], ...changes }; return next; });
-
-  const subtotal = items.reduce((s, i) => s + (i.taxable_amount || 0), 0);
-  const gstTotal = gstEnabled ? items.reduce((s, i) => s + (i.cgst || 0) + (i.sgst || 0), 0) : 0;
-  const dis = parseFloat(discount) || 0;
-  const vc = parseFloat(vehicleCharge) || 0;
-  const lc = parseFloat(labourCharge) || 0;
-  const total = Math.max(0, subtotal + gstTotal - dis) + vc + lc;
-  const totalWithPrev = total + prevBalance;
-  const amtReceived = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-  const balanceDue = totalWithPrev - amtReceived;
-  const fc = formatCurrency;
-
-  const getCustomerInfo = () => {
-    if (customerMode === 'existing' && customerId) {
-      const c = customers.find(c => c._id === customerId);
-      return { customer_id: customerId, customer_name: c?.name || '', customer_phone: c?.phone || '', customer_address: c?.address || '' };
-    }
-    return { 
-      customer_id: null, 
-      customer_name: walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : 'Walk-in Customer', 
-      customer_phone: walkIn.phone, 
-      customer_address: walkIn.address 
-    };
-  };
+  }, [items]);
 
   const loadDraft = (draft) => {
     setItems(draft.items || [newItem()]);
@@ -530,6 +320,7 @@ export default function NewInvoice() {
     setManualBillRef(draft.manualBillRef || '');
     setLoadedDraftId(draft.id);
     setShowDrafts(false);
+    setStep(3); // go straight to step 3 details
     toast.success('Draft loaded!');
   };
 
@@ -542,22 +333,51 @@ export default function NewInvoice() {
     toast.success('Draft deleted!');
   };
 
-  const handleSubmit = async () => {
-    const filledItems = items.filter(i => i.product_name && parseFloat(i.qty) > 0);
-    if (filledItems.length === 0) return toast.error('Add at least one valid item');
-    if (customerMode === 'existing' && !customerId) return toast.error('Select a customer');
-    if (!sigRef.current || sigRef.current.isEmpty()) return toast.error("Authorised signature is required");
+  const saveDraft = (itemsToSave) => {
+    const targetItems = Array.isArray(itemsToSave) ? itemsToSave : items;
+    let existing = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]');
+    if (!Array.isArray(existing)) existing = [];
+    const customerName = customerMode === 'existing'
+      ? customers.find(c => c._id === customerId)?.name || 'Customer'
+      : (walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : 'Walk-in Customer');
+    const validItems = targetItems.filter(i => i.product_name && i.price && parseFloat(i.qty) > 0);
+    const totalAmount = validItems.reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0);
+    const newDraft = {
+      id: Date.now(), customerName, totalAmount, itemCount: validItems.length,
+      items: targetItems, customerMode, customerId, walkIn, payments, discount, notes,
+      driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge,
+      billDate, isManualBill, manualBillRef, savedAt: Date.now(),
+    };
+    const updated = [newDraft, ...existing];
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+    setDrafts(updated);
+    toast.success('Draft saved!');
+  };
 
-    const signature = sigRef.current.toDataURL("image/png");
+  const getCustomerInfo = () => {
+    if (customerMode === 'existing' && customerId) {
+      const c = customers.find(c => c._id === customerId);
+      return { customer_id: customerId, customer_name: c?.name || '', customer_phone: c?.phone || '', customer_address: c?.address || '' };
+    }
+    return { 
+      customer_id: null, 
+      customer_name: walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : 'Walk-in Customer', 
+      customer_phone: walkIn.phone, 
+      customer_address: walkIn.address 
+    };
+  };
+
+  const processSubmit = async (finalPayments) => {
     setSaving(true);
     try {
-      const rawItems = items.map(({ _key, taxable_amount, cgst, sgst, total, _totalEdit, _priceEdit, ...i }) => ({
+      const rawItems = items.map(({ _key, taxable_amount, cgst, sgst, total, ...i }) => ({
         ...i,
         qty: parseFloat(i.qty) || 0,
         price: parseFloat(i.price) || 0,
         gst: parseFloat(i.gst) || 0,
         adjustment: parseFloat(i.adjustment) || 0,
       }));
+      
       const mergedMap = new Map();
       rawItems.forEach(item => {
         const key = item.product_id || `custom_${item.product_name}`;
@@ -582,7 +402,7 @@ export default function NewInvoice() {
             is_new_product: !!i._isNew,
             per_unit_price: parseFloat(i.price) || 0,
           })),
-        payments: payments.filter(p => parseFloat(p.amount) > 0).map(p => ({ ...p, amount: parseFloat(p.amount) })),
+        payments: finalPayments.filter(p => parseFloat(p.amount) > 0).map(p => ({ ...p, amount: parseFloat(p.amount) })),
         discount: dis,
         concession_reason: concessionReason,
         notes,
@@ -596,14 +416,14 @@ export default function NewInvoice() {
         bill_date: billDate,
         is_manual_bill: isManualBill,
         manual_bill_ref: manualBillRef,
-        signature,
+        signature: sigRef.current.toDataURL("image/png"),
       };
 
       const invoice = await invoiceApi.create(payload);
       toast.success('Invoice created!');
       localStorage.removeItem(AUTO_DRAFT_KEY);
 
-      // Auto-register walk-in if name + phone provided
+      // Auto-register walk-in if 10 digit number and name is provided
       if (customerMode === 'walkin' && walkIn.phone?.length === 10 && walkIn.name?.trim()) {
         const alreadyExists = customers.find(c =>
           (c.phone || '').replace(/\D/g, '') === walkIn.phone.replace(/\D/g, '')
@@ -618,7 +438,7 @@ export default function NewInvoice() {
         }
       }
 
-      // Delete loaded draft
+      // Delete drafts
       if (loadedDraftId) {
         const existing = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]');
         const cleaned = existing.filter(d => d.id !== loadedDraftId);
@@ -628,51 +448,178 @@ export default function NewInvoice() {
 
       navigate(`/invoices/${invoice._id}`);
     } catch (err) {
-      toast.error(err.message);
-    } finally {
+      toast.error(err.message || 'Failed to save invoice');
       setSaving(false);
     }
   };
 
-  const selectedCustomer = customers.find(c => c._id === customerId);
-  const filteredCustomers = customers.filter(c => {
-    const q = customerSearch.toLowerCase().trim();
-    if (!q) return false;
-    const digitsOnly = q.replace(/\D/g, '');
-    return (
-      (c.name || '').toLowerCase().includes(q) ||
-      (digitsOnly.length > 0 && (c.phone || '').replace(/\D/g, '').includes(digitsOnly)) ||
-      (c.phone || '').toLowerCase().includes(q)
-    );
-  });
+  const handleSubmit = () => {
+    const filledItems = items.filter(i => i.product_name && parseFloat(i.qty) > 0);
+    if (filledItems.length === 0) return toast.error('Add at least one valid item');
+    if (customerMode === 'existing' && !customerId) return toast.error('Select a customer');
+    if (!sigRef.current || sigRef.current.isEmpty()) return toast.error("Authorised signature is required");
+
+    const currentAmtReceived = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    const balanceDue = totalWithPrev - currentAmtReceived;
+
+    if (balanceDue > 0) {
+      if (customerMode === 'walkin' && currentAmtReceived === 0) {
+        setPaymentConfirmModal({
+          title: "⚠️ Unpaid Walk-in Bill",
+          message: `You haven't entered any payment for this Walk-in bill.\n\nDo you want to automatically record this as FULLY PAID IN CASH (₹${totalWithPrev.toFixed(2)})?`,
+          type: 'walkin_zero'
+        });
+        return;
+      } else {
+        setPaymentConfirmModal({
+          title: "⚠️ Pending Due Confirmation",
+          message: currentAmtReceived === 0
+            ? `You haven't entered any payment for this bill.\n\nThe full amount of ₹${totalWithPrev.toFixed(2)} will be added to the customer's pending due.\n\nProceed?`
+            : `You have entered a partial payment of ₹${currentAmtReceived.toFixed(2)}.\n\nThe remaining balance of ₹${balanceDue.toFixed(2)} will be added to the customer's pending due.\n\nProceed?`,
+          type: 'partial_or_existing'
+        });
+        return;
+      }
+    }
+
+    processSubmit(payments);
+  };
 
   const handleWalkInNameBlur = () => {
     setWalkIn(prev => ({ ...prev, name: applyAutoSuffix(prev.name) }));
   };
 
+  const addPayment = () => setPayments(prev => [...prev, { mode: 'cash', amount: '', reference: '' }]);
+  const removePayment = (idx) => { if (payments.length === 1) return; setPayments(prev => prev.filter((_, i) => i !== idx)); };
+  const updatePayment = (idx, changes) => setPayments(prev => { const next = [...prev]; next[idx] = { ...next[idx], ...changes }; return next; });
+
+  const subtotal = items.reduce((s, i) => s + (i.taxable_amount || 0), 0);
+  const gstTotal = gstEnabled ? items.reduce((s, i) => s + (i.cgst || 0) + (i.sgst || 0), 0) : 0;
+  const dis = parseFloat(discount) || 0;
+  const vc = parseFloat(vehicleCharge) || 0;
+  const lc = parseFloat(labourCharge) || 0;
+  const total = Math.max(0, subtotal + gstTotal - dis) + vc + lc;
+  const totalWithPrev = total + prevBalance;
+  const amtReceived = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+  const balanceDue = totalWithPrev - amtReceived;
+  const fc = formatCurrency;
+
+  const selectedCustomer = customers.find(c => c._id === customerId);
+
+  // ── Render Wizard Steps ───────────────────────────────────────────────────
+
+  if (step === 1) {
+    return (
+      <CustomerSelectStep
+        customers={customers}
+        onSelectCustomer={(customer) => {
+          setCustomerMode('existing');
+          setCustomerId(customer._id);
+          setCustomerSearch(customer.name);
+          setPrevBalance(customer.balance || 0);
+          setStep(2);
+        }}
+        onWalkIn={() => {
+          setCustomerMode('walkin');
+          setCustomerId('');
+          setWalkIn({ prefix: 'Shree', name: '', phone: '', address: '' });
+          setStep(2);
+        }}
+        onBack={() => navigate(-1)}
+        onCustomerCreated={(customer) => {
+          setCustomers(prev => [customer, ...prev]);
+          setCustomerMode('existing');
+          setCustomerId(customer._id);
+          setCustomerSearch(customer.name);
+          setPrevBalance(customer.balance || 0);
+          setStep(2);
+        }}
+      />
+    );
+  }
+
+  if (step === 2) {
+    const initialItemsMapped = items
+      .filter(i => i.product_name && i.product_id)
+      .map(i => ({
+        product_id: i.product_id,
+        product_name: i.product_name,
+        qty: parseFloat(i.qty) || 0,
+        price: parseFloat(i.price) || 0,
+        gst: parseFloat(i.gst) || 0,
+        unit: i.unit || 'bag',
+        stock: 9999,
+        weight_per_unit: i.weight_per_unit || '',
+        _isNew: i._isNew || false,
+      }));
+
+    return (
+      <ProductGridStep
+        selectedCustomer={selectedCustomer}
+        walkInData={customerMode === 'walkin' ? walkIn : null}
+        initialItems={initialItemsMapped}
+        onBack={() => setStep(1)}
+        onSaveDraft={(selectedProducts) => {
+          const mappedItems = selectedProducts.map(p => {
+            const item = {
+              _key: Date.now() + Math.random(),
+              product_id: p.product_id,
+              product_name: p.product_name,
+              qty: p.qty,
+              price: p.price,
+              gst: p.gst,
+              unit: p.unit || 'bag',
+              weight_per_unit: p.weight_per_unit || '',
+              weight: p.weight_per_unit ? (p.qty * p.weight_per_unit) : '',
+              adjustment: 0,
+            };
+            return calcItem(item, gstEnabled);
+          });
+          setItems(mappedItems);
+          saveDraft(mappedItems);
+        }}
+        onNext={(selectedProducts) => {
+          const mappedItems = selectedProducts.map(p => {
+            const item = {
+              _key: Date.now() + Math.random(),
+              product_id: p.product_id,
+              product_name: p.product_name,
+              qty: p.qty,
+              price: p.price,
+              gst: p.gst,
+              unit: p.unit || 'bag',
+              weight_per_unit: p.weight_per_unit || '',
+              weight: p.weight_per_unit ? (p.qty * p.weight_per_unit) : '',
+              adjustment: 0,
+            };
+            return calcItem(item, gstEnabled);
+          });
+          setItems(mappedItems);
+          setStep(3);
+        }}
+        gstEnabled={gstEnabled}
+      />
+    );
+  }
+
+  // Step 3 layout (finalize invoice & transaction details)
   return (
-    <div>
-      {/* Header bar */}
+    <div style={{ paddingBottom: '60px' }}>
+      
+      {/* Step 3 Header bar */}
       <div className="no-print" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 10, marginBottom: 20,
         background: '#fff', borderRadius: 12, padding: '12px 18px',
         border: '1.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
-        {/* LEFT */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center' }}>
-              <Receipt size={17} style={{ marginRight: 6 }} /> New Bill
+            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Receipt size={17} style={{ color: 'var(--primary)' }} /> Bill Details & Review
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
-              {isManualBill ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <FileText size={12} /> Manual Bill Entry
-                </span>
-              ) : (
-                'Create a new sales invoice'
-              )}
+              Review items and adjust transportation, payments & signature
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -690,7 +637,7 @@ export default function NewInvoice() {
                 transition: 'all 0.15s',
               }}
             >
-              <FolderOpen size={12.5} style={{ marginRight: 4 }} /> Drafts
+              <FolderOpen size={12.5} /> Drafts
               {drafts.length > 0 && (
                 <span style={{
                   background: showDrafts ? 'rgba(255,255,255,0.3)' : 'var(--primary)',
@@ -711,34 +658,24 @@ export default function NewInvoice() {
                 fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)',
                 transition: 'all 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#e5e7eb'; e.currentTarget.style.color = 'var(--text)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = 'var(--text-muted)'; }}
             >
-              <FileSpreadsheet size={12.5} style={{ marginRight: 4 }} /> Orders
+              <FileSpreadsheet size={12.5} /> Orders
             </button>
           </div>
         </div>
 
-        {/* RIGHT */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/orders/new?from=invoice'); }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
-              fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
-              background: 'transparent', border: '1.5px solid #e5e7eb', color: '#374151',
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#9ca3af'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
+            onClick={() => setStep(2)}
+            className="btn btn-outline"
+            style={{ borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <FileSpreadsheet size={14} /> New Order
+            <ArrowLeft size={14} /> Back to Products
           </button>
           <button
             type="button"
-            onClick={saveDraft}
+            onClick={() => saveDraft(items)}
             style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '9px 20px', borderRadius: 8, cursor: 'pointer',
@@ -748,17 +685,15 @@ export default function NewInvoice() {
               boxShadow: '0 2px 10px rgba(22,163,74,0.35)',
               transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(22,163,74,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(22,163,74,0.35)'; e.currentTarget.style.transform = 'none'; }}
           >
-            <Save size={14} /> Save Invoice
+            <Save size={14} /> Save Draft
           </button>
         </div>
       </div>
 
       {/* Drafts panel */}
       {showDrafts && (
-        <div className="card mb-3" style={{ border: '1.5px solid var(--border)', borderRadius: 12 }}>
+        <div className="card mb-3 animate-fade-in" style={{ border: '1.5px solid var(--border)', borderRadius: 12 }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
               <FolderOpen size={14.5} style={{ marginRight: 6 }} /> Saved Drafts
@@ -774,7 +709,7 @@ export default function NewInvoice() {
             {drafts.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
                 <Inbox size={28} className="text-muted" style={{ marginBottom: 8 }} />
-                <div>No drafts saved yet. Click "Save Invoice" to save one.</div>
+                <div>No drafts saved yet. Click "Save Draft" to save one.</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -805,14 +740,14 @@ export default function NewInvoice() {
                            <span style={{ background: '#eff6ff', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
                         </div>
                         <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {savedDate}</span>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileSpreadsheet size={12} /> {d.itemCount || 0} item{d.itemCount !== 1 ? 's' : ''}</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>₹{(d.totalAmount || 0).toFixed(2)}</span>
+                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {savedDate}</span>
+                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileSpreadsheet size={12} /> {d.itemCount || 0} items</span>
+                           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>{formatCurrency(d.totalAmount || 0)}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                        <button className="btn btn-primary btn-sm" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => loadDraft(d)}><FolderOpen size={12} /> Load</button>
-                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)', fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => deleteDraft(d.id)}><Trash2 size={12} /></button>
+                        <button className="btn btn-primary btn-sm" onClick={() => loadDraft(d)}><FolderOpen size={12} /> Load</button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => deleteDraft(d.id)}><Trash2 size={12} /></button>
                       </div>
                     </div>
                   );
@@ -823,1124 +758,560 @@ export default function NewInvoice() {
         </div>
       )}
 
-      <div className="row g-4 mt-1">
-        <div className="col-md-7 col-lg-8">
-          {/* Customer + Bill Type */}
-          <div className="card mb-5" style={{ overflow: 'visible' }}>
-            <div className="card-header"><div className="card-title d-flex align-items-center gap-2"><User size={18} className="text-secondary" /> Customer & Bill Details</div></div>
-            <div className="card-body" style={{ overflow: 'visible' }}>
-              <div className="flex gap-2 mb-3" style={{ flexWrap: 'wrap' }}>
-                {[['walkin', 'Walk-in'], ['existing', 'Existing Customer']].map(([v, label]) => (
-                  <button key={v} className={`btn ${customerMode === v ? 'btn-primary' : 'btn-outline'} d-inline-flex align-items-center`} onClick={() => setCustomerMode(v)}>
-                    {v === 'walkin' ? <User size={14} className="me-1" /> : <Users size={14} className="me-1" />}
-                    {label}
-                  </button>
-                ))}
+      {/* Main step 3 grid */}
+      <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+        
+        {/* LEFT COLUMN: Customer + Products + Payments */}
+        <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* Customer Summary Card */}
+          <div className="card" style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={18} style={{ color: 'var(--primary)' }} /> Customer & Bill Details
               </div>
-
-              {customerMode === 'existing' ? (
-                <div>
-                  <div className="form-group">
-                    <label className="form-label">Select Customer *</label>
-                    <input
-                      ref={customerInputRef}
-                      className="form-control"
-                      placeholder="Search by name or phone..."
-                      value={customerSearch}
-                      onChange={(e) => {
-                        setCustomerSearch(e.target.value);
-                        setShowCustomerList(true);
-                      }}
-                      onFocus={() => {
-                        setShowCustomerList(true);
-                        if (customerInputRef.current) {
-                          const rect = customerInputRef.current.getBoundingClientRect();
-                          setDropdownPos({
-                            top: rect.bottom + window.scrollY,
-                            left: rect.left + window.scrollX,
-                            width: rect.width,
-                          });
-                        }
-                      }}
-                      onBlur={() => setTimeout(() => setShowCustomerList(false), 300)}
-                    />
-
-                    {/* Fixed position dropdown */}
-                    {showCustomerList && (
-                      <div
-                        onMouseDown={e => e.preventDefault()}
-                        style={{
-                          position: 'fixed',
-                          top: dropdownPos.top + 4,
-                          left: dropdownPos.left,
-                          width: dropdownPos.width,
-                          maxHeight: 280,
-                          overflowY: 'auto',
-                          background: '#fff',
-                          border: '1.5px solid #d1d5db',
-                          borderRadius: 10,
-                          boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-                          zIndex: 99999,
-                        }}
-                      >
-                        {(() => {
-                          const list = customerSearch.trim() ? filteredCustomers : customers.slice(0, 10);
-                          if (list.length === 0) {
-                            return (
-                              <div style={{ padding: '14px 16px', color: 'var(--text-muted)', fontSize: 13 }}>
-                                {customerSearch.trim() ? `No customer found matching "${customerSearch}"` : 'No customers available'}
-                              </div>
-                            );
-                          }
-                          return list.map((c, idx) => (
-                            <div
-                              key={c._id}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setCustomerId(c._id);
-                                setCustomerSearch(`${c.name} (${c.phone || ''})`);
-                                setShowCustomerList(false);
-                                setPrevBalance(c.balance || 0);
-                              }}
-                              style={{
-                                padding: '10px 14px', cursor: 'pointer',
-                                borderBottom: idx < list.length - 1 ? '1px solid #f3f4f6' : 'none',
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                background: '#fff', transition: 'background 0.1s',
-                              }}
-                              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
-                              onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-                            >
-                              <div>
-                                <div style={{ fontWeight: 700, fontSize: 13.5, color: '#111827' }}>{c.name}</div>
-                                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {c.phone || 'No phone'}</div>
-                              </div>
-                              {c.balance > 0.01 && (
-                                <span style={{ fontSize: 11, fontWeight: 700, background: '#fef2f2', color: '#dc2626', padding: '2px 8px', borderRadius: 8 }}>
-                                  Due ₹{c.balance?.toFixed(2)}
-                                </span>
-                              )}
-                              {c.balance < 0 && (
-                                <span style={{ fontSize: 11, fontWeight: 700, background: '#f0fdf4', color: '#16a34a', padding: '2px 8px', borderRadius: 8 }}>
-                                  Adv ₹{Math.abs(c.balance)?.toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                          ));
-                        })()}
-                      </div>
-                    )}
+              <button 
+                onClick={() => setStep(1)}
+                className="btn btn-outline"
+                style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
+              >
+                Change Customer
+              </button>
+            </div>
+            
+            {customerMode === 'existing' && selectedCustomer ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800' }}>
+                    {selectedCustomer.name?.[0]?.toUpperCase()}
                   </div>
-
-                  {/* Selected customer card */}
-                  {selectedCustomer && (
-                    <div style={{ border: '1.5px solid #bfdbfe', borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
-                      <div style={{
-                        background: 'linear-gradient(90deg, #2563eb, #1d4ed8)',
-                        padding: '8px 14px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{
-                            width: 30, height: 30, borderRadius: '50%',
-                            background: 'rgba(255,255,255,0.2)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontWeight: 800, fontSize: 14, color: '#fff',
-                          }}>
-                            {selectedCustomer.name?.[0]?.toUpperCase()}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>{selectedCustomer.name}</div>
-                            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Registered Customer</div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => { setCustomerId(''); setCustomerSearch(''); setPrevBalance(0); }}
-                          style={{
-                            background: 'rgba(255,255,255,0.15)', border: 'none',
-                            cursor: 'pointer', borderRadius: 6, padding: '4px 8px',
-                            color: '#fff', fontSize: 12, fontWeight: 600,
-                          }}
-                        >✕ Clear</button>
-                      </div>
-                      <div style={{
-                        background: '#f8fafc',
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                        gap: 0,
-                      }}>
-                        {[
-                          { label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={10} /> Phone</span>, value: selectedCustomer.phone ? `+91 ${selectedCustomer.phone}` : '—' },
-                          { label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><MapPin size={10} /> Address</span>, value: selectedCustomer.address || '—' },
-                          ...(prevBalance !== 0 ? [{ label: prevBalance > 0 ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={10} /> Due</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={10} /> Advance</span>, value: `₹${Math.abs(prevBalance).toFixed(2)}`, color: prevBalance > 0 ? '#dc2626' : '#16a34a' }] : []),
-                        ].map((infoItem, i, arr) => (
-                          <div key={i} style={{ padding: '9px 14px', borderRight: i < arr.length - 1 ? '1px solid #e5e7eb' : 'none' }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 2 }}>{infoItem.label}</div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: infoItem.color || '#111827' }}>{infoItem.value}</div>
-                          </div>
-                        ))}
-                      </div>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text)' }}>{selectedCustomer.name}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Registered Customer</div>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginTop: '12px', padding: '12px', background: 'var(--bg-hover)', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '13px' }}>
+                  {selectedCustomer.phone && <div><strong>Phone:</strong> +91 {selectedCustomer.phone}</div>}
+                  {selectedCustomer.address && <div><strong>Address:</strong> {selectedCustomer.address}</div>}
+                  {prevBalance !== 0 && (
+                    <div style={{ color: prevBalance > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: '700' }}>
+                      {prevBalance > 0 ? 'Pending Due:' : 'Advance Balance:'} {formatCurrency(Math.abs(prevBalance))}
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="form-row" style={{ alignItems: 'flex-end' }}>
-                  <div className="form-group">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                      <label className="form-label" style={{ margin: 0 }}>Name</label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#475569' }}>
-                        {getPrefixOptions(walkIn.name).map(opt => (
-                          <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', margin: 0 }}>
-                            <input 
-                              type="radio" 
-                              name="walkinPrefix" 
-                              value={opt.value}
-                              checked={walkIn.prefix === opt.value}
-                              onChange={e => setWalkIn({ ...walkIn, prefix: e.target.value })}
-                              style={{ margin: 0, cursor: 'pointer' }}
-                            />
-                            {opt.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <input
-                        ref={nameRef}
-                        className="form-control"
-                        value={walkIn.name}
-                        onChange={e => {
-                          const newName = e.target.value;
-                          const wasH = isHindi(walkIn.name);
-                          const isH = isHindi(newName);
-                          let newPrefix = walkIn.prefix || 'Shree';
-                          if (wasH !== isH) {
-                            if (isH) {
-                              if (newPrefix === 'Shree' || newPrefix === 'Mr.') newPrefix = 'श्री';
-                              else if (newPrefix === 'Shreemati' || newPrefix === 'Mrs.') newPrefix = 'श्रीमती';
-                            } else {
-                              if (newPrefix === 'श्री') newPrefix = 'Shree';
-                              else if (newPrefix === 'श्रीमती') newPrefix = 'Shreemati';
-                            }
-                          }
-                          setWalkIn({ ...walkIn, name: newName, prefix: newPrefix });
-                        }}
-                        onBlur={handleWalkInNameBlur}
-                        placeholder="Customer name"
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); phoneRef.current?.focus(); } }}
-                        style={{ flex: 1, borderRadius: 8 }}
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Phone</label>
-                    <div style={{
-                      display: 'flex', alignItems: 'center',
-                      border: '1.5px solid var(--border)', borderRadius: 6,
-                      overflow: 'hidden', background: '#fff',
-                      width: '100%', boxSizing: 'border-box',
-                    }}>
-                      <span style={{
-                        padding: '9px 8px', background: '#f8fafc',
-                        borderRight: '1.5px solid var(--border)',
-                        fontSize: 12.5, fontWeight: 700, color: 'var(--text-muted)',
-                        whiteSpace: 'nowrap', flexShrink: 0,
-                      }}>+91</span>
-                      <input
-                        ref={phoneRef}
-                        style={{
-                          border: 'none', outline: 'none',
-                          padding: '9px 8px', fontSize: 14,
-                          flex: 1, minWidth: 0,
-                          fontFamily: 'inherit', background: 'transparent', width: '100%',
-                        }}
-                        value={walkIn.phone}
-                        onChange={e => {
-                          const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          setWalkIn({ ...walkIn, phone: digits });
-                        }}
-                        placeholder="Phone Number"
-                        inputMode="numeric"
-                        maxLength={10}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addressRef.current?.focus(); } }}
-                      />
-                      {walkIn.phone?.length > 0 && (
-                        <span style={{
-                          paddingRight: 8, fontSize: 10, flexShrink: 0,
-                          color: walkIn.phone.length === 10 ? 'var(--success)' : 'var(--warning)',
-                          fontWeight: 700,
-                        }}>
-                          {walkIn.phone.length}/10
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Address</label>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--primary)' }}>
+                  Walk-in Customer Details
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  <div className="form-group mb-0">
+                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Walk-in Name</label>
                     <input
-                      ref={addressRef}
                       className="form-control"
-                      value={walkIn.address}
-                      onChange={e => {
-                        const val = e.target.value.replace(/\b\w/g, c => c.toUpperCase());
-                        setWalkIn({ ...walkIn, address: val });
-                      }}
-                      placeholder="e.g. Ganai Gangoli"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          setTimeout(() => productRefs.current[0]?.focus(), 50);
-                        }
-                      }}
+                      value={walkIn.name || ''}
+                      onChange={e => setWalkIn({ ...walkIn, name: e.target.value })}
+                      onBlur={handleWalkInNameBlur}
+                      placeholder="Enter customer name..."
                     />
                   </div>
+                  <div className="form-group mb-0">
+                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Walk-in Phone</label>
+                    <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                      <span style={{ padding: '6px 8px', background: '#f8fafc', borderRight: '1px solid var(--border)', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)' }}>+91</span>
+                      <input
+                        className="form-control"
+                        style={{ border: 'none', borderRadius: 0, padding: '6px' }}
+                        value={walkIn.phone || ''}
+                        onChange={e => setWalkIn({ ...walkIn, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        placeholder="10-digit number"
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group mb-0" style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Address</label>
+                    <input
+                      className="form-control"
+                      value={walkIn.address || ''}
+                      onChange={e => setWalkIn({ ...walkIn, address: e.target.value })}
+                      placeholder="Enter address..."
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <hr className="divider" style={{ margin: '20px 0' }} />
+
+            {/* Bill Type & Driver row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+              <div className="form-group mb-0">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Bill Type</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" className={`btn btn-sm ${!isManualBill ? 'btn-primary' : 'btn-outline'} d-inline-flex align-items-center gap-1`} style={{ flex: 1 }} onClick={() => setIsManualBill(false)}><Monitor size={12} /> Digital</button>
+                  <button type="button" className={`btn btn-sm ${isManualBill ? 'btn-warning' : 'btn-outline'} d-inline-flex align-items-center gap-1`} style={{ flex: 1 }} onClick={() => setIsManualBill(true)}><FileText size={12} /> Manual</button>
+                </div>
+              </div>
+              <div className="form-group mb-0">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Bill Date</label>
+                <input className="form-control" type="datetime-local" value={billDate} max={new Date().toISOString().slice(0, 16)} onChange={e => setBillDate(e.target.value)} />
+              </div>
+              {isManualBill && (
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Manual Ref. No.</label>
+                  <input className="form-control" value={manualBillRef} onChange={e => setManualBillRef(e.target.value)} placeholder="e.g. HW-042" />
                 </div>
               )}
+            </div>
 
-              <hr className="divider" />
+            <hr className="divider" style={{ margin: '20px 0' }} />
 
-              {/* Bill Type row */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Bill Type</label>
-                  <div className="flex gap-2">
-                    <button type="button" className={`btn btn-sm ${!isManualBill ? 'btn-primary' : 'btn-outline'} d-inline-flex align-items-center gap-1`} onClick={() => setIsManualBill(false)}><Monitor size={12} /> Digital</button>
-                    <button type="button" className={`btn btn-sm ${isManualBill ? 'btn-warning' : 'btn-outline'} d-inline-flex align-items-center gap-1`} onClick={() => setIsManualBill(true)}><FileText size={12} /> Manual Entry</button>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label d-inline-flex align-items-center gap-1"><Calendar size={13} /> {isManualBill ? 'Backdated Bill Date' : 'Bill Date'}</label>
-                  <input className="form-control" type="datetime-local" value={billDate} max={new Date().toISOString().slice(0, 16)} onChange={e => setBillDate(e.target.value)} />
-                </div>
-                {isManualBill && (
-                  <div className="form-group">
-                    <label className="form-label">Manual Bill Ref. No.</label>
-                    <input className="form-control" value={manualBillRef} onChange={e => setManualBillRef(e.target.value)} placeholder="e.g. HW-042" />
-                  </div>
-                )}
+            {/* Logistics & Delivery Info */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+              <div className="form-group mb-0">
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><Truck size={13} /> Vehicle Number</label>
+                <input
+                  className="form-control"
+                  value={vehicleNumber}
+                  onChange={e => setVehicleNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g. UK04CB0199"
+                  style={{ textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: 'monospace' }}
+                />
               </div>
-
-              {/* Driver & Vehicle */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label d-inline-flex align-items-center gap-1"><Truck size={13} /> Vehicle Number</label>
+              <div className="form-group mb-0">
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><User size={13} /> Driver Name</label>
+                <input
+                  className="form-control"
+                  value={driverName}
+                  onChange={e => setDriverName(e.target.value)}
+                  placeholder="Enter driver name..."
+                />
+              </div>
+              <div className="form-group mb-0">
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><Package size={13} /> Total Weight</label>
+                <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
                   <input
                     className="form-control"
-                    value={vehicleNumber}
-                    onChange={e => setVehicleNumber(e.target.value.toUpperCase())}
-                    placeholder="e.g. UK04CB0199 (optional)"
-                    style={{ textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'monospace' }}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    style={{ border: 'none', borderRadius: 0, flex: 1, padding: '6px' }}
+                    value={totalWeight}
+                    onChange={e => setTotalWeight(e.target.value)}
+                    placeholder="Auto-calculated"
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label d-inline-flex align-items-center gap-1"><User size={13} /> Driver Name</label>
-                  <input
-                    className="form-control"
-                    value={driverName}
-                    onChange={e => {
-                      const val = e.target.value.replace(/\b\w/g, c => c.toUpperCase());
-                      setDriverName(val);
-                    }}
-                    placeholder="Driver name (optional)"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label d-inline-flex align-items-center gap-1"><Package size={13} /> Total Weight
-                    {parseFloat(totalWeight) > 0 && (
-                      <span style={{ fontSize: 10, background: '#dcfce7', color: '#16a34a', padding: '1px 6px', borderRadius: 8, fontWeight: 700, marginLeft: 4 }}>AUTO</span>
-                    )}
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
-                    <input
-                      className="form-control"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      style={{ border: 'none', borderRadius: 0, flex: 1 }}
-                      value={totalWeight}
-                      onChange={e => setTotalWeight(e.target.value)}
-                      placeholder="Auto-calculated from items"
-                    />
-                    <span style={{ padding: '0 12px', background: '#f8fafc', borderLeft: '1px solid var(--border)', fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>kg</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Auto-filled based on item weights. You can override manually.</div>
+                  <span style={{ padding: '0 10px', background: '#f8fafc', borderLeft: '1px solid var(--border)', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700' }}>kg</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="card mb-5">
-            <div className="card-header">
-              <div className="card-title d-flex align-items-center gap-2"><FileSpreadsheet size={18} className="text-secondary" /> Items</div>
-              <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Row</button>
-            </div>
-            <div className="card-body" style={{ padding: '12px 16px' }}>
-              <div className="items-table-wrap">
-                <table className="items-table">
-                  <thead>
-                    <tr>
-                      <th style={{ minWidth: 200 }}>Product</th>
-                      <th style={{ width: 70 }}>Qty</th>
-                      <th style={{ width: 80 }}>Weight</th>
-                      <th style={{ width: 100 }}>Rate ₹</th>
-                      {gstEnabled && (
-                        <>
-                          <th style={{ width: 70 }}>GST %</th>
-                          <th style={{ width: 85 }}>Taxable</th>
-                          <th style={{ width: 75 }}>CGST</th>
-                          <th style={{ width: 75 }}>SGST</th>
-                        </>
-                      )}
-                      <th style={{ width: 95 }}>
-                        Total ₹
-                        {gstEnabled && (
-                          <span style={{ fontSize: 9, color: '#93c5fd', display: 'block', fontWeight: 400 }}>editable</span>
-                        )}
-                      </th>
-                      <th style={{ width: 32 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, idx) => (
-                      <tr key={item._key}>
-                        <td>
-                          <ProductAutocomplete
-                            value={item.product_name}
-                            inputRef={el => (productRefs.current[idx] = el)}
-                            onSelect={p => onProductSelect(idx, p)}
-                            onNameChange={v => updateItem(idx, { product_id: '', product_name: v, _isNew: false, qty: v ? 1 : '' })}
-                            onEnter={() => {
-                              setTimeout(() => qtyRefs.current[idx]?.focus(), 50);
-                            }}
-                            placeholder="Item name"
-                          />
-                          {item._isNew && item.product_name && (
-                            <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '1px 7px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                <Plus size={10} /> New Product
-                              </span>
-                              <select
-                                style={{ fontSize: 11, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 5, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
-                                value={item.unit || 'bag'}
-                                onChange={e => updateItem(idx, { unit: e.target.value })}
-                              >
-                                {['bag', 'kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'quintal', 'ton', 'mtr', 'dozen', 'pkt', 'strip'].map(u => (
-                                  <option key={u} value={u}>{u}</option>
-                                ))}
-                              </select>
-                              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Saved on invoice creation</span>
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <input
-                            ref={el => (qtyRefs.current[idx] = el)}
-                            className="form-control"
-                            type="text"
-                            inputMode="decimal"
-                            value={item.qty}
-                            placeholder="Qty"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
-                                const parsedVal = parseFloat(val) || 0;
-                                const wpu = parseFloat(item.weight_per_unit) || 0;
-                                const newWeight = wpu > 0 ? (parsedVal * wpu).toFixed(2) : item.weight;
-                                updateItem(idx, { qty: val, weight: newWeight });
-                              }
-                            }}
-                            onBlur={() => {
-                              setItems(prev => {
-                                const next = [...prev];
-                                next[idx] = calcItem(next[idx], gstEnabled);
-                                return next;
-                              });
-                            }}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                priceRefs.current[idx]?.focus();
-                              }
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="form-control"
-                            type="text"
-                            inputMode="decimal"
-                            value={item.weight !== undefined ? item.weight : ''}
-                            placeholder="kg/g"
-                            onChange={(e) => updateItem(idx, { weight: e.target.value })}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                priceRefs.current[idx]?.focus();
-                              }
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            ref={el => (priceRefs.current[idx] = el)}
-                            className="form-control"
-                            type="text"
-                            inputMode="decimal"
-                            value={item._priceEdit !== undefined ? item._priceEdit : (item.price || '')}
-                            placeholder="0.00"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
-                                setItems(prev => {
-                                  const next = [...prev];
-                                  next[idx] = { ...next[idx], _priceEdit: val };
-                                  return next;
-                                });
-                              }
-                            }}
-                            onBlur={() => {
-                              setItems(prev => {
-                                const next = [...prev];
-                                const rawVal = next[idx]._priceEdit;
-                                if (rawVal !== undefined) {
-                                  next[idx] = calcItem({ ...next[idx], price: rawVal, _priceEdit: undefined }, gstEnabled);
-                                } else {
-                                  next[idx] = calcItem(next[idx], gstEnabled);
-                                }
-                                return next;
-                              });
-                            }}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                const isLast = idx === items.length - 1;
-                                const isFilled = item.product_name && parseFloat(item.qty) > 0;
-                                if (isLast && isFilled) addItem();
-                                setTimeout(() => productRefs.current[idx + 1]?.focus(), 50);
-                              }
-                            }}
-                          />
-                          {gstEnabled && parseFloat(item.gst) > 0 && item._totalEdit === undefined && item.price > 0 && (
-                            <div style={{ fontSize: 9, color: '#9ca3af', marginTop: 1 }}>
-                              base ₹{parseFloat(item.price).toFixed(2)}
-                            </div>
-                          )}
-                        </td>
-                        {gstEnabled && (
-                          <>
-                            <td>
-                              <select className="form-control" value={item.gst} onChange={e => updateItem(idx, { gst: e.target.value })}>
-                                {[0, 0.25, 1, 3, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
-                              </select>
-                            </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12.5 }}>{fc(item.taxable_amount)}</td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12.5 }}>{fc(item.cgst)}</td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12.5 }}>{fc(item.sgst)}</td>
-                          </>
-                        )}
-                        <td style={{ textAlign: 'right' }}>
-                          {gstEnabled && parseFloat(item.gst) > 0 ? (
-                            <input
-                              className="form-control"
-                              type="text"
-                              inputMode="decimal"
-                              value={item._totalEdit !== undefined ? item._totalEdit : (item.total || '0')}
-                              style={{
-                                textAlign: 'right', fontFamily: 'monospace',
-                                fontWeight: 700, fontSize: 13,
-                                border: '1.5px solid #bfdbfe',
-                                background: '#eff6ff',
-                                width: 90,
-                              }}
-                              title="Edit total → base price auto-recalculates"
-                              onChange={e => {
-                                const val = e.target.value;
-                                if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
-                                  setItems(prev => {
-                                    const next = [...prev];
-                                    next[idx] = { ...next[idx], _totalEdit: val };
-                                    if (val !== '' && parseFloat(val) >= 0) {
-                                      const recalced = calcItemFromTotal(next[idx], gstEnabled, val);
-                                      next[idx] = { ...recalced, _totalEdit: val };
-                                    }
-                                    return next;
-                                  });
-                                }
-                              }}
-                              onBlur={() => {
-                                setItems(prev => {
-                                  const next = [...prev];
-                                  next[idx] = { ...next[idx], _totalEdit: undefined };
-                                  return next;
-                                });
-                              }}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  setItems(prev => {
-                                    const next = [...prev];
-                                    next[idx] = { ...next[idx], _totalEdit: undefined };
-                                    return next;
-                                  });
-                                  const isLast = idx === items.length - 1;
-                                  if (isLast) addItem();
-                                  setTimeout(() => productRefs.current[idx + 1]?.focus(), 50);
-                                }
-                              }}
-                            />
-                          ) : (
-                            <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fc(item.total)}</span>
-                          )}
-                        </td>
-                        <td style={{ width: 28 }}>
-                          <button
-                            onClick={() => removeItem(idx)}
-                            title="Remove"
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: '#d1d5db', fontSize: 14, padding: '4px',
-                              borderRadius: 4, lineHeight: 1, transition: 'color 0.15s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-                            onMouseLeave={e => e.currentTarget.style.color = '#d1d5db'}
-                          >🗑️</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* Selected Items Summary Card */}
+          <div className="card" style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={18} style={{ color: 'var(--primary)' }} /> Selected Products ({items.length})
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-                <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Another Item</button>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm d-flex align-items-center gap-1"
-                  onClick={() => setIsItemsExpanded(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '6px 12px', border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary-light)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = 'var(--border)'; }}
-                  title="Expand items view for easier data entry"
+              <button 
+                onClick={() => setStep(2)}
+                className="btn btn-outline"
+                style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
+              >
+                Edit Products
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '380px', overflowY: 'auto', paddingRight: '4px' }}>
+              {items.map((item, idx) => (
+                <div 
+                  key={item._key || idx}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    background: 'var(--bg-hover)',
+                    borderRadius: '12px',
+                    border: '1.5px solid var(--border)',
+                    gap: '16px',
+                  }}
                 >
-                  <Maximize2 size={13} style={{ color: 'var(--primary)' }} /> Expand Items View
-                </button>
-              </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.product_name}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {item.qty} {item.unit || 'bag'} × {formatCurrency(item.price)}
+                      {item.weight && <span style={{ marginLeft: '12px', background: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{item.weight} kg</span>}
+                    </div>
+                  </div>
+                  
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', fontFamily: 'monospace' }}>
+                      {formatCurrency(item.total)}
+                    </div>
+                    {item.gst > 0 && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                        Incl. GST ({item.gst}%)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Payments */}
-          <div className="card mb-5">
-            <div className="card-header">
-              <div className="card-title d-flex align-items-center gap-2"><CreditCard size={18} className="text-secondary" /> Payment Received</div>
-              <button className="btn btn-outline btn-sm" onClick={addPayment}>+ Add Mode</button>
+          {/* Payments Section Card */}
+          <div className="card" style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Wallet size={18} style={{ color: 'var(--success)' }} /> Payment Records
+              </div>
+              <button 
+                onClick={addPayment}
+                className="btn btn-outline"
+                style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
+              >
+                + Add Mode
+              </button>
             </div>
-            <div className="card-body">
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {payments.map((p, idx) => (
-                <div key={idx} style={{ marginBottom: 10, background: '#f8fafc', border: '1.5px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-                    {PAYMENT_MODES.map(m => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => updatePayment(idx, { mode: m })}
-                        style={{
-                          padding: '5px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 700,
-                          cursor: 'pointer', border: 'none', transition: 'all 0.15s',
-                          background: p.mode === m ? 'var(--primary)' : '#e5e7eb',
-                          color: p.mode === m ? '#fff' : 'var(--text-muted)',
-                          boxShadow: p.mode === m ? '0 2px 6px rgba(37,99,235,0.3)' : 'none',
-                        }}
-                      >
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                          {m === 'cash' ? <Wallet size={13} /> : m === 'upi' ? <Smartphone size={13} /> : m === 'online' ? <Globe size={13} /> : <CreditCard size={13} />}
-                          {m.toUpperCase()}
-                        </span>
-                      </button>
-                    ))}
+                <div 
+                  key={idx} 
+                  style={{ 
+                    background: 'var(--bg-hover)', 
+                    padding: '16px', 
+                    borderRadius: '12px', 
+                    border: '1.5px solid var(--border)',
+                    position: 'relative'
+                  }}
+                >
+                  {payments.length > 1 && (
                     <button
-                      type="button"
-                      className="btn btn-ghost btn-sm d-inline-flex align-items-center gap-1"
-                      style={{ marginLeft: 'auto', color: 'var(--danger)', fontSize: 12, fontWeight: 700 }}
                       onClick={() => removePayment(idx)}
+                      style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--danger)',
+                        cursor: 'pointer',
+                        padding: '4px',
+                      }}
+                      title="Remove Payment"
                     >
-                      <Trash2 size={12} /> Remove
+                      <Trash2 size={16} />
                     </button>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  )}
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginTop: payments.length > 1 ? '16px' : 0 }}>
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Amount ₹</div>
-                      <input className="form-control" type="number" min="0" step="0.01" placeholder="0.00" value={p.amount} onChange={e => updatePayment(idx, { amount: e.target.value })} />
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Mode</div>
+                      <select
+                        className="form-control"
+                        value={p.mode}
+                        onChange={e => updatePayment(idx, { mode: e.target.value })}
+                        style={{ height: '38px', borderRadius: '6px' }}
+                      >
+                        {PAYMENT_MODES.map(m => (
+                          <option key={m} value={m}>{m.toUpperCase().replace('_', ' ')}</option>
+                        ))}
+                      </select>
                     </div>
+
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Ref / UPI ID</div>
-                      <input className="form-control" placeholder="Optional reference" value={p.reference} onChange={e => updatePayment(idx, { reference: e.target.value })} />
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount (₹)</div>
+                      <input
+                        type="number"
+                        className="form-control"
+                        placeholder="0.00"
+                        value={p.amount}
+                        onChange={e => updatePayment(idx, { amount: e.target.value })}
+                        style={{ height: '38px', borderRadius: '6px' }}
+                      />
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Ref / UPI Transaction ID</div>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="Optional"
+                        value={p.reference}
+                        onChange={e => updatePayment(idx, { reference: e.target.value })}
+                        style={{ height: '38px', borderRadius: '6px' }}
+                      />
                     </div>
                   </div>
                 </div>
               ))}
-              <div className="flex gap-2 mt-2">
-                <button className="btn btn-outline btn-sm" onClick={() => setPayments([{ mode: 'cash', amount: totalWithPrev.toFixed(2), reference: '' }])}>Full Cash</button>
-                <button className="btn btn-outline btn-sm" onClick={() => setPayments([{ mode: 'upi', amount: totalWithPrev.toFixed(2), reference: '' }])}>Full UPI</button>
-                <button className="btn btn-outline btn-sm" onClick={() => setPayments([{ mode: 'cash', amount: '', reference: '' }])}>Clear</button>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'cash', amount: totalWithPrev.toFixed(2), reference: '' }])}>Full Cash</button>
+                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'upi', amount: totalWithPrev.toFixed(2), reference: '' }])}>Full UPI</button>
+                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'cash', amount: '', reference: '' }])}>Clear Amount</button>
               </div>
             </div>
           </div>
 
-          {/* Discount */}
-          <div className="card mb-5">
-            <div className="card-header">
-              <div className="card-title d-flex align-items-center gap-2"><Tag size={18} className="text-secondary" /> Discount / Concession</div>
-              {dis > 0 && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)' }}>− {fc(dis)} applied</span>}
-            </div>
-            <div className="card-body">
-              <div className="form-row">
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Discount Amount ₹ <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
-                  <input
-                    className="form-control" type="number" min="0" step="0.01"
-                    value={discount} onChange={e => setDiscount(e.target.value)} placeholder="0.00"
-                  />
-                  {dis > 0 && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--success)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} /> Discount of {fc(dis)} will be deducted from the total</div>}
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Concession Reason <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
-                  <input
-                    className="form-control"
-                    value={concessionReason} onChange={e => setConcessionReason(e.target.value)}
-                    placeholder="e.g. Festival offer, loyal customer..."
-                  />
-                </div>
+          {/* Discount & Remarks Card */}
+          <div className="card" style={{ padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              <div className="form-group mb-0">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Discount Amount (₹)</label>
+                <input
+                  className="form-control"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={discount}
+                  onChange={e => setDiscount(e.target.value)}
+                  placeholder="0.00 (optional)"
+                />
               </div>
-              {dis > 0 && (
-                <div style={{
-                  marginTop: 12, padding: '10px 14px',
-                  background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
-                  border: '1.5px solid #86efac', borderRadius: 8,
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
-                }}>
-                  <div style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}>
-                    Items Total: {fc(subtotal + gstTotal)}
-                    <span style={{ margin: '0 8px', color: 'var(--text-muted)' }}>−</span>
-                    Discount: {fc(dis)}
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--success)' }}>Net Total: {fc(total)}</div>
-                </div>
-              )}
+              <div className="form-group mb-0">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Concession Reason</label>
+                <input
+                  className="form-control"
+                  value={concessionReason}
+                  onChange={e => setConcessionReason(e.target.value)}
+                  placeholder="e.g. Loyal customer (optional)"
+                />
+              </div>
+              <div className="form-group mb-0" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Notes / Remarks</label>
+                <textarea
+                  className="form-control"
+                  rows={2}
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="Any additional remarks..."
+                />
+              </div>
             </div>
           </div>
 
-          {/* Notes */}
-          <div className="card">
-            <div className="card-body">
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">Notes / Remarks</label>
-                <textarea className="form-control" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any additional notes..." />
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* RIGHT COLUMN - Summary (Bootstrap Checkout style) */}
-        <div className="col-md-5 col-lg-4 order-md-last">
-          <div className="position-sticky" style={{ top: '24px' }}>
-            <h4 className="d-flex justify-content-between align-items-center mb-3">
-              <span className="text-primary fw-bold d-flex align-items-center gap-2" style={{ fontSize: '18px' }}><Wallet size={18} /> Billing Summary</span>
-              <span className="badge bg-primary rounded-pill text-white" style={{ fontSize: '12px', padding: '4px 8px' }}>
-                {items.filter(i => i.product_name && parseFloat(i.qty) > 0).length} Items
-              </span>
-            </h4>
-
-            <ul className="list-group mb-3 shadow-sm">
-              <li className="list-group-item d-flex justify-content-between lh-sm py-3">
-                <div>
-                  <h6 className="my-0 fw-bold text-dark">Subtotal</h6>
-                  <small className="text-muted">Value of items before taxes</small>
-                </div>
-                <strong className="text-dark font-monospace">{fc(subtotal)}</strong>
-              </li>
-
-              {gstEnabled && (
-                <>
-                  <li className="list-group-item d-flex justify-content-between lh-sm">
-                    <div>
-                      <h6 className="my-0">CGST</h6>
-                      <small className="text-muted">Central GST (half rate)</small>
-                    </div>
-                    <span className="text-muted font-monospace">{fc(gstTotal / 2)}</span>
-                  </li>
-                  <li className="list-group-item d-flex justify-content-between lh-sm">
-                    <div>
-                      <h6 className="my-0">SGST</h6>
-                      <small className="text-muted">State GST (half rate)</small>
-                    </div>
-                    <span className="text-muted font-monospace">{fc(gstTotal / 2)}</span>
-                  </li>
-                </>
-              )}
-
-              {/* Extra charges */}
-              <li className="list-group-item bg-light p-3">
-                <h6 className="mb-2 fw-bold text-secondary text-uppercase" style={{ fontSize: '10px', letterSpacing: '0.5px' }}>Transportation & Labour</h6>
-                <div className="row g-2">
-                  <div className="col-6">
-                    <label className="form-label" style={{ fontSize: '10px', fontWeight: 'bold' }}>Vehicle ₹</label>
-                    <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={vehicleCharge} onChange={e => setVehicleCharge(e.target.value)} placeholder="0.00" />
-                  </div>
-                  <div className="col-6">
-                    <label className="form-label" style={{ fontSize: '10px', fontWeight: 'bold' }}>Labour ₹</label>
-                    <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={labourCharge} onChange={e => setLabourCharge(e.target.value)} placeholder="0.00" />
-                  </div>
-                </div>
-                {(vc > 0 || lc > 0) && (
-                  <div className="d-flex justify-content-between mt-2" style={{ fontSize: '11.5px' }}>
-                    {vc > 0 && <span className="text-warning fw-bold">Vehicle: +{fc(vc)}</span>}
-                    {lc > 0 && <span className="text-info fw-bold">Labour: +{fc(lc)}</span>}
-                  </div>
-                )}
-              </li>
-
-              {dis > 0 && (
-                <li className="list-group-item d-flex justify-content-between bg-light text-success py-2">
-                  <div className="text-success">
-                    <h6 className="my-0 fw-bold d-flex align-items-center gap-1"><Tag size={13} /> Discount Applied</h6>
-                    {concessionReason && <small className="text-success d-block">{concessionReason}</small>}
-                  </div>
-                  <strong className="font-monospace">- {fc(dis)}</strong>
-                </li>
-              )}
-
-              <li className="list-group-item d-flex justify-content-between bg-white py-3">
-                <span className="h6 fw-bold mb-0 text-dark">Grand Total</span>
-                <strong className="h5 text-primary font-monospace mb-0">{fc(total)}</strong>
-              </li>
-
-              {prevBalance !== 0 && (
-                <>
-                  <li className="list-group-item d-flex justify-content-between bg-light py-2">
-                    <span className="text-muted d-inline-flex align-items-center gap-1">
-                      {prevBalance > 0 ? (
-                        <><AlertTriangle size={13} className="text-danger" /> Previous Due</>
-                      ) : (
-                        <><CheckCircle size={13} className="text-success" /> Previous Advance</>
-                      )}
-                    </span>
-                    <strong className={`font-monospace ${prevBalance > 0 ? 'text-danger' : 'text-success'}`}>{fc(prevBalance)}</strong>
-                  </li>
-                  <li className="list-group-item d-flex justify-content-between bg-white py-3">
-                    <span className="h6 fw-bold mb-0 text-dark">Net Payable</span>
-                    <strong className="h5 text-dark font-monospace mb-0">{fc(totalWithPrev)}</strong>
-                  </li>
-                </>
-              )}
-
-              <li className="list-group-item d-flex justify-content-between bg-light py-2">
-                <span className="text-muted">Amount Received</span>
-                <strong className="text-success font-monospace">{fc(amtReceived)}</strong>
-              </li>
-
-              <li className={`list-group-item d-flex justify-content-between ${balanceDue > 0.01 ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} py-3`}>
-                <span className="fw-bold d-inline-flex align-items-center gap-1">
-                  {balanceDue > 0.01 ? (
-                    <><AlertTriangle size={13} /> Balance Due</>
-                  ) : balanceDue < -0.01 ? (
-                    <><Wallet size={13} /> Excess Paid</>
-                  ) : (
-                    <><CheckCircle size={13} /> Fully Paid</>
-                  )}
+        {/* RIGHT COLUMN: Summary & Sign & Finalize */}
+        <div style={{ flex: '1 1 35%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* Summary Panel */}
+          <div className="position-sticky" style={{ top: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            <div className="card" style={{ padding: '20px' }}>
+              <h4 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', fontSize: '16px', fontWeight: '800', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}><Wallet size={18} /> Billing Summary</span>
+                <span style={{ fontSize: '11px', background: 'var(--primary)', color: '#fff', padding: '3px 8px', borderRadius: '12px' }}>
+                  {items.length} Items
                 </span>
-                <strong className="h5 font-monospace mb-0">{fc(Math.abs(balanceDue))}</strong>
-              </li>
-            </ul>
+              </h4>
 
-            {/* Authorised Signature Canvas */}
-            <div className="card shadow-sm mb-3">
-              <div className="card-header bg-white py-2">
-                <span className="fw-bold text-dark d-flex align-items-center gap-1" style={{ fontSize: '13px' }}><PenTool size={13} /> Authorised Signature</span>
-              </div>
-              <div className="card-body p-3 text-center">
-                <div className="text-muted mb-2" style={{ fontSize: '11px' }}>Authorized person can sign here before generating invoice</div>
-                <div className="bg-light rounded p-1 border">
-                  <SignatureCanvas
-                    ref={sigRef}
-                    penColor="#0f172a"
-                    minWidth={1.5}
-                    maxWidth={3}
-                    throttle={16}
-                    canvasProps={{ width: 340, height: 110, className: "sigCanvas w-100" }}
-                  />
-                </div>
-                <div className="mt-2 text-start">
-                  <button type="button" className="btn btn-outline btn-sm py-1 px-2" style={{ fontSize: '11px' }} onClick={() => sigRef.current.clear()}>
-                    <span className="d-flex align-items-center gap-1"><Trash2 size={11} /> Clear Signature</span>
-                  </button>
-                </div>
-              </div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Subtotal (Before Tax)</span>
+                  <strong style={{ fontFamily: 'monospace' }}>{fc(subtotal)}</strong>
+                </li>
+
+                {gstEnabled && (
+                  <>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Central GST (CGST)</span>
+                      <span style={{ fontFamily: 'monospace' }}>{fc(gstTotal / 2)}</span>
+                    </li>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>State GST (SGST)</span>
+                      <span style={{ fontFamily: 'monospace' }}>{fc(gstTotal / 2)}</span>
+                    </li>
+                  </>
+                )}
+
+                {/* Extra charges */}
+                <li style={{ background: 'var(--bg-hover)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Transportation & Labour</div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)' }}>Vehicle ₹</label>
+                      <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={vehicleCharge} onChange={e => setVehicleCharge(e.target.value)} placeholder="0.00" style={{ height: '30px', padding: '4px 6px', fontSize: '12px' }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)' }}>Labour ₹</label>
+                      <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={labourCharge} onChange={e => setLabourCharge(e.target.value)} placeholder="0.00" style={{ height: '30px', padding: '4px 6px', fontSize: '12px' }} />
+                    </div>
+                  </div>
+                </li>
+
+                {dis > 0 && (
+                  <li style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontSize: '14px', background: 'var(--success-light)', padding: '8px 12px', borderRadius: '8px', border: '1px dashed #a7f3d0' }}>
+                    <span style={{ fontWeight: '700' }}>Discount Applied</span>
+                    <strong style={{ fontFamily: 'monospace' }}>- {fc(dis)}</strong>
+                  </li>
+                )}
+
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--text)' }}>Grand Total</span>
+                  <strong style={{ color: 'var(--primary)', fontSize: '17px', fontFamily: 'monospace' }}>{fc(total)}</strong>
+                </li>
+
+                {prevBalance !== 0 && (
+                  <>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', background: 'var(--bg-hover)', padding: '6px 12px', borderRadius: '6px' }}>
+                      <span style={{ color: prevBalance > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: '700' }}>
+                        {prevBalance > 0 ? '⚠️ Previous Due' : '✅ Previous Advance'}
+                      </span>
+                      <strong style={{ fontFamily: 'monospace' }}>{fc(prevBalance)}</strong>
+                    </li>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                      <span style={{ fontWeight: '700', color: 'var(--text)' }}>Net Payable</span>
+                      <strong style={{ color: 'var(--text)', fontSize: '17px', fontFamily: 'monospace' }}>{fc(totalWithPrev)}</strong>
+                    </li>
+                  </>
+                )}
+
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-muted)' }}>
+                  <span>Amount Paid</span>
+                  <strong style={{ fontFamily: 'monospace' }}>{fc(amtReceived)}</strong>
+                </li>
+
+                <li 
+                  className={balanceDue > 0.01 ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    fontSize: '15px', 
+                    padding: '12px', 
+                    borderRadius: '8px',
+                    background: balanceDue > 0.01 ? 'var(--danger-light)' : 'var(--success-light)',
+                    color: balanceDue > 0.01 ? 'var(--danger)' : 'var(--success)',
+                    border: `1.5px solid ${balanceDue > 0.01 ? '#fecaca' : '#a7f3d0'}`
+                  }}
+                >
+                  <span style={{ fontWeight: '800' }}>
+                    {balanceDue > 0.01 ? 'Balance Due' : balanceDue < -0.01 ? 'Excess Paid' : 'Fully Paid'}
+                  </span>
+                  <strong style={{ fontSize: '17px', fontFamily: 'monospace' }}>{fc(Math.abs(balanceDue))}</strong>
+                </li>
+              </ul>
             </div>
 
-            {/* Final Action Buttons */}
-            <button
-              className="btn btn-success w-100 btn-lg py-2.5 shadow mb-2 fw-bold d-flex align-items-center justify-content-center gap-2"
-              onClick={handleSubmit}
-              disabled={saving}
-            >
-              {saving ? (
-                <>
-                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                  Finalizing...
-                </>
-              ) : (
-                <span className="d-flex align-items-center gap-2"><CheckCircle size={18} /> Finalize & Create Invoice</span>
-              )}
-            </button>
-            <button className="btn btn-outline w-100 py-2 fw-bold" onClick={() => navigate(-1)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-      {isItemsExpanded && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)',
-          zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 24,
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 1200,
-            maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            overflow: 'hidden', border: '1px solid var(--border)'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '16px 24px', borderBottom: '1.5px solid var(--border)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              background: '#f8fafc'
-            }}>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Maximize2 size={18} className="text-primary" /> Spacious Item Entry Mode
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  A wider layout specifically designed for rapid and comfortable item data entry.
-                </div>
+            {/* Signature Canvas */}
+            <div className="card" style={{ padding: '16px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+                <PenTool size={13} /> Authorised Signature
               </div>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm px-4"
-                onClick={() => setIsItemsExpanded(false)}
-                style={{ borderRadius: 8, fontWeight: 700 }}
-              >
-                Done & Apply
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-              <div className="items-table-wrap" style={{ maxHeight: '55vh', overflowY: 'auto' }}>
-                <table className="items-table">
-                  <thead>
-                    <tr>
-                      <th style={{ minWidth: 260 }}>Product</th>
-                      <th style={{ width: 80 }}>Qty</th>
-                      <th style={{ width: 120 }}>Rate ₹</th>
-                      {gstEnabled && (
-                        <>
-                          <th style={{ width: 90 }}>GST %</th>
-                          <th style={{ width: 100 }}>Taxable</th>
-                          <th style={{ width: 90 }}>CGST</th>
-                          <th style={{ width: 90 }}>SGST</th>
-                        </>
-                      )}
-                      <th style={{ width: 120 }}>Total ₹</th>
-                      <th style={{ width: 40 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, idx) => (
-                      <tr key={item._key}>
-                        <td>
-                          <ProductAutocomplete
-                            value={item.product_name}
-                            onSelect={p => onProductSelect(idx, p)}
-                            onNameChange={v => updateItem(idx, { product_id: '', product_name: v, _isNew: false, qty: v ? 1 : '' })}
-                            placeholder="Type product name..."
-                          />
-                          {item._isNew && item.product_name && (
-                            <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d', padding: '1px 7px', borderRadius: 8 }}>
-                                🆕 New Product
-                              </span>
-                              <select
-                                style={{ fontSize: 11, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 5, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
-                                value={item.unit || 'bag'}
-                                onChange={e => updateItem(idx, { unit: e.target.value })}
-                              >
-                                {['bag', 'kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'quintal', 'ton', 'mtr', 'dozen', 'pkt', 'strip'].map(u => (
-                                  <option key={u} value={u}>{u}</option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <input
-                            className="form-control"
-                            type="text"
-                            inputMode="decimal"
-                            value={item.qty}
-                            placeholder="Qty"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
-                                updateItem(idx, { qty: val });
-                              }
-                            }}
-                            onBlur={() => {
-                              setItems(prev => {
-                                const next = [...prev];
-                                next[idx] = calcItem(next[idx], gstEnabled);
-                                return next;
-                              });
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="form-control"
-                            type="text"
-                            inputMode="decimal"
-                            value={item._priceEdit !== undefined ? item._priceEdit : (item.price || '')}
-                            placeholder="0.00"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
-                                setItems(prev => {
-                                  const next = [...prev];
-                                  next[idx] = { ...next[idx], _priceEdit: val };
-                                  return next;
-                                });
-                              }
-                            }}
-                            onBlur={() => {
-                              setItems(prev => {
-                                const next = [...prev];
-                                const rawVal = next[idx]._priceEdit;
-                                if (rawVal !== undefined) {
-                                  next[idx] = calcItem({ ...next[idx], price: rawVal, _priceEdit: undefined }, gstEnabled);
-                                } else {
-                                  next[idx] = calcItem(next[idx], gstEnabled);
-                                }
-                                return next;
-                              });
-                            }}
-                          />
-                        </td>
-                        {gstEnabled && (
-                          <>
-                            <td>
-                              <select className="form-control" value={item.gst} onChange={e => updateItem(idx, { gst: e.target.value })}>
-                                {[0, 0.25, 1, 3, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
-                              </select>
-                            </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 13 }}>{fc(item.taxable_amount)}</td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 13 }}>{fc(item.cgst)}</td>
-                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 13 }}>{fc(item.sgst)}</td>
-                          </>
-                        )}
-                        <td style={{ textAlign: 'right' }}>
-                          {gstEnabled && parseFloat(item.gst) > 0 ? (
-                            <input
-                              className="form-control"
-                              type="text"
-                              inputMode="decimal"
-                              value={item._totalEdit !== undefined ? item._totalEdit : (item.total || '0')}
-                              style={{
-                                textAlign: 'right', fontFamily: 'monospace',
-                                fontWeight: 700, fontSize: 13,
-                                border: '1.5px solid #bfdbfe',
-                                background: '#eff6ff',
-                                width: '100%',
-                              }}
-                              onChange={e => {
-                                const val = e.target.value;
-                                if (val === '' || /^[0-9]*[.]?[0-9]*$/.test(val)) {
-                                  setItems(prev => {
-                                    const next = [...prev];
-                                    next[idx] = { ...next[idx], _totalEdit: val };
-                                    if (val !== '' && parseFloat(val) >= 0) {
-                                      const recalced = calcItemFromTotal(next[idx], gstEnabled, val);
-                                      next[idx] = { ...recalced, _totalEdit: val };
-                                    }
-                                    return next;
-                                  });
-                                }
-                              }}
-                              onBlur={() => {
-                                setItems(prev => {
-                                  const next = [...prev];
-                                  next[idx] = { ...next[idx], _totalEdit: undefined };
-                                  return next;
-                                });
-                              }}
-                            />
-                          ) : (
-                            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13 }}>{fc(item.total)}</span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            onClick={() => removeItem(idx)}
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: '#d1d5db', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              padding: '4px', lineHeight: 1, transition: 'color 0.15s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-                            onMouseLeave={e => e.currentTarget.style.color = '#d1d5db'}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>Authorized signatory should sign below before finalized invoice</p>
+              
+              <div style={{ background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--border)', padding: '4px' }}>
+                <SignatureCanvas
+                  ref={sigRef}
+                  penColor="#0f172a"
+                  minWidth={1.5}
+                  maxWidth={3}
+                  throttle={16}
+                  canvasProps={{ width: 340, height: 110, className: "sigCanvas w-100", style: { borderRadius: '6px' } }}
+                />
               </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-                <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Row</button>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>
-                  Total Items: {items.filter(i => i.product_name && parseFloat(i.qty) > 0).length} · Subtotal: <span style={{ color: 'var(--success)' }}>{fc(subtotal)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {walkinWarningModal && (
-        <div className="modal-overlay" onClick={() => setWalkinWarningModal(null)} style={{ zIndex: 99999 }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
-            <div className="modal-header">
-              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--danger)' }}>
-                {walkinWarningModal.title}
-              </div>
-              <button className="modal-close" onClick={() => setWalkinWarningModal(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div style={{ fontSize: 14, lineHeight: '1.5', marginBottom: 20, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
-                {walkinWarningModal.message}
-              </div>
-              <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
-                <button className="btn btn-primary" onClick={() => setWalkinWarningModal(null)}>
-                  OK
+              
+              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-outline" 
+                  style={{ fontSize: '11px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }} 
+                  onClick={() => sigRef.current.clear()}
+                >
+                  <Trash2 size={11} /> Clear Signature
                 </button>
               </div>
             </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                className="btn btn-success"
+                onClick={handleSubmit}
+                disabled={saving}
+                style={{
+                  height: '48px',
+                  borderRadius: '12px',
+                  fontWeight: '800',
+                  fontSize: '16px',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                {saving ? 'Creating Invoice...' : 'Finalize & Create Invoice'}
+                {!saving && <CheckCircle size={18} />}
+              </button>
+              
+              <button
+                className="btn btn-outline"
+                onClick={() => navigate(-1)}
+                style={{ height: '42px', borderRadius: '10px', fontWeight: '700' }}
+              >
+                Cancel Invoice
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* Disclaimers & Warning overlays */}
+
+      {walkinWarningModal && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
+          <div className="modal card" style={{ maxWidth: '450px', background: '#fff', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+            <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--warning)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              {walkinWarningModal.title}
+            </div>
+            <p style={{ fontSize: '14px', lineHeight: '1.5', color: 'var(--text)', whiteSpace: 'pre-wrap', margin: '0 0 20px 0' }}>
+              {walkinWarningModal.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={() => setWalkinWarningModal(null)}>
+                Understood
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {paymentConfirmModal && (
+        <div className="modal-overlay" onClick={() => setPaymentConfirmModal(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
+          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', background: '#fff', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+            <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--danger)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              {paymentConfirmModal.title}
+            </div>
+            <p style={{ fontSize: '14px', lineHeight: '1.5', color: 'var(--text)', whiteSpace: 'pre-wrap', margin: '0 0 20px 0' }}>
+              {paymentConfirmModal.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              {paymentConfirmModal.type === 'walkin_zero' ? (
+                <>
+                  <button className="btn btn-outline" onClick={() => setPaymentConfirmModal(null)}>Cancel</button>
+                  <button className="btn btn-danger" onClick={() => { setPaymentConfirmModal(null); processSubmit(payments); }}>Pending Due</button>
+                  <button className="btn btn-primary" onClick={() => { setPaymentConfirmModal(null); processSubmit([{ mode: 'cash', amount: totalWithPrev.toFixed(2), reference: '' }]); }}>Full Cash</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-outline" onClick={() => setPaymentConfirmModal(null)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={() => { setPaymentConfirmModal(null); processSubmit(payments); }}>Proceed</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Invoice = require('../models/Invoice');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
@@ -8,13 +9,42 @@ const Settlement = require('../models/Settlement');
 const auth = require('../middleware/auth');
 const { todayUTCRange, formatIST } = require('../utils/timeUtils');
 const { logActivity } = require('./activityLogs');
+const ProductList = require('../models/ProductList');
 
 router.use(auth);
 
-// Helper: managers see only their own data
+// Helper: managers see only their own data (cast to ObjectId for aggregates)
 function ownerFilter(req) {
   if (req.user.role === 'manager') {
-    return { created_by: req.user.id };
+    return { created_by: new mongoose.Types.ObjectId(req.user.id) };
+  }
+  return {}; // supervisor sees all
+}
+
+// Helper: managers see only their own products
+async function getProductOwnerFilter(req) {
+  if (req.user.role === 'manager') {
+    const sharedLists = await ProductList.find({ 'shares.manager_id': req.user.id });
+    let sharedProductIds = [];
+    sharedLists.forEach(list => {
+      const share = list.shares.find(s => s.manager_id.toString() === req.user.id);
+      if (share) {
+        list.products.forEach(pId => {
+          const override = share.overrides.find(o => o.product_id.toString() === pId.toString());
+          if (!override || !override.is_excluded) {
+            sharedProductIds.push(pId);
+          }
+        });
+      }
+    });
+
+    return {
+      $or: [
+        { created_by: new mongoose.Types.ObjectId(req.user.id) },
+        { allowed_managers: new mongoose.Types.ObjectId(req.user.id) },
+        { _id: { $in: sharedProductIds } }
+      ],
+    };
   }
   return {}; // supervisor sees all
 }
@@ -78,9 +108,9 @@ router.get('/', async (req, res) => {
       // 4. Registered customers with balance > 0 (scoped)
       Customer.find({ balance: { $gt: 0 }, is_active: true, ...(req.user.role === 'manager' ? { $or: [{ created_by: req.user.id }, { allowed_managers: req.user.id }] } : {}) }).sort({ balance: -1 }).limit(50),
       // 5. Product count
-      Product.countDocuments({ is_active: true }),
+      Product.countDocuments({ is_active: true, ...(await getProductOwnerFilter(req)) }),
       // 6. All active products — used for both allProducts dropdown AND low stock filtering
-      Product.find({ is_active: true }).select('name price stock unit gst is_active custom_low_stock weight_per_unit').sort({ name: 1 }),
+      Product.find({ is_active: true, ...(await getProductOwnerFilter(req)) }).select('name price stock unit gst is_active custom_low_stock weight_per_unit').sort({ name: 1 }),
       // 7. Recent invoices (sidebar widget)
       Invoice.find(notCancelled).sort({ date: -1 }).limit(5),
       // 9. All invoices on selected date (Today's Sale drill-down)
@@ -225,6 +255,7 @@ router.get('/', async (req, res) => {
         amount_received: inv.amount_received || 0,
         balance_due: inv.balance_due || 0,
         ist_formatted: inv.ist_formatted || '',
+        date: inv.date || null,
       })),
       allProducts: (allActiveProducts || []).map(p => ({
         _id: p._id,

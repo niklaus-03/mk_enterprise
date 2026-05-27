@@ -7,7 +7,7 @@ const settlementSchema = new mongoose.Schema({
   type: { type: String, enum: ['paid_to_supplier', 'other_expense', 'other_income', 'walkin_delivery', 'vehicle_expense', 'by_invoice', 'due_cleared', 'advance_received'], required: true },
   party_name: { type: String, default: '', trim: true }, // supplier/company name
   amount: { type: Number, required: true, min: 0 },
-  mode: { type: String, enum: ['cash', 'upi', 'online', 'others', 'bank_transfer', 'cheque'], default: 'cash' },
+  mode: { type: String, enum: ['cash', 'upi', 'online', 'others', 'bank_transfer', 'cheque', 'advance_credit'], default: 'cash' },
   received_category: { type: String, enum: ['today_invoice', 'due_cleared', 'advance_payment', 'not_applicable', 'others'], default: 'not_applicable' },
   reference: { type: String, default: '' },
   notes: { type: String, default: '' },

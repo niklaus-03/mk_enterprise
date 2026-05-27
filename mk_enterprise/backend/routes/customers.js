@@ -233,9 +233,12 @@ router.post('/:id/delegate', async (req, res) => {
     const customer = await Customer.findById(req.params.id);
     if (!customer) return res.status(404).json({ error: 'Customer not found' });
 
-    // Only creator or supervisor can delegate
-    if (req.user.role !== 'supervisor' && customer.created_by?.toString() !== req.user.id) {
-      return res.status(403).json({ error: 'Only the customer creator or supervisor can delegate' });
+    // Creator, supervisor, or already allowed managers can delegate
+    const isAllowed = req.user.role === 'supervisor' || 
+                      customer.created_by?.toString() === req.user.id || 
+                      customer.allowed_managers.some(m => m.toString() === req.user.id);
+    if (!isAllowed) {
+      return res.status(403).json({ error: 'Only managers with access or supervisor can delegate' });
     }
 
     // Avoid duplicates in allowed_managers
@@ -245,12 +248,37 @@ router.post('/:id/delegate', async (req, res) => {
     }
 
     // Initialize their ledger entry in manager_balances if not present
+    let initialBalance = 0;
+    if (req.user.role === 'manager') {
+      initialBalance = customer.getManagerBalance(req.user.id);
+    } else {
+      initialBalance = customer.balance || 0;
+    }
+
     const hasLedger = customer.manager_balances.some(mb => mb.manager_id.toString() === manager_id);
     if (!hasLedger) {
-      customer.manager_balances.push({ manager_id, balance: 0 });
+      customer.manager_balances.push({ manager_id, balance: initialBalance });
     }
 
     await customer.save();
+
+    // Create real-time notification for the receiving manager
+    try {
+      const Notification = require('../models/Notification');
+      await Notification.create({
+        recipient_id: manager_id,
+        sender_id: req.user.id,
+        sender_name: req.user.display_name || req.user.username || 'System',
+        type: 'customer_info',
+        title: 'New Customer Received',
+        message: `${req.user.display_name || req.user.username} shared customer "${customer.name}" with you. Shared Balance: ₹${initialBalance}.`,
+        priority: 'high',
+        entity_type: 'customer',
+        entity_id: customer._id,
+      });
+    } catch (notifErr) {
+      console.error('Failed to trigger customer delegation notification:', notifErr.message);
+    }
 
     // Log activity
     logActivity(req, {
@@ -258,7 +286,7 @@ router.post('/:id/delegate', async (req, res) => {
       entity_type: 'customer',
       entity_id: customer._id,
       entity_name: customer.name,
-      description: `Customer delegated to manager ${manager_id}`,
+      description: `Customer delegated to manager ${manager_id} with initial balance ${initialBalance}`,
     });
 
     res.json({ success: true, allowed_managers: customer.allowed_managers });
@@ -303,11 +331,29 @@ router.post('/merge', async (req, res) => {
       }
     }
 
-    // Apply merged overrides if provided
+    // Automatically collect and merge all phone numbers of primary and duplicate accounts
+    let allPhones = new Set();
+    if (primary.phone) allPhones.add(primary.phone.trim());
+    if (primary.alternate_phones && primary.alternate_phones.length) {
+      primary.alternate_phones.forEach(p => allPhones.add(p.trim()));
+    }
+    secondaries.forEach(sec => {
+      if (sec.phone) allPhones.add(sec.phone.trim());
+      if (sec.alternate_phones && sec.alternate_phones.length) {
+        sec.alternate_phones.forEach(p => allPhones.add(p.trim()));
+      }
+    });
+
+    const primaryPhone = merged_data?.phone ? merged_data.phone.trim() : (primary.phone || '').trim();
+    if (primaryPhone) {
+      allPhones.delete(primaryPhone);
+    }
+    primary.phone = primaryPhone;
+    primary.alternate_phones = Array.from(allPhones);
+
+    // Apply merged overrides if provided (excluding phone/alternate_phones which we already merged above)
     if (merged_data) {
       if (merged_data.name) primary.name = merged_data.name;
-      if (merged_data.phone !== undefined) primary.phone = merged_data.phone;
-      if (merged_data.alternate_phones) primary.alternate_phones = merged_data.alternate_phones;
       if (merged_data.address !== undefined) primary.address = merged_data.address;
       if (merged_data.gstin !== undefined) primary.gstin = merged_data.gstin;
     }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, customerApi, productApi } from '../utils/api';
+import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, customerApi, productApi, managerApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
@@ -78,6 +78,7 @@ export default function AdminDashboard() {
   const [showTodaySales, setShowTodaySales] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [showWalkinMatchModal, setShowWalkinMatchModal] = useState(false);
+  const [allManagers, setAllManagers] = useState([]);
   const [walkinMatch, setWalkinMatch] = useState(null);
   const salesPanelRef = React.useRef(null);
   const statementPanelRef = React.useRef(null);
@@ -100,6 +101,10 @@ export default function AdminDashboard() {
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [showAddSettlement, setShowAddSettlement] = useState(false);
   const addSettlementRef = React.useRef(null);
+
+  const [showPartyList, setShowPartyList] = useState(false);
+  const partyInputRef = React.useRef(null);
+  const [partyDropdownPos, setPartyDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const [settlementForm, setSettlementForm] = useState({
     type: 'paid_to_supplier', party_name: '', amount: '', mode: 'cash',
     reference: '', notes: '', received_category: 'not_applicable'
@@ -164,11 +169,14 @@ export default function AdminDashboard() {
   const [settlementSearch, setSettlementSearch] = useState('');
   const [settlementSortDate, setSettlementSortDate] = useState('desc');
   const [settlementSortAmount, setSettlementSortAmount] = useState('');
+  const [settlementSortRole, setSettlementSortRole] = useState('');
   const [settlementSortOpen, setSettlementSortOpen] = useState(false);
   // Combined sort key for SortDropdown
-  const settlementSortKey = settlementSortAmount === 'desc' ? 'amount_desc'
+  const settlementSortKey = settlementSortRole === 'admin' ? 'admin_first'
+    : settlementSortRole === 'manager' ? 'manager_first'
+    : settlementSortAmount === 'desc' ? 'amount_desc'
     : settlementSortAmount === 'asc' ? 'amount_asc'
-      : settlementSortDate === 'asc' ? 'date_asc' : 'date_desc';
+    : settlementSortDate === 'asc' ? 'date_asc' : 'date_desc';
   // Fix 3: View mode — 'date' = selected date, 'all' = full history
   const [settlementViewMode, setSettlementViewMode] = useState('date');
 
@@ -424,6 +432,10 @@ export default function AdminDashboard() {
     const today = getTodayIST();
     loadDeliveries(today);
     loadOrders(today);
+    loadSuppliers();
+    managerApi.getAll()
+      .then(res => setAllManagers(res?.managers || []))
+      .catch(() => {});
   }, []);
 
   const handleSaveDelivery = async () => {
@@ -2291,6 +2303,8 @@ export default function AdminDashboard() {
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
               <SortDropdown
                 options={[
+                  { key: 'admin_first', label: '👑 Admin First' },
+                  { key: 'manager_first', label: '👤 Manager First' },
                   { key: 'date_desc', label: '↓ Latest Date' },
                   { key: 'date_asc', label: '↑ Oldest Date' },
                   { key: 'amount_desc', label: '↓ High Amount' },
@@ -2299,10 +2313,12 @@ export default function AdminDashboard() {
                 value={settlementSortKey}
                 onChange={v => {
                   setSettlementSortOpen(false);
-                  if (v === 'amount_desc') { setSettlementSortAmount('desc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'desc'); }
-                  else if (v === 'amount_asc') { setSettlementSortAmount('asc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'asc'); }
-                  else if (v === 'date_asc') { setSettlementSortDate('asc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'asc', ''); }
-                  else { setSettlementSortDate('desc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
+                  if (v === 'amount_desc') { setSettlementSortRole(''); setSettlementSortAmount('desc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'desc'); }
+                  else if (v === 'amount_asc') { setSettlementSortRole(''); setSettlementSortAmount('asc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'asc'); }
+                  else if (v === 'admin_first') { setSettlementSortRole('admin'); setSettlementSortAmount(''); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
+                  else if (v === 'manager_first') { setSettlementSortRole('manager'); setSettlementSortAmount(''); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
+                  else if (v === 'date_asc') { setSettlementSortRole(''); setSettlementSortDate('asc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'asc', ''); }
+                  else { setSettlementSortRole(''); setSettlementSortDate('desc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
                 }}
                 open={settlementSortOpen}
                 onToggle={() => setSettlementSortOpen(o => !o)}
@@ -2394,18 +2410,115 @@ export default function AdminDashboard() {
                 </div>
                 
                 <div className="form-row">
-                  <div className="form-group">
+                  <div className="form-group" style={{ position: 'relative' }}>
                     <label className="form-label">{settlementForm.type === 'paid_to_supplier' ? 'Supplier / Company *' : 'Party Name'}</label>
                     <input
+                      ref={partyInputRef}
                       className="form-control"
-                      list="party-names-list"
                       value={settlementForm.party_name}
-                      onChange={e => setSettlementForm({ ...settlementForm, party_name: e.target.value })}
+                      onChange={e => {
+                        setSettlementForm({ ...settlementForm, party_name: e.target.value });
+                        setShowPartyList(true);
+                      }}
+                      onFocus={() => setShowPartyList(true)}
+                      onBlur={() => setTimeout(() => setShowPartyList(false), 250)}
                       placeholder="Type or select party name"
                     />
-                    <datalist id="party-names-list">
-                      {settlementData.partyNames?.map(p => <option key={p} value={p} />)}
-                    </datalist>
+                    {showPartyList && (
+                      <div
+                        onMouseDown={e => e.preventDefault()}
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          width: '100%',
+                          maxHeight: 250,
+                          overflowY: 'auto',
+                          background: '#fff',
+                          border: '1.5px solid #d1d5db',
+                          borderRadius: 10,
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                          zIndex: 99999,
+                        }}
+                      >
+                        {(() => {
+                          const q = settlementForm.party_name.toLowerCase().trim();
+                          if (settlementForm.type === 'paid_to_supplier') {
+                            const list = suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
+                            if (list.length === 0) return <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: 13 }}>{q ? `No supplier found for "${q}"` : 'No suppliers available'}</div>;
+                            return list.map((s, idx) => (
+                              <div
+                                key={s._id}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setSettlementForm({ ...settlementForm, party_name: s.name });
+                                  setShowPartyList(false);
+                                }}
+                                style={{
+                                  padding: '10px 14px', cursor: 'pointer',
+                                  borderBottom: idx < list.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  transition: 'background 0.1s',
+                                  background: '#fff'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                                onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: 13, color: '#111827' }}>{s.name}</div>
+                                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{s.phone || 'No phone'}</div>
+                                </div>
+                                {s.balance > 0.01 && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, background: '#fef2f2', color: '#dc2626', padding: '2px 8px', borderRadius: 8 }}>
+                                    Due ₹{s.balance?.toFixed(2)}
+                                  </span>
+                                )}
+                                {s.balance < 0 && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, background: '#f0fdf4', color: '#16a34a', padding: '2px 8px', borderRadius: 8 }}>
+                                    Adv ₹{Math.abs(s.balance)?.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                            ));
+                          } else {
+                            // Basic array of names
+                            const list = settlementData.partyNames.filter(n => n.toLowerCase().includes(q));
+                            if (list.length === 0 && !q) return <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: 13 }}>Type to add a new party</div>;
+                            if (list.length === 0) return (
+                              <div
+                                onMouseDown={(e) => { e.preventDefault(); setShowPartyList(false); }}
+                                style={{ padding: '12px', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', background: '#fff' }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                                onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                              >
+                                + Add "{settlementForm.party_name}"
+                              </div>
+                            );
+                            return list.map((name, idx) => (
+                              <div
+                                key={name}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setSettlementForm({ ...settlementForm, party_name: name });
+                                  setShowPartyList(false);
+                                }}
+                                style={{
+                                  padding: '10px 14px', cursor: 'pointer',
+                                  borderBottom: idx < list.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                  fontWeight: 600, fontSize: 13, color: '#111827',
+                                  transition: 'background 0.1s',
+                                  background: '#fff'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                                onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                              >
+                                {name}
+                              </div>
+                            ));
+                          }
+                        })()}
+                      </div>
+                    )}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Amount ₹ *</label>
@@ -2523,30 +2636,75 @@ export default function AdminDashboard() {
               
               const receivedSettlements = (settlementData.settlements || []).filter(s => s.type === 'other_income');
               
-              // Group by received_category
-              const groupedReceived = receivedSettlements.reduce((acc, s) => {
-                const cat = s.received_category || 'others';
-                if (!acc[cat]) acc[cat] = { total: 0, byMode: {} };
-                acc[cat].total += s.amount;
-                acc[cat].byMode[s.mode] = (acc[cat].byMode[s.mode] || 0) + s.amount;
-                return acc;
-              }, {});
+              // Pre-populate grouped maps with Admin and all managers with 0 totals
+              const initialGrouped = {
+                'System / Admin': { total: 0, byMode: {}, latestDate: 0, earliestDate: Infinity }
+              };
+              allManagers.forEach(m => {
+                const name = m.display_name || m.username;
+                if (name) initialGrouped[name] = { total: 0, byMode: {}, latestDate: 0, earliestDate: Infinity };
+              });
 
-              const catLabels = {
-                today_invoice: 'By Invoice',
-                due_cleared: 'Due Cleared',
-                advance_payment: 'Advance',
-                others: 'Others'
+              // Group received by manager
+              const groupedReceivedByManager = receivedSettlements.reduce((acc, s) => {
+                const managerName = s.created_by?.display_name || s.created_by?.username || 'System / Admin';
+                if (!acc[managerName]) acc[managerName] = { total: 0, byMode: {}, latestDate: 0, earliestDate: Infinity };
+                acc[managerName].total += s.amount;
+                
+                const time = new Date(s.date).getTime();
+                if (time > acc[managerName].latestDate) acc[managerName].latestDate = time;
+                if (time < acc[managerName].earliestDate) acc[managerName].earliestDate = time;
+
+                const m = (s.mode || 'cash').toUpperCase();
+                if (!acc[managerName].byMode[m]) acc[managerName].byMode[m] = { total: 0, notes: [] };
+                acc[managerName].byMode[m].total += s.amount;
+                if (s.notes && !s.notes.startsWith('Auto-recorded')) acc[managerName].byMode[m].notes.push(s.notes);
+                else if (s.notes) acc[managerName].byMode[m].notes.push(s.notes.replace('Auto-recorded from invoice ', 'Invoice '));
+                return acc;
+              }, JSON.parse(JSON.stringify(initialGrouped)));
+
+              // Group paid out by manager
+              const groupedPaidOutByManager = paidOutEntries.reduce((acc, s) => {
+                const managerName = s.created_by?.display_name || s.created_by?.username || 'System / Admin';
+                if (!acc[managerName]) acc[managerName] = { total: 0, byMode: {}, latestDate: 0, earliestDate: Infinity };
+                acc[managerName].total += s.amount;
+                
+                const time = new Date(s.date).getTime();
+                if (time > acc[managerName].latestDate) acc[managerName].latestDate = time;
+                if (time < acc[managerName].earliestDate) acc[managerName].earliestDate = time;
+                const m = (s.mode || 'cash').toUpperCase();
+                if (!acc[managerName].byMode[m]) acc[managerName].byMode[m] = { total: 0, notes: [] };
+                acc[managerName].byMode[m].total += s.amount;
+                if (s.notes && !s.notes.startsWith('Auto-recorded')) acc[managerName].byMode[m].notes.push(s.notes);
+                else if (s.notes) acc[managerName].byMode[m].notes.push(s.notes.replace('Auto-recorded from invoice ', 'Invoice '));
+                return acc;
+              }, JSON.parse(JSON.stringify(initialGrouped)));
+
+              // Generate sorted groups
+              let paidOutGroups = Object.entries(groupedPaidOutByManager).filter(([_, data]) => data.total > 0);
+              let receivedGroups = Object.entries(groupedReceivedByManager).filter(([_, data]) => data.total > 0);
+
+              const sortFn = ([nameA, dataA], [nameB, dataB]) => {
+                  if (settlementSortRole === 'admin') {
+                      if (nameA === 'System / Admin') return -1;
+                      if (nameB === 'System / Admin') return 1;
+                  } else if (settlementSortRole === 'manager') {
+                      if (nameA === 'System / Admin') return 1;
+                      if (nameB === 'System / Admin') return -1;
+                  } else if (settlementSortAmount === 'desc') {
+                      return dataB.total - dataA.total;
+                  } else if (settlementSortAmount === 'asc') {
+                      return dataA.total - dataB.total;
+                  } else if (settlementSortDate === 'asc') {
+                      return dataA.earliestDate - dataB.earliestDate;
+                  } else {
+                      return dataB.latestDate - dataA.latestDate;
+                  }
+                  return nameA.localeCompare(nameB);
               };
 
-              const receivedEntries = receivedSettlements.map(s => ({
-                label: s.party_name || 'Other Income',
-                party: s.party_name || '—',
-                mode: s.mode,
-                amount: s.amount,
-                reason: s.received_category ? catLabels[s.received_category] || s.received_category : (s.notes || 'Other income'),
-                ist_formatted: s.ist_formatted,
-              }));
+              paidOutGroups.sort(sortFn);
+              receivedGroups.sort(sortFn);
 
               return (
                 <>
@@ -2571,16 +2729,6 @@ export default function AdminDashboard() {
                         Received {showReceivedDetail ? '▲' : '▼'}
                       </div>
                       <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)', marginTop: 4 }}>{fc(totalReceived)}</div>
-                      {Object.keys(groupedReceived).length > 0 && (
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                          {Object.entries(groupedReceived).map(([cat, data]) => (
-                            <div key={cat} style={{ marginBottom: 2 }}>
-                              <strong>{catLabels[cat] || 'Others'}: {fc(data.total)}</strong> 
-                              <span style={{ opacity: 0.8 }}> ({Object.entries(data.byMode).map(([m, a]) => `${m.toUpperCase()} ${fc(a)}`).join(', ')})</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
 
                     <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '12px 18px', flex: 1, minWidth: 130 }}>
@@ -2597,18 +2745,27 @@ export default function AdminDashboard() {
                   {showPaidOutDetail && (
                     <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={16} /> Paid Out — Details</div>
-                      {paidOutEntries.length === 0 ? (
+                      {paidOutGroups.length === 0 ? (
                         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No paid-out entries for this date.</div>
-                      ) : paidOutEntries.map((s, i) => (
-                        <div key={s._id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < paidOutEntries.length - 1 ? '1px solid #fca5a5' : 'none', fontSize: 13 }}>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{s.party_name || 'Unknown'}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                              {s.mode?.toUpperCase()} · {s.ist_formatted ? s.ist_formatted.split(' ').slice(1).join(' ') : '—'}
-                              {s.notes ? ` · ${s.notes}` : ''}
-                            </div>
+                      ) : paidOutGroups.map(([managerName, managerData], idx) => (
+                        <div key={managerName} style={{ marginBottom: idx < paidOutGroups.length - 1 ? 12 : 0, borderBottom: idx < paidOutGroups.length - 1 ? '1px solid #fca5a5' : 'none', paddingBottom: idx < paidOutGroups.length - 1 ? 12 : 0 }}>
+                          <div style={{ fontWeight: 800, color: 'var(--danger)', fontSize: 13, marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                            <span>{managerName}</span>
+                            <span>{fc(managerData.total)}</span>
                           </div>
-                          <div style={{ fontWeight: 800, color: 'var(--danger)', fontFamily: 'monospace' }}>−{fc(s.amount)}</div>
+                          {Object.entries(managerData.byMode).map(([mode, data], i) => (
+                            <div key={mode} style={{ padding: '6px 0', borderBottom: i < Object.keys(managerData.byMode).length - 1 ? '1px dashed #fca5a5' : 'none' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text)' }}>{mode}</div>
+                                <div style={{ fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>−{fc(data.total)}</div>
+                              </div>
+                              {data.notes.length > 0 && (
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, paddingLeft: 4 }}>
+                                  {data.notes.map((n, idx) => <div key={idx}>• {n}</div>)}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
@@ -2618,17 +2775,27 @@ export default function AdminDashboard() {
                   {showReceivedDetail && (
                     <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 6 }}><ArrowUpDown size={16} /> Received — Details</div>
-                      {receivedEntries.length === 0 ? (
+                      {receivedGroups.length === 0 ? (
                         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No received entries for this date.</div>
-                      ) : receivedEntries.map((r, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < receivedEntries.length - 1 ? '1px solid #86efac' : 'none', fontSize: 13 }}>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{r.party || r.label}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                              {r.mode?.toUpperCase()} · {r.reason}
-                            </div>
+                      ) : receivedGroups.map(([managerName, managerData], idx) => (
+                        <div key={managerName} style={{ marginBottom: idx < receivedGroups.length - 1 ? 12 : 0, borderBottom: idx < receivedGroups.length - 1 ? '1px solid #86efac' : 'none', paddingBottom: idx < receivedGroups.length - 1 ? 12 : 0 }}>
+                          <div style={{ fontWeight: 800, color: 'var(--success)', fontSize: 13, marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                            <span>{managerName}</span>
+                            <span>{fc(managerData.total)}</span>
                           </div>
-                          <div style={{ fontWeight: 800, color: 'var(--success)', fontFamily: 'monospace' }}>+{fc(r.amount)}</div>
+                          {Object.entries(managerData.byMode).map(([mode, data], i) => (
+                            <div key={mode} style={{ padding: '6px 0', borderBottom: i < Object.keys(managerData.byMode).length - 1 ? '1px dashed #86efac' : 'none' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text)' }}>{mode}</div>
+                                <div style={{ fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>+{fc(data.total)}</div>
+                              </div>
+                              {data.notes.length > 0 && (
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, paddingLeft: 4 }}>
+                                  {data.notes.map((n, idx) => <div key={idx}>• {n}</div>)}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
@@ -2652,72 +2819,8 @@ export default function AdminDashboard() {
                   : `No settlement entries for this ${settlementViewMode === 'all' ? 'search' : 'date'}. Click "+ Add Entry" to record one.`}
               </div>
             ) : (
-              <div style={{ overflowX: 'auto', maxHeight: 400, overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
-                    <tr>
-                      {/* Fix 5: Date column shown in full history mode */}
-                      {settlementViewMode === 'all' && (
-                        <th style={{ padding: '9px 12px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>Date</th>
-                      )}
-                      {['Time', 'Type', 'Party / Supplier', 'Mode', 'Amount', 'Notes', ''].map(h => (
-                        <th key={h} style={{ padding: '9px 12px', textAlign: h === 'Amount' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {settlementData.settlements.map((s, idx) => (
-                      <tr key={s._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        {/* Fix 5: Show IST date in full history mode */}
-                        {settlementViewMode === 'all' && (
-                          <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                            {s.ist_date
-                              ? new Date(s.ist_date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                              : '—'}
-                          </td>
-                        )}
-                        <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                          {s.ist_formatted ? s.ist_formatted.split(' ').slice(1).join(' ') : '—'}
-                        </td>
-                        <td style={{ padding: '9px 12px' }}>
-                          <span className={`badge ${s.type === 'other_income' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: 10 }}>
-                            {s.type === 'paid_to_supplier' ? 'Supplier' 
-                              : s.type === 'other_expense' ? 'Expense' 
-                              : s.type === 'walkin_delivery' ? 'Walk-in Delivery'
-                              : s.type === 'vehicle_expense' ? 'Vehicle Expense'
-                              : 'Income'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '9px 12px', fontWeight: 600 }}>{s.party_name || '—'}</td>
-                        <td style={{ padding: '9px 12px', textTransform: 'uppercase', fontSize: 12, whiteSpace: 'nowrap' }}>
-                          {''} {s.mode}
-                          {s.reference && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.reference}</div>}
-                        </td>
-                        <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: s.type === 'other_income' ? 'var(--success)' : 'var(--danger)' }}>
-                          {s.type === 'other_income' ? '+' : '−'}{fc(s.amount)}
-                        </td>
-                        <td style={{ padding: '9px 12px', fontSize: 12 }}>
-                          {s.type === 'other_income' && s.received_category && s.received_category !== 'not_applicable' && (
-                            <span style={{ display: 'inline-block', fontSize: 10, background: '#f0fdf4', color: '#16a34a', padding: '1px 6px', borderRadius: 8, fontWeight: 700, marginRight: 5 }}>
-                              {s.received_category === 'today_invoice' ? 'Invoice'
-                                : s.received_category === 'due_cleared' ? 'Due'
-                                  : s.received_category === 'advance_payment' ? 'Advance'
-                                    : s.received_category === 'others' ? 'Others' : ''}
-                            </span>
-                          )}
-                          <span style={{ color: 'var(--text-muted)' }}>{s.notes || '—'}</span>
-                        </td>
-                        <td style={{ padding: '9px 12px' }}>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ color: 'var(--danger)' }}
-                            onClick={() => handleDeleteSettlement(s._id)}
-                          ><Trash2 size={14} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ overflowX: 'auto', maxHeight: 400, overflowY: 'auto', display: 'none' }}>
+                {/* Full History Table Removed per user request */}
               </div>
             )}
           </div>
@@ -3348,11 +3451,11 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                 </table>
-                {/* Scrollable body — max 8 rows visible */}
-                <div>
+                {/* Scrollable body */}
+                <div style={{ maxHeight: 350, overflowY: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                     <tbody>
-                      {(showMoreDues ? data.todayPendingDues : data.todayPendingDues.slice(0, 7)).map((c, idx) => (
+                      {data.todayPendingDues.map((c, idx) => (
                         <tr key={c._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                           <td style={{ padding: '10px 14px' }}>
                             <Link to={`/invoices/${c._id}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace', fontSize: 12.5 }}>
@@ -3379,19 +3482,6 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
-                {data.todayPendingDues.length > 7 && (
-                  <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                      onClick={() => setShowMoreDues(d => !d)}
-                    >
-                      {showMoreDues
-                        ? `▲ Show Less`
-                        : `▼ Show ${data.todayPendingDues.length - 7} More`}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -3436,7 +3526,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
                 {/* One item per row — clean layout, no overflow */}
-                <div style={{ maxHeight: showMoreLowStock ? 480 : 320, overflowY: 'auto', transition: 'max-height 0.3s ease', padding: '4px 0' }}>
+                <div style={{ maxHeight: 350, overflowY: 'auto', padding: '4px 0' }}>
                   {data.lowStockProducts.map((p, idx) => {
                     const toOrder = getOrderQty(p);
                     return (
@@ -3475,17 +3565,6 @@ export default function AdminDashboard() {
               </div>
 
             )}
-            {data.lowStockProducts.length > 7 && (
-              <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                  onClick={() => setShowMoreLowStock(d => !d)}
-                >
-                  {showMoreLowStock ? '▲ Collapse' : `▼ Expand all ${data.lowStockProducts.length} items`}
-                </button>
-              </div>
-            )}
 
           </div>
         </div>
@@ -3500,16 +3579,16 @@ export default function AdminDashboard() {
             {!data.todayMovements?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No stock movements today</div>
             ) : (
-              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+              <div className="table-wrap" style={{ border: 'none', borderRadius: 0, maxHeight: 350, overflowY: 'auto' }}>
                 <table>
-                  <thead><tr>
+                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}><tr>
                     <th>Product</th>
                     <th>Type</th>
                     <th className="tr">Qty</th>
                     <th>Reference</th>
                   </tr></thead>
                   <tbody>
-                    {(showMoreMovements ? data.todayMovements : data.todayMovements.slice(0, 7)).map(m => (
+                    {data.todayMovements.map(m => (
                       <tr key={m._id}>
                         <td>{m.product_name}</td>
                         <td>
@@ -3520,12 +3599,10 @@ export default function AdminDashboard() {
                         <td className="tr mono">{m.qty}</td>
                         <td>
                           {m.vehicle_number ? (
-                            /* Vehicle reference */
                             <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-muted)' }}>
                               <><Truck size={14} style={{ marginRight: 4 }} /> {m.vehicle_number}</>
                             </span>
                           ) : m.invoice_id ? (
-                            /* Fallback: link to invoice */
                             <Link to={`/invoices/${m.invoice_id}`}
                               style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--primary)' }}>
                               {m.invoice_number || 'INV'}
@@ -3538,17 +3615,6 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
-                {data.todayMovements.length > 7 && (
-                  <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                      onClick={() => setShowMoreMovements(d => !d)}
-                    >
-                      {showMoreMovements ? `▲ Show Less` : `▼ Show ${data.todayMovements.length - 7} More`}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -3562,7 +3628,7 @@ export default function AdminDashboard() {
               {salesSortDesc ? '↓ Newest First' : '↑ Oldest First'}
             </button>
           </div>
-          <div className="card-body no-pad">
+          <div className="card-body no-pad" style={{ maxHeight: 350, overflowY: 'auto' }}>
             {!data.salesByDay?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No sales in last 7 days</div>
             ) : (
@@ -3570,23 +3636,17 @@ export default function AdminDashboard() {
                 <table>
                   <thead><tr><th>Date</th><th className="tr">Bills</th><th className="tr">Sales</th></tr></thead>
                   <tbody>
-
                     {(() => {
                       const sorted = [...data.salesByDay].sort((a, b) =>
                         salesSortDesc ? b.day.localeCompare(a.day) : a.day.localeCompare(b.day)
                       );
-
-                      const visible = showMoreSales ? sorted : sorted.slice(0, 7);
-
                       return (
                         <>
-                          {visible.map(d => {
-
+                          {sorted.map(d => {
                             const isToday = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
                             const isYesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
                             const isTodayMatch = d.day === isToday;
                             const isYesterdayMatch = d.day === isYesterday;
-
                             return (
                               <tr key={d.day} style={{ background: isTodayMatch ? '#f0fdf4' : isYesterdayMatch ? '#eff6ff' : '' }}>
                                 <td>
@@ -3599,21 +3659,7 @@ export default function AdminDashboard() {
                               </tr>
                             );
                           })}
-
-                          {sorted.length > 7 && (
-                            <tr>
-                              <td colSpan={3} style={{ textAlign: 'center', borderTop: '1px solid var(--border)' }}>
-                                <button
-                                  className="btn btn-ghost btn-sm"
-                                  onClick={() => setShowMoreSales(d => !d)}
-                                >
-                                  {showMoreSales
-                                    ? '▲ Show Less'
-                                    : `▼ Show ${sorted.length - 7} More`}
-                                </button>
-                              </td>
-                            </tr>
-                          )}
+                          {/* Removed Show More button per user request */}
                         </>
                       );
                     })()}
@@ -3631,11 +3677,11 @@ export default function AdminDashboard() {
             {!data.topProducts?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No sales data yet</div>
             ) : (
-              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
-                <table>
+              <div className="table-wrap" style={{ border: 'none', borderRadius: 0, maxHeight: 350, overflowY: 'auto' }}>
+                <table style={{ margin: 0 }}>
                   <thead><tr><th>#</th><th>Product</th><th className="tr">Qty Sold</th><th className="tr">Revenue</th></tr></thead>
                   <tbody>
-                    {(showMoreTopProducts ? data.topProducts : data.topProducts.slice(0, 7)).map((p, i) => (
+                    {data.topProducts.map((p, i) => (
                       <tr key={i}>
                         <td className="text-muted fw-600">{i + 1}</td>
                         <td><strong>{p.product_name}</strong></td>
@@ -3643,19 +3689,7 @@ export default function AdminDashboard() {
                         <td className="tr mono fw-600">{fc(p.revenue)}</td>
                       </tr>
                     ))}
-                    {data.topProducts.length > 7 && (
-                      <tr>
-                        <td colSpan={4} style={{ padding: '10px 14px', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}
-                            onClick={() => setShowMoreTopProducts(d => !d)}
-                          >
-                            {showMoreTopProducts ? `▲ Show Less` : `▼ Show ${data.topProducts.length - 7} More`}
-                          </button>
-                        </td>
-                      </tr>
-                    )}
+                    {/* Removed Show More button per user request */}
                   </tbody>
                 </table>
               </div>

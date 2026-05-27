@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
+  category: { type: String, default: '', trim: true },
   price: { type: Number, required: true, min: 0 },
   stock: { type: Number, required: true, default: 0, min: 0 },
   gst: { type: Number, required: true, default: 0, min: 0, max: 100 },
@@ -19,5 +20,6 @@ const productSchema = new mongoose.Schema({
 
 productSchema.index({ name: 1 });
 productSchema.index({ name: 'text' });
+productSchema.index({ category: 1 });
 
 module.exports = mongoose.model('Product', productSchema);

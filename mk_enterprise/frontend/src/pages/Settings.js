@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { authApi, seedApi, managerApi } from '../utils/api';
 import { 
   Settings as SettingsIcon, Users, Plus, Phone, Trash2, Key, CheckCircle, 
@@ -12,6 +13,7 @@ import {
 export default function Settings() {
   const { settings, updateSettings } = useApp();
   const { admin, isAdmin } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
   const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
@@ -62,7 +64,7 @@ export default function Settings() {
   };
 
   const handleDeleteManager = async (mgr) => {
-    if (!window.confirm(`Delete manager "${mgr.display_name || mgr.username}"?\n\nNote: All records created by this manager will be preserved.`)) return;
+    if (!window.confirm(`Delete manager "${mgr.display_name || mgr.username}"?\n\n\\nNote: All records created by this manager will be preserved.`)) return;
     try {
       await managerApi.delete(mgr._id);
       toast.success(`Manager "${mgr.username}" removed`);
@@ -306,8 +308,23 @@ export default function Settings() {
           {activeTab === 'security' && (
             <div className="flex flex-column gap-4">
               <div className="card">
-                <div className="card-header"><div className="card-title">🌐 Interface Preferences</div></div>
+                <div className="card-header"><div className="card-title">🖥️ Interface Preferences</div></div>
                 <div className="card-body">
+                  <div className="form-group mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f8f9fa', borderRadius: 8, border: '1px solid #e9ecef' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#212529', fontSize: 15 }}>Dark Mode</div>
+                      <div style={{ fontSize: 13, color: '#6c757d' }}>Switch to a dark theme for low-light environments.</div>
+                    </div>
+                    <div 
+                      className={`theme-toggle-track ${theme === 'dark' ? 'on' : ''}`} 
+                      onClick={toggleTheme}
+                    >
+                      <div className="theme-toggle-thumb">
+                        {theme === 'dark' ? '🌙' : '☀️'}
+                      </div>
+                    </div>
+                  </div>
+
                   {radioGroup('language', [
                     { value: 'en', title: '🇬🇧 English', desc: 'Use English for all labels and reports.' },
                     { value: 'hi', title: '🇮🇳 हिन्दी', desc: 'सभी लेबल और रिपोर्ट के लिए हिन्दी का प्रयोग करें।' }
