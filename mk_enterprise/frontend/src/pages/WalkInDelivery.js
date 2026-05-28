@@ -1,31 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
-import { deliveryApi } from '../utils/api';
-import { UserCheck, Plus, X, Trash2, Calendar, Clock, Package, CheckCircle, AlertCircle, Search, Filter, ChevronDown } from 'lucide-react';
+import { deliveryApi, notificationApi } from '../utils/api';
+import { UserCheck, Plus, X, Trash2, Calendar, Clock, Package, CheckCircle, AlertCircle, Search, Filter, ChevronDown, CreditCard } from 'lucide-react';
+import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
+import PaymentModal from '../components/PaymentModal';
+import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
 
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
 const STATUS_META = {
-  pending:       { label: 'Pending',       bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
+  pending:       { label: 'Pending',       bg: 'var(--warning-light)', color: '#d97706', border: '#fde68a' },
   arriving_soon: { label: 'Arriving Soon', bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' },
-  on_the_way:    { label: 'On the Way',    bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
-  delivered:     { label: 'Delivered',     bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
-  not_delivered: { label: 'Not Delivered', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-};
-
-const EMPTY_FORM = {
-  supplier: '',
-  notes: '',
-  expected_arrival: '',
-  items: [{ item_name: '', quantity: 1, unit: 'pcs' }],
+  on_the_way:    { label: 'On the Way',    bg: 'var(--primary-light)', color: '#2563eb', border: '#bfdbfe' },
+  delivered:     { label: 'Delivered',     bg: 'var(--success-light)', color: '#16a34a', border: '#bbf7d0' },
+  not_delivered: { label: 'Not Delivered', bg: 'var(--danger-light)', color: '#dc2626', border: '#fecaca' },
 };
 
 export default function WalkInDelivery() {
+  const { t } = useApp();
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
+  const [paymentDelivery, setPaymentDelivery] = useState(null);
+  const [detailsDelivery, setDetailsDelivery] = useState(null);
   const [filterDate, setFilterDate] = useState(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -33,6 +31,11 @@ export default function WalkInDelivery() {
   });
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState('');
+  const [expandedRows, setExpandedRows] = useState({});
+
+  const toggleRow = (id) => {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const load = async () => {
     setLoading(true);
@@ -49,51 +52,22 @@ export default function WalkInDelivery() {
   useEffect(() => { load(); }, [filterDate, showAll]);
 
   const openModal = () => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    setForm({ ...EMPTY_FORM, expected_arrival: now.toISOString().slice(0, 16), items: [{ item_name: '', quantity: 1, unit: 'pcs' }] });
     setShowModal(true);
-  };
-
-  const addItem = () => setForm(f => ({ ...f, items: [...f.items, { item_name: '', quantity: 1, unit: 'pcs' }] }));
-  const removeItem = (idx) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-  const updateItem = (idx, field, value) => setForm(f => {
-    const items = [...f.items];
-    items[idx] = { ...items[idx], [field]: value };
-    return { ...f, items };
-  });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!form.expected_arrival) return toast.error('Arrival date/time is required');
-    if (!form.items.length || !form.items[0].item_name) return toast.error('At least one item is required');
-
-    setSaving(true);
-    try {
-      await deliveryApi.create({
-        vehicle_number: 'WALK-IN',
-        driver_name: '',
-        supplier: form.supplier || 'Walk-in Customer',
-        expected_arrival: new Date(form.expected_arrival).toISOString(),
-        items: form.items.filter(i => i.item_name.trim()).map(i => ({
-          item_name: i.item_name.trim(),
-          quantity: parseFloat(i.quantity) || 1,
-          unit: i.unit || 'pcs',
-        })),
-        notes: form.notes,
-        delivery_type: 'walkin_delivery',
-      });
-      toast.success('Walk-in delivery recorded!');
-      setShowModal(false);
-      load();
-    } catch (err) { toast.error(err.message); }
-    finally { setSaving(false); }
   };
 
   const markStatus = async (id, status) => {
     try {
       await deliveryApi.updateStatus(id, status);
       toast.success(`Marked as ${STATUS_META[status]?.label}`);
+      load();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleMarkWalkinPaid = async (id, mode) => {
+    try {
+      await deliveryApi.updatePayment(id, 'paid', mode || 'cash');
+      toast.success('Walk-in delivery marked as paid');
+      setPaymentDelivery(null);
       load();
     } catch (err) { toast.error(err.message); }
   };
@@ -141,15 +115,15 @@ export default function WalkInDelivery() {
       {/* ── STATS ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
         {[
-          { label: "Today's Entries", value: todayCount, icon: '🛍️', bg: '#eff6ff', color: '#2563eb' },
-          { label: 'Pending / Coming', value: pendingCount, icon: '⏳', bg: '#fffbeb', color: '#d97706' },
-          { label: 'Delivered Today', value: deliveredCount, icon: '✅', bg: '#f0fdf4', color: '#16a34a' },
+          { label: "Today's Entries", value: todayCount, icon: <Package size={28} />, bg: 'var(--primary-light)', color: '#2563eb' },
+          { label: 'Pending / Coming', value: pendingCount, icon: <Clock size={28} />, bg: 'var(--warning-light)', color: '#d97706' },
+          { label: 'Delivered Today', value: deliveredCount, icon: <CheckCircle size={28} />, bg: 'var(--success-light)', color: '#16a34a' },
         ].map(s => (
           <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.color}22`, borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 28 }}>{s.icon}</span>
             <div>
               <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{s.label}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>{s.label}</div>
             </div>
           </div>
         ))}
@@ -162,15 +136,18 @@ export default function WalkInDelivery() {
             <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
             <input className="form-control" placeholder="Search by supplier, item..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 36, borderRadius: 8, fontSize: 14 }} />
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#475569' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>
             <Calendar size={14} />
             <input type="date" className="form-control" value={filterDate} onChange={e => { setFilterDate(e.target.value); setShowAll(false); }} style={{ width: 160, borderRadius: 8, fontSize: 13 }} disabled={showAll} />
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#475569' }}>
-            <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+          <button 
+            className={`btn ${showAll ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setShowAll(!showAll)}
+            style={{ borderRadius: 8, fontSize: 13, fontWeight: 600, padding: '6px 14px' }}
+          >
             All History
-          </label>
-          <div style={{ marginLeft: 'auto', background: '#f1f5f9', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
+          </button>
+          <div style={{ marginLeft: 'auto', background: 'var(--bg-hover)', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
             {filtered.length} records
           </div>
         </div>
@@ -183,13 +160,13 @@ export default function WalkInDelivery() {
             <div className="loading"><span className="spinner"></span></div>
           ) : filtered.length === 0 ? (
             <div className="empty-state" style={{ padding: 60 }}>
-              <div className="empty-icon">🛍️</div>
+              <div className="empty-icon"><Package size={48} color="#94a3b8" /></div>
               <div className="empty-text">No walk-in deliveries found</div>
               <div className="empty-sub">Click "+ New Walk-in" to record one</div>
             </div>
           ) : (
             <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
-              <table>
+              <table style={{ width: '100%' }}>
                 <thead>
                   <tr>
                     <th style={{ padding: '12px 16px' }}>Time</th>
@@ -203,26 +180,38 @@ export default function WalkInDelivery() {
                   {filtered.map(d => {
                     const sm = STATUS_META[d.status] || STATUS_META.pending;
                     return (
-                      <tr key={d._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <tr key={d._id} 
+                        style={{ cursor: 'pointer', transition: 'background 0.2s', borderBottom: '1px solid #f1f5f9' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        onClick={() => setDetailsDelivery(d)}
+                      >
                         <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
-                          <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 13 }}>
                             {d.expected_arrival_ist || new Date(d.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })}
                           </div>
                           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                             {new Date(d.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
                           </div>
                         </td>
-                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#1e293b' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--text)' }}>
                           {d.supplier || 'Walk-in Customer'}
-                          {d.notes && <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 400, marginTop: 2 }}>{d.notes}</div>}
+                          {d.notes && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 400, marginTop: 2 }}>{d.notes}</div>}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          {d.items?.slice(0, 3).map((item, i) => (
+                          {d.items?.slice(0, expandedRows[d._id] ? d.items.length : 2).map((item, i) => (
                             <div key={i} style={{ fontSize: 12.5, color: '#374151', lineHeight: 1.6 }}>
-                              <strong>{item.quantity}</strong> {item.unit} × {item.item_name}
+                              <strong>{item.quantity}</strong> {item.unit} {item.item_name}
                             </div>
                           ))}
-                          {d.items?.length > 3 && <div style={{ fontSize: 11, color: '#94a3b8' }}>+{d.items.length - 3} more items</div>}
+                          {d.items?.length > 2 && (
+                            <div 
+                              onClick={(e) => { e.stopPropagation(); toggleRow(d._id); }}
+                              style={{ fontSize: 11.5, color: '#4f46e5', cursor: 'pointer', marginTop: 4, fontWeight: 600 }}
+                            >
+                              {expandedRows[d._id] ? 'Show less' : `+${d.items.length - 2} more items (Click to see more)`}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, background: sm.bg, color: sm.color, border: `1px solid ${sm.border}` }}>
@@ -230,21 +219,30 @@ export default function WalkInDelivery() {
                             {sm.label}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                             {d.status !== 'delivered' && (
-                              <button className="btn btn-outline btn-sm" onClick={() => markStatus(d._id, 'delivered')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#16a34a', borderColor: '#bbf7d0' }}>
+                              <button className="btn btn-success btn-sm" onClick={(e) => { e.stopPropagation(); markStatus(d._id, 'delivered'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
                                 <CheckCircle size={12} /> Delivered
                               </button>
                             )}
                             {d.status !== 'not_delivered' && d.status !== 'delivered' && (
-                              <button className="btn btn-outline btn-sm" onClick={() => markStatus(d._id, 'not_delivered')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#dc2626', borderColor: '#fecaca' }}>
+                              <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); markStatus(d._id, 'not_delivered'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
                                 <AlertCircle size={12} /> Not Delivered
                               </button>
                             )}
-                            <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(d._id)} style={{ color: '#ef4444', padding: '5px', borderRadius: 6 }} title="Delete">
-                              <Trash2 size={14} />
-                            </button>
+                            {d.payment_status !== 'paid' && (
+                              <button className="btn btn-warning btn-sm" onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setPaymentDelivery(d);
+                              }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
+                                <CreditCard size={12} /> Mark Paid {(() => {
+                                  const amt = d.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
+                                  return amt > 0 ? `(₹${amt.toLocaleString('en-IN')})` : '';
+                                })()}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -257,70 +255,23 @@ export default function WalkInDelivery() {
         </div>
       </div>
 
-      {/* ── ADD MODAL ── */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', zIndex: 9999, backdropFilter: 'blur(4px)', padding: 16 }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '16px', color: '#1e293b' }}>
-                <UserCheck size={18} className="text-primary" /> Record Walk-in Delivery
-              </div>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}><X size={18} /></button>
-            </div>
-
-            <div style={{ overflowY: 'auto', flex: 1, padding: 20 }}>
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Supplier / Party Name</label>
-                    <input className="form-control" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} placeholder="e.g. Ramesh Traders" autoFocus style={{ borderRadius: 8 }} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Date & Time *</label>
-                    <input type="datetime-local" className="form-control" value={form.expected_arrival} onChange={e => setForm(f => ({ ...f, expected_arrival: e.target.value }))} required style={{ borderRadius: 8, fontSize: 13 }} />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 700, color: '#475569', marginBottom: 6, display: 'block' }}>Notes</label>
-                  <input className="form-control" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any remarks..." style={{ borderRadius: 8 }} />
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <label style={{ fontWeight: 700, color: '#475569', fontSize: 13.5 }}>Items *</label>
-                    <button type="button" onClick={addItem} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, borderRadius: 6 }}>
-                      <Plus size={12} /> Add Item
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {form.items.map((item, idx) => (
-                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px auto', gap: 8, alignItems: 'center', background: '#f8fafc', borderRadius: 8, padding: '10px 12px', border: '1px solid #e2e8f0' }}>
-                        <input className="form-control" placeholder="Item name *" value={item.item_name} onChange={e => updateItem(idx, 'item_name', e.target.value)} required style={{ fontSize: 13, borderRadius: 6 }} />
-                        <input className="form-control" type="number" min="0.01" step="0.01" placeholder="Qty" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} style={{ fontSize: 13, borderRadius: 6 }} />
-                        <select className="form-control" value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} style={{ fontSize: 12, borderRadius: 6 }}>
-                          {QTY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                        </select>
-                        {form.items.length > 1 && (
-                          <button type="button" onClick={() => removeItem(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}><Trash2 size={14} /></button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
-                  <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)} style={{ borderRadius: 8 }}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>
-                    {saving ? <span className="spinner" style={{ width: 14, height: 14 }}></span> : <CheckCircle size={14} />}
-                    {saving ? 'Saving...' : 'Record Walk-in'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+      {/* ── MODALS ── */}
+      {showModal && <WalkInDeliveryModal onClose={() => setShowModal(false)} onSuccess={load} userRole="admin" />}
+      
+      {paymentDelivery && (
+        <PaymentModal 
+          isOpen={true} 
+          onClose={() => setPaymentDelivery(null)}
+          onConfirm={(mode) => handleMarkWalkinPaid(paymentDelivery._id, mode)}
+          amount={paymentDelivery?.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0}
+        />
       )}
+      
+      <DeliveryDetailsModal 
+        isOpen={!!detailsDelivery}
+        onClose={() => setDetailsDelivery(null)}
+        delivery={detailsDelivery}
+      />
     </div>
   );
 }

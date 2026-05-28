@@ -4,14 +4,17 @@ const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const PasswordResetRequest = require('../models/PasswordResetRequest');
 const ActivityLog = require('../models/ActivityLog');
+const Notification = require('../models/Notification');
 const auth = require('../middleware/auth');
 const { requireSupervisor } = require('../middleware/auth');
+
+const failedLogins = new Map(); // Track failed logins in memory
 
 // Manager limit removed — unlimited managers allowed
 
 // ─── Helper: find user by username OR phone ────────────────────────────────────
 async function findUser(identifier) {
-  const clean = (identifier || '').toLowerCase().trim();
+  const clean = (identifier || '').trim();
   // Try username first
   let user = await Admin.findOne({ username: clean, is_active: true });
   if (!user) {
@@ -26,6 +29,19 @@ async function findUser(identifier) {
   }
   return user;
 }
+
+// ─── GET /api/auth/check-user ──────────────────────────────────────────────────
+// Public endpoint to check if a credential exists (used to enable/disable login button)
+router.get('/check-user', async (req, res) => {
+  try {
+    const { identifier } = req.query;
+    if (!identifier) return res.json({ exists: false });
+    const user = await findUser(identifier);
+    res.json({ exists: !!user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── POST /api/auth/login ──────────────────────────────────────────────────────
 // Step 1: Validate username/phone + password. If supervisor, return requires_secret flag.
@@ -44,13 +60,24 @@ router.post('/login', async (req, res) => {
     // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      const currentFails = (failedLogins.get(user.username) || 0) + 1;
+      failedLogins.set(user.username, currentFails);
+      
+      let actionType = 'failed_login';
+      let desc = 'Failed login attempt (incorrect password)';
+      
+      if (currentFails >= 3) {
+        actionType = 'security_alert';
+        desc = `SECURITY ALERT: Failed login attempt ${currentFails} times for user ${user.username}`;
+      }
+      
       await ActivityLog.create({
         user_id: user._id,
         username: user.username,
         user_role: user.role,
-        action: 'failed_login',
+        action: actionType,
         entity_type: 'Admin',
-        description: 'Failed login attempt (incorrect password)',
+        description: desc,
         ip_address: req.ip || req.connection?.remoteAddress || '',
       });
       return res.status(401).json({ error: 'Incorrect password.' });
@@ -66,9 +93,19 @@ router.post('/login', async (req, res) => {
     }
 
     // Non-supervisor (manager/driver) — issue token immediately
-    await Admin.findByIdAndUpdate(user._id, {
-      $set: { lastLogin: new Date() },
+    failedLogins.delete(user.username); // Clear failed attempts on success
+    await Admin.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date() } });
+
+    await ActivityLog.create({
+      user_id: user._id,
+      username: user.username,
+      user_role: user.role,
+      action: 'login',
+      entity_type: 'Admin',
+      description: 'Logged in successfully',
+      ip_address: req.ip || req.connection?.remoteAddress || '',
     });
+
 
     const token = jwt.sign(
       { id: user._id, username: user.username, role: user.role },
@@ -117,9 +154,18 @@ router.post('/verify-secret', async (req, res) => {
     }
 
     // Success — issue token
-    await Admin.findByIdAndUpdate(user._id, {
-      $set: { lastLogin: new Date() },
+    await Admin.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date() } });
+
+    await ActivityLog.create({
+      user_id: user._id,
+      username: user.username,
+      user_role: user.role,
+      action: 'login',
+      entity_type: 'Admin',
+      description: 'Logged in successfully',
+      ip_address: req.ip || req.connection?.remoteAddress || '',
     });
+
 
     const token = jwt.sign(
       { id: user._id, username: user.username, role: user.role },
@@ -188,7 +234,7 @@ router.post('/forgot-password', async (req, res) => {
     if (existing) {
       return res.json({
         success: true,
-        message: 'A recovery request is already pending. Your Supervisor Admin will reset your password.',
+        message: 'A recovery request is already pending. Your Super Admin will reset your password.',
       });
     }
 
@@ -200,9 +246,19 @@ router.post('/forgot-password', async (req, res) => {
       status: 'pending',
     });
 
+    try {
+      await Notification.create({
+        type: 'security',
+        title: 'Password Recovery Request',
+        message: `User ${user.username} has requested a password reset.`,
+      });
+    } catch (notifErr) {
+      console.error('Failed to create notification:', notifErr);
+    }
+
     res.json({
       success: true,
-      message: 'Recovery request submitted. Your Supervisor Admin will reset your password shortly.',
+      message: 'Recovery request submitted. Your Super Admin will reset your password shortly.',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -395,7 +451,7 @@ router.post('/drivers', auth, requireSupervisor, async (req, res) => {
       return res.status(400).json({ error: 'Vehicle number and driver name are required.' });
     }
 
-    const username = vehicle_number.toLowerCase().replace(/\s+/g, '');
+    const username = vehicle_number.replace(/\s+/g, '');
 
     // Check duplicate
     const exists = await Admin.findOne({ username });

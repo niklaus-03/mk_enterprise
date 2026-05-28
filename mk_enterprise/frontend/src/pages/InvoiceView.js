@@ -38,7 +38,8 @@ const fc = formatCurrency;
 export default function InvoiceView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { settings: appSettings } = useApp();
+  const { t, settings: appSettings } = useApp();
+  const lang = appSettings?.language === 'hi';
   const { isManager, user } = useAuth();
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +73,7 @@ export default function InvoiceView() {
   }, [invoice]);
 
   const handleEditNameBlur = () => {
-    setEditNameForm(prev => ({ ...prev, name: applyAutoSuffix(prev.name) }));
+    // setEditNameForm(prev => ({ ...prev, name: applyAutoSuffix(prev.name) }));
   };
 
   const handleSaveName = async (e) => {
@@ -80,9 +81,9 @@ export default function InvoiceView() {
     if (!editNameForm.name.trim()) return toast.error('Name is required');
     setSavingName(true);
     try {
-      const formattedName = formatCustomerName(editNameForm.prefix, editNameForm.name);
-      await invoiceApi.update(invoice._id, { customer_name: formattedName });
-      setInvoice({ ...invoice, customer_name: formattedName });
+      const payload = { customer_name: editNameForm.name.trim() };
+      await invoiceApi.update(invoice._id, payload);
+      setInvoice({ ...invoice, customer_name: editNameForm.name.trim() });
       setShowEditNameModal(false);
       toast.success('Customer name updated');
     } catch (err) {
@@ -140,6 +141,8 @@ export default function InvoiceView() {
     try { await invoiceApi.delete(id); toast.success('Invoice cancelled'); navigate('/invoices'); }
     catch (err) { toast.error(err.message); }
   };
+
+  const overallBalanceDue = invoice ? ((invoice.total_with_prev_balance || invoice.total) - invoice.amount_received) : 0;
 
   const handlePrint = () => {
     const prevTitle = document.title;
@@ -205,7 +208,7 @@ export default function InvoiceView() {
         `\nGrand Total: ₹${invoice.total?.toFixed(2)}` +
         (invoice.previous_balance > 0 ? `\nPrevious Balance: ₹${invoice.previous_balance?.toFixed(2)}` : '') +
         `\nAmount Received: ₹${invoice.amount_received?.toFixed(2)}` +
-        (invoice.balance_due > 0.01 ? `\nBalance Due: ₹${invoice.balance_due?.toFixed(2)}` : '\nStatus: PAID ✅') +
+        (overallBalanceDue > 0.01 ? `\nBalance Due: ₹${overallBalanceDue.toFixed(2)}` : '\nStatus: PAID ✅') +
         `\n\n${invoice.notes ? 'Notes: ' + invoice.notes + '\n\n' : ''}` +
         `Thank you for your business!\n${settings.business_name || ''}\n${settings.business_phone || ''}`
       );
@@ -223,7 +226,7 @@ export default function InvoiceView() {
     setSendingDispatch(true);
     try {
       const itemSummary = invoice.items.map(i => `${i.product_name} x${i.qty}`).join(', ');
-      const message = `Items: ${itemSummary}. Collect ₹${invoice.balance_due > 0 ? invoice.balance_due : invoice.total} from ${invoice.customer_name}.${invoice.customer_address ? ' Destination: ' + invoice.customer_address : ''} Total Weight: ${invoice.total_weight || 0} kg.`;
+      const message = `Items: ${itemSummary}. Collect ₹${overallBalanceDue > 0 ? overallBalanceDue : invoice.total} from ${invoice.customer_name}.${invoice.customer_address ? ' Destination: ' + invoice.customer_address : ''} Total Weight: ${invoice.total_weight || 0} kg.`;
 
       // Update shared_with array on backend
       await invoiceApi.share(invoice._id, selectedStaff);
@@ -300,15 +303,27 @@ export default function InvoiceView() {
       .map(i => `${i.product_name} x${i.qty} = Rs.${i.total?.toFixed(2)}`)
       .join(', ');
 
-    const lines = [
+    const lines = lang ? [
+      `नमस्कार ${invoice.customer_name},`,
+      `${settings.business_name || 'हमारी दुकान'} से आपकी खरीद ${invoice.ist_formatted || ''}:`,
+      `सामान: ${itemLines}`,
+      `कुल: ₹${invoice.total?.toFixed(2)}`,
+      invoice.previous_balance > 0 ? `पिछला बकाया: ₹${invoice.previous_balance?.toFixed(2)}` : null,
+      `प्राप्त: ₹${invoice.amount_received?.toFixed(2)}`,
+      overallBalanceDue > 0.01
+        ? `बकाया: ₹${overallBalanceDue.toFixed(2)}`
+        : 'स्थिति: भुगतान पूर्ण',
+      `बिल नं: ${invoice.invoice_number}`,
+      `धन्यवाद! ${settings.business_phone ? '| ' + settings.business_phone : ''}`,
+    ] : [
       `Hello ${invoice.customer_name},`,
       `Your purchase at ${settings.business_name || 'our shop'} on ${invoice.ist_formatted || ''}:`,
       `Items: ${itemLines}`,
       `Total: Rs.${invoice.total?.toFixed(2)}`,
       invoice.previous_balance > 0 ? `Previous Due: Rs.${invoice.previous_balance?.toFixed(2)}` : null,
       `Received: Rs.${invoice.amount_received?.toFixed(2)}`,
-      invoice.balance_due > 0.01
-        ? `Balance Due: Rs.${invoice.balance_due?.toFixed(2)}`
+      overallBalanceDue > 0.01
+        ? `Balance Due: Rs.${overallBalanceDue.toFixed(2)}`
         : 'Status: PAID',
       `Invoice: ${invoice.invoice_number}`,
       `Thank you! ${settings.business_phone ? '| ' + settings.business_phone : ''}`,
@@ -361,6 +376,24 @@ export default function InvoiceView() {
       console.log("STEP 5: Opening WhatsApp...");
 
       const msg = encodeURIComponent(
+        lang ? 
+        `नमस्कार ${invoice.customer_name},
+
+यह आपका बिल है।
+
+🧾 बिल नं: ${invoice.invoice_number}
+📅 दिनांक: ${invoice.ist_formatted}
+💰 कुल: ₹${invoice.total.toFixed(2)}
+💳 प्राप्त: ₹${invoice.amount_received.toFixed(2)}
+${overallBalanceDue > 0.01 ? `📌 बकाया: ₹${overallBalanceDue.toFixed(2)}\n` : ''}
+
+👉 अपना बिल देखने के लिए यहाँ क्लिक करें:
+${pdfUrl}
+
+⚠️ नोट: यह बिल लिंक 7 दिन बाद हटा दिया जाएगा।
+
+धन्यवाद! 🙏` 
+        : 
         `Dear ${invoice.customer_name},
 
 This is your invoice.
@@ -369,7 +402,7 @@ This is your invoice.
 📅 Date: ${invoice.ist_formatted}
 💰 Total: ₹${invoice.total.toFixed(2)}
 💳 Received: ₹${invoice.amount_received.toFixed(2)}
-📌 Balance: ₹${invoice.balance_due.toFixed(2)}
+${overallBalanceDue > 0.01 ? `📌 Balance: ₹${overallBalanceDue.toFixed(2)}\n` : ''}
 
 👉 Click here to view your invoice:
 ${pdfUrl}
@@ -420,9 +453,9 @@ Thank you! 🙏`
   // Enhancement 5: optimized QR value
   const upiId = settings.upi_id;
   const upiName = settings.upi_name || settings.business_name;
-  // Final payable = total + previous balance (the actual amount customer owes)
-  const finalPayable = (invoice.total_with_prev_balance || invoice.total || 0);
-  const qrValue = upiId
+  const balanceDue = (invoice.total_with_prev_balance || invoice.total || 0) - (invoice.amount_received || 0);
+  const finalPayable = balanceDue > 0 ? balanceDue : (invoice.total_with_prev_balance || invoice.total || 0);
+  const qrValue = upiId 
     ? `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${finalPayable.toFixed(2)}&cu=INR`
     : (settings.business_phone || 'ShopBill Pro');
   const istDisplay = invoice.ist_formatted || formatIST(invoice.date);
@@ -442,13 +475,13 @@ Thank you! 🙏`
   if (invoice.status === 'cancelled') {
     paymentStatusText = 'Cancelled';
     paymentStatusColor = '#6b7280';
-    paymentStatusBackground = '#f3f4f6';
+    paymentStatusBackground = 'var(--border)';
     paymentStatusBorder = '1px solid #e5e7eb';
-  } else if (invoice.balance_due > 0.01) {
+  } else if (overallBalanceDue > 0.01) {
     if (invoice.amount_received > 0.01) {
       paymentStatusText = 'Pending';
       paymentStatusColor = '#d97706';
-      paymentStatusBackground = '#fef3c7';
+      paymentStatusBackground = 'var(--warning-light)';
       paymentStatusBorder = '1px solid #fde68a';
     } else {
       paymentStatusText = 'Due';
@@ -544,7 +577,7 @@ Thank you! 🙏`
         </div>
         <div className="page-actions">
           <Link to="/invoices" className="btn btn-outline d-inline-flex align-items-center gap-1"><ArrowLeft size={14} /> All Invoices</Link>
-          <Link to={`/invoices/${id}/edit`} className="btn btn-warning d-inline-flex align-items-center gap-1"><Edit size={14} /> Edit</Link>
+          <Link to={`/invoices/${id}/edit`} className="btn btn-warning d-inline-flex align-items-center gap-1"><Edit size={14} />{t('Edit', 'संपादित करें')}</Link>
           <button className="btn btn-primary btn-lg d-inline-flex align-items-center gap-1" onClick={handlePrint}><Printer size={14} /> Print / PDF</button>
           <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => setShowSendModal(true)} style={{ borderColor: '#6366f1', color: '#6366f1' }}>
             <Send size={14} /> Send Invoice
@@ -555,7 +588,7 @@ Thank you! 🙏`
               <AlertTriangle size={14} /> Escalate to Admin
             </button>
           )}
-          <button className="btn btn-danger d-inline-flex align-items-center gap-1" onClick={handleDelete}><Trash2 size={14} /> Cancel</button>
+          <button className="btn btn-danger d-inline-flex align-items-center gap-1" onClick={handleDelete}><Trash2 size={14} />{t('Cancel', 'रद्द करें')}</button>
         </div>
       </div>
 
@@ -604,7 +637,7 @@ Thank you! 🙏`
                 <tr><td className="label">Invoice No.</td><td className="value" style={{ fontFamily: 'monospace' }}>{invoice.invoice_number}</td></tr>
                 <tr><td className="label">Date & Time</td><td className="value">{istDisplay}</td></tr>
                 {invoice.manual_bill_ref && <tr><td className="label">Manual Ref.</td><td className="value">{invoice.manual_bill_ref}</td></tr>}
-                {invoice.vehicle_number && <tr><td className="label">Vehicle No.</td><td className="value">{invoice.vehicle_number}</td></tr>}
+                {invoice.vehicle_number && <tr><td className="label">Vehicle No.</td><td className="value">{(invoice.vehicle_number || '').toUpperCase()}</td></tr>}
                 {invoice.driver_name && <tr><td className="label">Driver</td><td className="value">{invoice.driver_name}</td></tr>}
               </tbody>
             </table>
@@ -621,15 +654,15 @@ Thank you! 🙏`
           alignItems: 'center'
         }}>
           <div style={{ flex: 1 }}>
-            <div className="inv-section-title">Bill To</div>
+            <div className="inv-section-title">{t('BILL TO', 'बिल प्राप्तकर्ता')}</div>
             <div className="inv-bill-to">
               <div style={{ fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {invoice.customer_name}
+                {invoice.customer_name !== 'Walk-in Customer' ? <FormattedName fullName={invoice.customer_name} /> : invoice.customer_name}
                 {invoice.customer_name === 'Walk-in Customer' && (
                   <button 
                     onClick={() => setShowEditNameModal(true)}
                     className="no-print"
-                    style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, outline: 'none' }}
+                    style={{ background: 'var(--danger-light)', border: '1px solid #fca5a5', color: '#dc2626', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, outline: 'none' }}
                   >
                     <Edit size={10} /> Edit Name Required
                   </button>
@@ -640,7 +673,7 @@ Thank you! 🙏`
             </div>
           </div>
           <div style={{ width: 'auto', flexShrink: 0 }}>
-            {invoice.balance_due > 0.01 ? (
+            {overallBalanceDue > 0.01 ? (
               <div style={{ 
                 background: 'var(--danger-light)', 
                 border: '1.5px solid #fca5a5', 
@@ -648,8 +681,8 @@ Thank you! 🙏`
                 padding: isMobile ? '6px 12px' : '12px 18px', 
                 textAlign: 'right' 
               }}>
-                <div style={{ fontSize: isMobile ? 8 : 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase' }}>Balance Due</div>
-                <div style={{ fontSize: isMobile ? 18 : 26, fontWeight: 800, color: 'var(--danger)' }}>{fc(invoice.balance_due)}</div>
+                <div style={{ fontSize: isMobile ? 8 : 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase' }}>{t('Balance Due', 'शेष बकाया')}</div>
+                <div style={{ fontSize: isMobile ? 18 : 26, fontWeight: 800, color: 'var(--danger)' }}>{fc(overallBalanceDue)}</div>
               </div>
             ) : (
               <div style={{ 
@@ -668,7 +701,7 @@ Thank you! 🙏`
 
         {/* Previous balance note */}
         {invoice.previous_balance > 0 && (
-          <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '8px 14px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ background: 'var(--warning-light)', border: '1px solid #fcd34d', borderRadius: 6, padding: '8px 14px', marginBottom: 14, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
             <AlertTriangle size={14} className="text-warning" /> <span>Previous balance of <strong>{fc(invoice.previous_balance)}</strong> included in total.</span>
           </div>
         )}
@@ -679,16 +712,16 @@ Thank you! 🙏`
             <thead>
               <tr>
                 <th style={{ width: 28 }}>#</th>
-                <th>Item Description</th>
-                <th style={{ textAlign: 'center' }}>Qty</th>
-                <th style={{ textAlign: 'right' }}>Rate</th>
-                <th style={{ textAlign: 'right' }}>Taxable</th>
+                <th style={{ textAlign: 'left' }}>{t('Item Description', 'आइटम विवरण')}</th>
+                <th style={{ textAlign: 'center' }}>{t('Qty', 'मात्रा')}</th>
+                <th style={{ textAlign: 'right' }}>{t('Rate', 'दर')}</th>
+                <th style={{ textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th>
                 {invoice.gst_enabled && <>
-                  <th style={{ textAlign: 'center' }}>GST %</th>
-                  <th style={{ textAlign: 'right' }}>CGST</th>
-                  <th style={{ textAlign: 'right' }}>SGST</th>
+                  <th style={{ textAlign: 'center' }}>{t('GST %', 'जीएसटी %')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('CGST', 'सीजीएसटी')}</th>
+                  <th style={{ textAlign: 'right' }}>{t('SGST', 'एसजीएसटी')}</th>
                 </>}
-                <th style={{ textAlign: 'right' }}>Total</th>
+                <th style={{ textAlign: 'right' }}>{t('Total', 'कुल')}</th>
               </tr>
             </thead>
             <tbody>
@@ -719,10 +752,10 @@ Thank you! 🙏`
         <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', gap: 24, alignItems: 'flex-start', marginBottom: 14 }}>
           {invoice.gst_enabled && Object.keys(gstSummary).length > 0 && (
             <div style={{ flex: 1 }}>
-              <div className="inv-section-title">GST Summary</div>
+              <div className="inv-section-title">{t('GST Summary', 'जीएसटी सारांश')}</div>
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                 <table className="gst-summary-table" style={{ minWidth: isMobile ? 400 : 'auto' }}>
-                  <thead><tr><th>GST Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th></tr></thead>
+                  <thead><tr><th>{t('GST Rate', 'जीएसटी दर')}</th><th>{t('Taxable', 'कर योग्य')}</th><th>{t('CGST', 'सीजीएसटी')}</th><th>{t('SGST', 'एसजीएसटी')}</th></tr></thead>
                   <tbody>
                     {Object.entries(gstSummary).map(([rate, g]) => (
                       <tr key={rate}><td>{rate}%</td><td style={{ fontFamily: 'monospace' }}>{fc(g.taxable)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.cgst)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.sgst)}</td></tr>
@@ -733,43 +766,43 @@ Thank you! 🙏`
             </div>
           )}
           <div className="inv-totals-box" style={{ minWidth: 280, flex: 'none' }}>
-            <div className="inv-total-row"><span className="text-muted">Subtotal</span><span className="mono">{fc(invoice.subtotal)}</span></div>
+            <div className="inv-total-row"><span className="text-muted">{t('Subtotal', 'उप-कुल')}</span><span className="mono">{fc(invoice.subtotal)}</span></div>
             {invoice.gst_enabled && <>
-              <div className="inv-total-row"><span className="text-muted">CGST</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
-              <div className="inv-total-row"><span className="text-muted">SGST</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
+              <div className="inv-total-row"><span className="text-muted">{t('CGST', 'सीजीएसटी')}</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
+              <div className="inv-total-row"><span className="text-muted">{t('SGST', 'एसजीएसटी')}</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
             </>}
-            {invoice.discount > 0 && <div className="inv-total-row text-success"><span>Discount</span><span className="mono">- {fc(invoice.discount)}</span></div>}
+            {invoice.discount > 0 && <div className="inv-total-row text-success"><span>{t('Discount', 'छूट')}</span><span className="mono">- {fc(invoice.discount)}</span></div>}
             {/* Enhancement 5: vehicle charge line */}
             {invoice.vehicle_charge > 0 && (
               <div className="inv-total-row text-warning">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} /> Vehicle Charge</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} /> {t('Vehicle Charge', 'वाहन शुल्क')}</span>
                 <span className="mono">+ {fc(invoice.vehicle_charge)}</span>
               </div>
             )}
             {invoice.labour_charge > 0 && (
               <div className="inv-total-row text-warning">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><User size={12} /> Labour Charge</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><User size={12} /> {t('Labour Charge', 'श्रम शुल्क')}</span>
                 <span className="mono">+ {fc(invoice.labour_charge)}</span>
               </div>
             )}
-            <div className="inv-total-row grand"><span>Grand Total</span><span className="mono">{fc(invoice.total)}</span></div>
-            {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ color: 'var(--warning)', fontWeight: 600 }}><span>+ Prev. Balance</span><span className="mono">{fc(invoice.previous_balance)}</span></div>}
-            {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ fontWeight: 800 }}><span>Net Payable</span><span className="mono">{fc(invoice.total_with_prev_balance)}</span></div>}
-            <div className="inv-total-row rcvd"><span>Amount Received</span><span className="mono">{fc(invoice.amount_received)}</span></div>
-            {invoice.balance_due > 0.01 && <div className="inv-total-row due"><span>Balance Due</span><span className="mono">{fc(invoice.balance_due)}</span></div>}
+            <div className="inv-total-row grand"><span>{t('Grand Total', 'कुल राशि')}</span><span className="mono">{fc(invoice.total)}</span></div>
+            {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ color: 'var(--warning)', fontWeight: 600 }}><span>{t('+ Prev. Balance', '+ पिछला बकाया')}</span><span className="mono">{fc(invoice.previous_balance)}</span></div>}
+            {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ fontWeight: 800 }}><span>{t('Net Payable', 'कुल देय')}</span><span className="mono">{fc(invoice.total_with_prev_balance)}</span></div>}
+            <div className="inv-total-row rcvd"><span>{t('Amount Received', 'प्राप्त राशि')}</span><span className="mono">{fc(invoice.amount_received)}</span></div>
+            {((invoice.total_with_prev_balance || invoice.total) - invoice.amount_received) > 0.01 && <div className="inv-total-row due"><span>{t('Balance Due', 'शेष बकाया')}</span><span className="mono">{fc((invoice.total_with_prev_balance || invoice.total) - invoice.amount_received)}</span></div>}
           </div>
         </div>
 
         {/* Amount in words */}
         <div className="inv-words">
-          <span style={{ color: '#6b7280', fontWeight: 600 }}>Amount in Words: </span>
-          <span style={{ fontWeight: 600 }}>{numToWords(invoice.total)}</span>
+          <span style={{ color: '#6b7280', fontWeight: 600 }}>{t('Amount in Words:', 'शब्दों में राशि:')} </span>
+          <span style={{ fontWeight: 600 }}>{numToWords(invoice.total, lang)}</span>
         </div>
 
         {/* Payment modes */}
         {invoice.payments?.length > 0 && (
           <div style={{ marginBottom: 14, fontSize: 13 }}>
-            <div className="inv-section-title" style={{ marginBottom: 6 }}>Payment Received Via</div>
+            <div className="inv-section-title" style={{ marginBottom: 6 }}>{t('Payment Received Via', 'भुगतान प्राप्त हुआ')}</div>
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
               {invoice.payments.map((p, i) => (
                 <span key={i} className="badge badge-gray" style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center' }}>
@@ -781,43 +814,52 @@ Thank you! 🙏`
         )}
 
         {(invoice.notes || invoice.concession_reason) && (
-          <div style={{ marginBottom: 14, fontSize: 13, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px' }}>
+          <div style={{ marginBottom: 14, fontSize: 13, background: 'var(--bg)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px' }}>
             {invoice.notes && (
               <div style={{ color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <strong><FileText size={12} /> Notes:</strong> <span>{invoice.notes}</span>
+                <strong><FileText size={12} /> {t('Notes:', 'नोट्स:')}</strong> <span>{invoice.notes}</span>
               </div>
             )}
             {invoice.concession_reason && (
               <div style={{ color: '#374151', marginTop: invoice.notes ? 6 : 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <strong><Tag size={12} /> Concession Reason:</strong> <span>{invoice.concession_reason}</span>
+                <strong><Tag size={12} /> {t('Concession Reason:', 'रियायत का कारण:')}</strong> <span>{invoice.concession_reason}</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Enhancement 5: Bank Details */}
-        {hasBankDetails && (
-          <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13 }}>
-            <div className="inv-section-title" style={{ marginBottom: 6 }}>Bank Transfer Details</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 16px' }}>
-              {settings.bank_name && <><span style={{ color: '#6b7280' }}>Bank:</span><span style={{ fontWeight: 600 }}>{settings.bank_name}</span></>}
-              <span style={{ color: '#6b7280' }}>Account No.:</span><span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{settings.bank_account}</span>
-              <span style={{ color: '#6b7280' }}>IFSC:</span><span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{settings.bank_ifsc}</span>
-              {settings.bank_branch && <><span style={{ color: '#6b7280' }}>Branch:</span><span>{settings.bank_branch}</span></>}
-            </div>
-          </div>
-        )}
-
-        {/* Footer: QR + Signature */}
-        <div className="inv-footer">
-          <div className="inv-qr">
-            {/* Enhancement 5: optimized QR code size */}
-            <QRCode value={qrValue} size={80} />
-            <div className="inv-qr-label">{upiId ? `Scan to Pay · ${upiId}` : 'Scan for Payment'}</div>
+        {/* Bank Details & QR Combined Block */}
+        <div className="inv-footer" style={{ alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, maxWidth: '60%' }}>
+            {(hasBankDetails || upiId) && (
+              <div style={{ display: 'flex', gap: 16, background: 'var(--bg)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px', alignItems: 'center' }}>
+                <div style={{ flex: 1, fontSize: 11 }}>
+                  {hasBankDetails && (
+                    <>
+                      <div className="inv-section-title" style={{ marginBottom: 6, fontSize: 12 }}>{t('Bank Transfer Details', 'बैंक ट्रांसफर विवरण')}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 8px' }}>
+                        {settings.bank_name && <><span style={{ color: '#6b7280' }}>{t('Bank', 'बैंक')}:</span><span style={{ fontWeight: 600 }}>{settings.bank_name}</span></>}
+                        <span style={{ color: '#6b7280' }}>{t('Account No.', 'खाता संख्या')}:</span><span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{settings.bank_account}</span>
+                        <span style={{ color: '#6b7280' }}>{t('IFSC', 'आईएफएससी')}:</span><span style={{ fontWeight: 700, fontFamily: 'monospace' }}>{settings.bank_ifsc}</span>
+                        {settings.bank_branch && <><span style={{ color: '#6b7280' }}>{t('Branch', 'शाखा')}:</span><span>{settings.bank_branch}</span></>}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingLeft: 12, borderLeft: '1px dashed #cbd5e1' }}>
+                  <div style={{ background: '#ffffff', padding: '6px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <QRCode value={qrValue} size={60} bgColor="#FFFFFF" fgColor="#000000" />
+                  </div>
+                  <div style={{ fontSize: 9, color: '#6b7280', textAlign: 'center', maxWidth: 80, wordWrap: 'break-word', fontWeight: 600 }}>
+                    {upiId ? t('Scan to Pay', 'स्कैन करके भुगतान करें') : t('Scan for Payment', 'भुगतान के लिए स्कैन करें')}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ textAlign: 'center', flex: 1, fontSize: 11.5, color: '#9ca3af' }}>
-            <div>This is a computer generated invoice.</div>
-            <div>Thank you for your business!</div>
+            <div>{t('This is a computer generated invoice.', 'यह कंप्यूटर जनित चालान है।')}</div>
+            <div>{t('Thank you for your business!', 'आपके व्यापार के लिए धन्यवाद!')}</div>
           </div>
           <div className="inv-sign">
             {invoice.signature && (
@@ -832,7 +874,7 @@ Thank you! 🙏`
                 }}
               />
             )}
-            <div className="inv-sign-line">Authorised Signature</div>
+            <div className="inv-sign-line">{t('Authorised Signature', 'अधिकृत हस्ताक्षर')}</div>
           </div>
         </div>
       </div>
@@ -896,7 +938,7 @@ Thank you! 🙏`
                 <input
                   className="form-control"
                   type="email"
-                  placeholder="customer@email.com"
+                  placeholder={t('customer@email.com', 'customer@email.com')}
                   value={emailTo}
                   onChange={e => setEmailTo(e.target.value)}
                   style={{ marginBottom: 8 }}
@@ -910,7 +952,7 @@ Thank you! 🙏`
                 >
                   {emailSending
                     ? <><span className="spinner"></span> Sending...</>
-                    : <><Mail size={14} /> Send Email</>}
+                    : <><Mail size={14} /> {t('Send Email', 'ईमेल भेजें')}</>}
                 </button>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>
                   If backend email is unavailable, opens your email client as fallback
@@ -998,7 +1040,7 @@ Thank you! 🙏`
                                   />
                                   <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.display_name || person.username}</span>
                                 </div>
-                                <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Manager</span>
+                                <span className="badge" style={{ background: 'var(--primary-light)', color: '#4338ca', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Manager</span>
                               </div>
                             );
                           })}
@@ -1053,7 +1095,7 @@ Thank you! 🙏`
                                   />
                                   <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.display_name || person.username}</span>
                                 </div>
-                                <span className="badge" style={{ background: '#fef3c7', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
+                                <span className="badge" style={{ background: 'var(--warning-light)', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
                               </div>
                             );
                           })}
@@ -1106,7 +1148,7 @@ Thank you! 🙏`
                 style={{ resize: 'none', marginBottom: 20 }}
               ></textarea>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button className="btn btn-outline" onClick={() => setShowEscalateModal(false)}>Cancel</button>
+                <button className="btn btn-outline" onClick={() => setShowEscalateModal(false)}>{t('Cancel', 'रद्द करें')}</button>
                 <button 
                   className="btn btn-warning d-inline-flex align-items-center gap-2" 
                   onClick={submitEscalate}
@@ -1155,14 +1197,14 @@ Thank you! 🙏`
               )}
             </div>
             <div className="modal-body">
-              <div style={{ marginBottom: 12, fontSize: 13, color: '#b91c1c', background: '#fef2f2', padding: '8px 12px', borderRadius: 8, border: '1px solid #fecaca' }}>
+              <div style={{ marginBottom: 12, fontSize: 13, color: '#b91c1c', background: 'var(--danger-light)', padding: '8px 12px', borderRadius: 8, border: '1px solid #fecaca' }}>
                 Customer name is mandatory to view or print this invoice.
               </div>
               <form onSubmit={handleSaveName}>
                 <div className="form-group">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
                     <label className="form-label" style={{ margin: 0 }}>Full Name *</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: '#475569' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--text-muted)' }}>
                       {getPrefixOptions(editNameForm.name).map(opt => (
                         <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', margin: 0 }}>
                           <input 
@@ -1208,7 +1250,7 @@ Thank you! 🙏`
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
                   {invoice.customer_name !== 'Walk-in Customer' && (
-                    <button type="button" className="btn btn-outline" onClick={() => setShowEditNameModal(false)}>Cancel</button>
+                    <button type="button" className="btn btn-outline" onClick={() => setShowEditNameModal(false)}>{t('Cancel', 'रद्द करें')}</button>
                   )}
                   <button type="submit" className="btn btn-primary" disabled={savingName || !editNameForm.name.trim()}>
                     {savingName ? 'Saving...' : 'Save Name'}

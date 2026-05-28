@@ -74,8 +74,8 @@ export default function ShareModal({ item, type, onShared, onClose }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ 
                       width: 32, height: 32, borderRadius: '50%', 
-                      background: selected.includes(mgr._id) ? 'var(--primary)' : '#e2e8f0',
-                      color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: selected.includes(mgr._id) ? 'var(--primary)' : 'var(--border)',
+                      color: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 12, fontWeight: 700
                     }}>
                       {mgr.display_name?.charAt(0).toUpperCase() || 'M'}

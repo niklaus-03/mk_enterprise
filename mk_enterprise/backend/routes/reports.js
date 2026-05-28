@@ -6,6 +6,13 @@ const auth = require('../middleware/auth');
 const { requireSupervisor } = require('../middleware/auth');
 const { createBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const Trip = require('../models/Trip');
+const DailyReport = require('../models/DailyReport');
+const Invoice = require('../models/Invoice');
+const Customer = require('../models/Customer');
+const Supplier = require('../models/Supplier');
+const Product = require('../models/Product');
+const Settlement = require('../models/Settlement');
+const { formatIST } = require('../utils/timeUtils');
 
 router.use(auth);
 
@@ -88,6 +95,201 @@ router.get('/driver-expenses', requireSupervisor, async (req, res) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=driver_expenses_${new Date().toISOString().slice(0, 10)}.csv`);
     res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/reports/daily — Get daily reports ────────────────────────────────
+router.get('/daily', async (req, res) => {
+  try {
+    const { date, status } = req.query;
+    const query = {};
+
+    // Managers can only see their own reports
+    if (req.user.role === 'manager') {
+      query.manager_id = req.user.id;
+    }
+
+    if (date) query.date = date;
+    if (status) query.status = status;
+
+    const reports = await DailyReport.find(query).sort({ date: -1 }).lean();
+    res.json(reports);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/reports/daily — Manager submits end-of-day report ───────────────
+router.post('/daily', async (req, res) => {
+  try {
+    const {
+      date, opening_balance, system_cash_reported, actual_cash_reported,
+      system_bills_reported, system_deliveries_reported,
+      discrepancy_notes, quick_entries,
+    } = req.body;
+
+    if (quick_entries && quick_entries.length > 0) {
+      for (const entry of quick_entries) {
+        const type = entry.type;
+        const party_name = entry.customer_name || entry.supplier_name;
+        const product_name = entry.product_name;
+        const quantity = entry.quantity;
+        const amount = entry.amount;
+        const paid = entry.is_paid;
+        const entryDate = new Date();
+        const ist_formatted = formatIST(entryDate);
+        const created_by = req.user.id;
+
+        if (type === 'bill') {
+          let customer = await Customer.findOne({ name: party_name });
+          if (!customer) {
+            customer = await Customer.create({ name: party_name, created_by });
+          }
+
+          let currentBalance = customer.getManagerBalance ? customer.getManagerBalance(req.user.id) : (customer.balance || 0);
+
+          let total = Number(amount) || 0;
+          let product_id = null;
+          let qty = Number(quantity) || 1;
+          let price = total / qty;
+
+          if (product_name) {
+            let product = await Product.findOne({ name: product_name });
+            if (product) {
+              product_id = product._id;
+              price = product.price || price;
+              total = price * qty;
+              product.stock -= qty;
+              await product.save();
+            }
+          }
+
+          const invoice_number = `reportINV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+
+          const amount_received = paid ? total : 0;
+          const balance_due = paid ? 0 : total;
+
+          const newInvoice = new Invoice({
+            invoice_number,
+            customer_id: customer._id,
+            customer_name: customer.name,
+            customer_phone: customer.phone || '',
+            total,
+            amount_received,
+            balance_due,
+            items: [{
+              product_id,
+              product_name: product_name || 'Misc',
+              qty,
+              price,
+              total
+            }],
+            date: entryDate,
+            ist_formatted,
+            created_by
+          });
+          await newInvoice.save();
+
+          if (customer.setManagerBalance) {
+            customer.setManagerBalance(req.user.id, currentBalance + balance_due);
+          } else {
+            customer.balance = (customer.balance || 0) + balance_due;
+          }
+          await customer.save();
+
+          if (paid) {
+            await Settlement.create({
+              party_id: customer._id,
+              party_name: customer.name,
+              type: 'received_from_customer',
+              amount: total,
+              date: entryDate,
+              created_by
+            });
+          }
+        } else if (type === 'payment_in') {
+          let customer = await Customer.findOne({ name: party_name });
+          if (!customer) {
+            customer = await Customer.create({ name: party_name, created_by });
+          }
+          const amt = Number(amount) || 0;
+          await Settlement.create({
+            party_id: customer._id,
+            party_name: customer.name,
+            type: 'received_from_customer',
+            amount: amt,
+            date: entryDate,
+            created_by
+          });
+          
+          let currentBalance = customer.getManagerBalance ? customer.getManagerBalance(req.user.id) : (customer.balance || 0);
+          if (customer.setManagerBalance) {
+            customer.setManagerBalance(req.user.id, currentBalance - amt);
+          } else {
+            customer.balance = (customer.balance || 0) - amt;
+          }
+          await customer.save();
+        } else if (type === 'payment_out') {
+          let supplier = await Supplier.findOne({ name: party_name });
+          if (!supplier) {
+            supplier = await Supplier.create({ name: party_name, created_by });
+          }
+          const amt = Number(amount) || 0;
+          await Settlement.create({
+            party_id: supplier._id,
+            party_name: supplier.name,
+            type: 'paid_to_supplier',
+            amount: amt,
+            date: entryDate,
+            created_by
+          });
+          supplier.balance = (supplier.balance || 0) - amt;
+          await supplier.save();
+        }
+      }
+    }
+
+    const report = new DailyReport({
+      manager_id: req.user.id,
+      manager_name: req.user.username || req.user.display_name,
+      date,
+      opening_balance: opening_balance || 0,
+      system_cash_reported,
+      actual_cash_reported,
+      system_bills_reported,
+      system_deliveries_reported,
+      discrepancy_notes,
+      quick_entries: quick_entries || [],
+      total_quick_entries: (quick_entries || []).length,
+    });
+
+    await report.save();
+    res.status(201).json(report);
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'A report for this date already exists' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PATCH /api/reports/daily/:id/review — Admin marks report as reviewed ──────
+router.patch('/daily/:id/review', requireSupervisor, async (req, res) => {
+  try {
+    const report = await DailyReport.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: 'reviewed',
+        reviewed_by: req.user.id,
+        reviewed_at: new Date(),
+      },
+      { new: true }
+    );
+
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    res.json(report);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

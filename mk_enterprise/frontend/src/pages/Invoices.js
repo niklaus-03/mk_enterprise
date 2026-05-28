@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useApp } from '../context/AppContext';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { invoiceApi, driverApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -7,6 +8,7 @@ import { formatCurrency, formatIST } from '../utils/helpers';
 import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send } from 'lucide-react';
 
 export default function Invoices() {
+  const { t } = useApp();
   const [invoices, setInvoices] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,32 @@ export default function Invoices() {
   const { isAdmin, token } = useAuth();
   const LIMIT = 25;
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const location = useLocation();
+  const [highlightId, setHighlightId] = useState(location.state?.highlightInvoiceId || null);
+
+  useEffect(() => {
+    if (location.state?.highlightInvoiceId) {
+      setHighlightId(location.state.highlightInvoiceId);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (highlightId && invoices.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`invoice-${highlightId}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [highlightId, invoices]);
+
+  useEffect(() => {
+    if (highlightId) {
+      const handleClick = () => setHighlightId(null);
+      const timer = setTimeout(() => document.addEventListener('click', handleClick), 500);
+      return () => { clearTimeout(timer); document.removeEventListener('click', handleClick); };
+    }
+  }, [highlightId]);
 
   // Batch dispatch states
   const [selectedInvoices, setSelectedInvoices] = useState([]);
@@ -69,16 +97,17 @@ export default function Invoices() {
     }
   };
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
-    invoiceApi.getAll({ limit: LIMIT, page, search: search || undefined, customer_id: customer_id || undefined })
+    const requestLimit = highlightId ? 1000 : LIMIT;
+    invoiceApi.getAll({ limit: requestLimit, page, search: search || undefined, customer_id: customer_id || undefined })
       .then(d => { setInvoices(d.invoices); setTotal(d.total); })
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
-  };
+  }, [page, search, customer_id, highlightId]);
 
   useEffect(() => { setPage(1); }, [search, customer_id]);
-  useEffect(() => { load(); }, [page, search, customer_id]);
+  useEffect(() => { load(); }, [load]);
 
   const handleDelete = async (inv) => {
     if (!window.confirm(`Cancel invoice ${inv.invoice_number}? Stock will be restored.`)) return;
@@ -132,9 +161,9 @@ export default function Invoices() {
       return <span className="badge badge-gray" style={{ fontSize: 11 }}>Cancelled</span>;
     }
     if (inv.balance_due > 0.01) {
-      return <span className="badge badge-danger" style={{ fontSize: 11, background: '#fef2f2', color: '#dc2626', border: '1px solid #fee2e2' }}>Pending</span>;
+      return <span className="badge badge-danger" style={{ fontSize: 11, background: 'var(--danger-light)', color: '#dc2626', border: '1px solid #fee2e2' }}>Pending</span>;
     }
-    return <span className="badge badge-success" style={{ fontSize: 11, background: '#ecfdf5', color: '#059669', border: '1px solid #d1fae5' }}>Paid</span>;
+    return <span className="badge badge-success" style={{ fontSize: 11, background: 'var(--success-light)', color: '#059669', border: '1px solid #d1fae5' }}>Paid</span>;
   };
 
   return (
@@ -161,8 +190,7 @@ export default function Invoices() {
                   className="btn btn-outline btn-sm" 
                   onClick={() => setSelectedInvoices([])}
                 >
-                  <X size={14} className="me-1" /> Cancel
-                </button>
+                  <X size={14} className="me-1" />{t('Cancel', 'रद्द करें')}</button>
                 <button 
                   className="btn btn-success btn-sm" 
                   onClick={() => {
@@ -186,16 +214,17 @@ export default function Invoices() {
                     No invoices found. <Link to="/invoices/new" className="btn btn-outline btn-sm">Create one!</Link>
                   </div>
                 ) : invoices.map(inv => (
-                  <div key={inv._id} style={{
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
+                  <div id={`invoice-${inv._id}`} key={inv._id} style={{
+                    background: highlightId === inv._id ? 'var(--warning-light)' : 'var(--bg-card)',
+                    border: '1px solid',
+                    borderColor: highlightId === inv._id ? '#f59e0b' : '#e2e8f0',
                     borderRadius: 14,
                     padding: 16,
                     boxShadow: '0 4px 6px -1px rgba(15,23,42,0.03), 0 2px 4px -1px rgba(15,23,42,0.01)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 12,
-                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    transition: 'all 0.5s ease',
                   }}
                   onMouseEnter={e => {
                     e.currentTarget.style.transform = 'translateY(-3px)';
@@ -205,7 +234,7 @@ export default function Invoices() {
                   onMouseLeave={e => {
                     e.currentTarget.style.transform = 'translateY(0)';
                     e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(15,23,42,0.03), 0 2px 4px -1px rgba(15,23,42,0.01)';
-                    e.currentTarget.style.borderColor = '#e2e8f0';
+                    e.currentTarget.style.borderColor = 'var(--border)';
                   }}
                   onTouchStart={() => handlePressStart(inv._id)}
                   onTouchEnd={handlePressEnd}
@@ -255,13 +284,13 @@ export default function Invoices() {
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
                       gap: 8,
-                      background: '#f8fafc',
+                      background: 'var(--bg)',
                       padding: '10px 12px',
                       borderRadius: 10,
                       textAlign: 'center'
                     }}>
                       <div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Total</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>{t('Total', 'कुल')}</div>
                         <div style={{ fontSize: 12.5, fontWeight: 700, fontFamily: 'monospace' }}>{fc(inv.total)}</div>
                       </div>
                       <div>
@@ -281,11 +310,9 @@ export default function Invoices() {
                         <Eye size={12} /> View
                       </Link>
                       <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" onClick={e => e.stopPropagation()} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Edit size={12} /> Edit
-                      </Link>
+                        <Edit size={12} />{t('Edit', 'संपादित करें')}</Link>
                       <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(inv); }} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Trash2 size={12} /> Cancel
-                      </button>
+                        <Trash2 size={12} />{t('Cancel', 'रद्द करें')}</button>
                     </div>
                   </div>
                 ))}
@@ -309,9 +336,9 @@ export default function Invoices() {
                     <th>Customer</th>
                     {isAdmin && <th>Creator</th>}
                     <th>Payment</th>
-                    <th className="tr">Total</th>
+                    <th className="tr">{t('Total', 'कुल')}</th>
                     <th className="tr">Received</th>
-                    <th className="tr">Balance Due</th>
+                    <th className="tr">{t('Balance Due', 'शेष बकाया')}</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr></thead>
@@ -322,6 +349,7 @@ export default function Invoices() {
                       </td></tr>
                     ) : invoices.map(inv => (
                       <tr 
+                        id={`invoice-${inv._id}`}
                         key={inv._id}
                         onTouchStart={() => handlePressStart(inv._id)}
                         onTouchEnd={handlePressEnd}
@@ -329,7 +357,11 @@ export default function Invoices() {
                         onMouseUp={handlePressEnd}
                         onMouseLeave={handlePressEnd}
                         onClick={() => handleRowClick(inv._id)}
-                        style={{ cursor: isSelectionMode ? 'pointer' : 'default', backgroundColor: selectedInvoices.includes(inv._id) ? 'rgba(99, 102, 241, 0.08)' : 'inherit' }}
+                        style={{ 
+                          cursor: isSelectionMode ? 'pointer' : 'default', 
+                          backgroundColor: highlightId === inv._id ? 'var(--warning-light)' : selectedInvoices.includes(inv._id) ? 'rgba(99, 102, 241, 0.08)' : 'inherit',
+                          transition: 'background-color 0.5s ease'
+                        }}
                       >
                         <td>
                           {isSelectionMode && (
@@ -460,7 +492,7 @@ export default function Invoices() {
                                 />
                                 <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#6366f1' : 'var(--text-dark)' }}>{person.display_name || person.username}</span>
                               </div>
-                              <span className="badge" style={{ background: '#fef3c7', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
+                              <span className="badge" style={{ background: 'var(--warning-light)', color: '#d97706', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 600 }}>Driver</span>
                             </div>
                           );
                         })}

@@ -3,7 +3,7 @@ import axios from 'axios';
 const baseURL =
   window.location.hostname === "localhost"
     ? "http://localhost:5000/api"
-    : "http://192.168.100.100:5000/api";
+    : "http://192.168.1.35:5000/api";
 
 const api = axios.create({
   baseURL,
@@ -23,7 +23,9 @@ api.interceptors.response.use(
   err => {
     if (err.response?.status === 401) {
       localStorage.removeItem('shopbill_token');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     const msg = err.response?.data?.error || err.message || 'Network error';
     return Promise.reject(new Error(msg));
@@ -37,6 +39,9 @@ export const authApi = {
   me: () => api.get('/auth/me'),
   changePassword: (data) => api.put('/auth/change-password', data),
   forgotPassword: (identifier) => api.post('/auth/forgot-password', { identifier }),
+  checkUser: (identifier) => api.get('/auth/check-user', { params: { identifier } }),
+  getRecoveryRequests: () => api.get('/auth/recovery-requests'),
+  resolveRecoveryRequest: (id, new_password) => api.put(`/auth/recovery-requests/${id}/resolve`, { new_password }),
 };
 
 // ── Manager Admin (Supervisor only) ──────────────────────────────────────────────────
@@ -225,6 +230,13 @@ export const stockApi = {
 // ── Seed ──────────────────────────────────────────────────────────────────────
 export const seedApi = {
   run: () => api.post('/seed'),
+};
+
+// ── Daily Reports ─────────────────────────────────────────────────────────────
+export const dailyReportApi = {
+  getAll: (params = {}) => api.get('/reports/daily', { params }),
+  submit: (data) => api.post('/reports/daily', data),
+  review: (id) => api.patch(`/reports/daily/${id}/review`),
 };
 
 export default api;

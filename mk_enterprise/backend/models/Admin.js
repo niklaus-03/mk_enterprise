@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const adminSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  username: { type: String, required: true, unique: true, trim: true },
   password: { type: String, required: true },       // bcrypt hashed
   mobile: { type: String, default: '', trim: true }, // for supervisor (legacy)
   phone: { type: String, default: '', trim: true },  // for manager login by phone

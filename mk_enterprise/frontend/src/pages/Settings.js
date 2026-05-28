@@ -93,15 +93,15 @@ export default function Settings() {
   useEffect(() => { setForm(settings); }, [settings]);
 
 
-  const handleSaveAll = async (e) => {
-    if (e) e.preventDefault();
-    setSaving(true);
+  const handleUpdateSetting = async (key, value) => {
+    if (form[key] === value) return;
+    const newForm = { ...form, [key]: value };
+    setForm(newForm);
     try { 
-      await updateSettings(form); 
-      toast.success('All settings saved successfully!'); 
+      await updateSettings(newForm); 
+      toast.success('Setting updated'); 
     }
     catch (err) { toast.error(err.message); }
-    finally { setSaving(false); }
   };
 
   const handlePwChange = async (e) => {
@@ -130,7 +130,14 @@ export default function Settings() {
   const fld = (key, label, placeholder, type = 'text', hint = '') => (
     <div className="form-group">
       <label className="form-label">{label}</label>
-      <input className="form-control" type={type} value={form[key] || ''} placeholder={placeholder} onChange={e => setForm({ ...form, [key]: e.target.value })} />
+      <input 
+        className="form-control" 
+        type={type} 
+        value={form[key] || ''} 
+        placeholder={placeholder} 
+        onChange={e => setForm({ ...form, [key]: e.target.value })} 
+        onBlur={e => handleUpdateSetting(key, e.target.value)}
+      />
       {hint && <div className="form-hint">{hint}</div>}
     </div>
   );
@@ -143,7 +150,7 @@ export default function Settings() {
           <div 
             key={opt.value} 
             className={`list-group-item-radio ${form[key] === opt.value ? 'active' : ''}`}
-            onClick={() => setForm({ ...form, [key]: opt.value })}
+            onClick={() => handleUpdateSetting(key, opt.value)}
           >
             <div className="radio-indicator" />
             <div className="radio-content">
@@ -274,7 +281,8 @@ export default function Settings() {
                   <div className="form-group">
                     <label className="form-label">Global Low Stock Threshold</label>
                     <input className="form-control" type="number" min="0" value={form.low_stock_threshold ?? ""}
-                      onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value === "" ? "" : Number(e.target.value) })} />
+                      onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value === "" ? "" : Number(e.target.value) })} 
+                      onBlur={(e) => handleUpdateSetting('low_stock_threshold', e.target.value === "" ? "" : Number(e.target.value))} />
                     <div className="form-hint">Products with stock at or below this value show as alerts.</div>
                   </div>
                   <div className="alert alert-info">
@@ -294,7 +302,10 @@ export default function Settings() {
                   {form.quintal_tax_enabled && (
                     <div className="form-group mt-3">
                       <label className="form-label">Tax per Quintal (₹/100kg)</label>
-                      <input className="form-control" type="number" min="0" step="0.01" value={form.tax_per_quintal || 0} onChange={e => setForm({ ...form, tax_per_quintal: parseFloat(e.target.value) })} placeholder="e.g. 250" />
+                      <input className="form-control" type="number" min="0" step="0.01" value={form.tax_per_quintal || 0} 
+                        onChange={e => setForm({ ...form, tax_per_quintal: parseFloat(e.target.value) })} 
+                        onBlur={e => handleUpdateSetting('tax_per_quintal', parseFloat(e.target.value))}
+                        placeholder="e.g. 250" />
                       <div className="form-hint">Formula: (Weight ÷ 100) × Tax per Quintal</div>
                     </div>
                   )}
@@ -310,10 +321,10 @@ export default function Settings() {
               <div className="card">
                 <div className="card-header"><div className="card-title">🖥️ Interface Preferences</div></div>
                 <div className="card-body">
-                  <div className="form-group mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f8f9fa', borderRadius: 8, border: '1px solid #e9ecef' }}>
+                  <div className="form-group mb-4" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-hover)', borderRadius: 8, border: '1px solid var(--border)' }}>
                     <div>
-                      <div style={{ fontWeight: 600, color: '#212529', fontSize: 15 }}>Dark Mode</div>
-                      <div style={{ fontSize: 13, color: '#6c757d' }}>Switch to a dark theme for low-light environments.</div>
+                      <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 15 }}>Dark Mode</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Switch to a dark theme for low-light environments.</div>
                     </div>
                     <div 
                       className={`theme-toggle-track ${theme === 'dark' ? 'on' : ''}`} 
@@ -336,7 +347,7 @@ export default function Settings() {
                 <div className="card">
                   <div className="card-header"><div className="card-title">🔐 Change Password</div></div>
                   <div className="card-body">
-                    <div className="alert alert-info mb-4">Logged in as <strong>{admin?.username}</strong> (Admin)</div>
+                    <div className="alert mb-4" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text)' }}>Logged in as <strong>{admin?.username}</strong> (Admin)</div>
                     <form onSubmit={handlePwChange}>
                       {fld('current_password', 'Current Password', 'Current password', 'password')}
                       {fld('new_password', 'New Password', 'At least 6 characters', 'password')}
@@ -357,14 +368,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Global Save Button - Only for Settings (not Password) */}
-      {activeTab !== 'security' && (
-        <div className="settings-footer">
-          <button className="btn btn-primary btn-lg" onClick={handleSaveAll} disabled={saving}>
-            <Save size={18} /> {saving ? 'Saving...' : 'Save All Settings'}
-          </button>
-        </div>
-      )}
+
 
 
       {/* Modals */}
@@ -381,7 +385,7 @@ export default function Settings() {
                 <input className="form-control" type="password" placeholder="Min 6 characters" value={mgrForm.password} onChange={e => setMgrForm({ ...mgrForm, password: e.target.value })} />
               </div>
               <div className="flex gap-2 mt-4">
-                <button type="button" className="btn btn-outline flex-1" onClick={() => setShowAddManager(false)}>Cancel</button>
+                <button type="button" className="btn btn-outline flex-1" onClick={() => setShowAddManager(false)}>{t('Cancel', 'रद्द करें')}</button>
                 <button type="submit" className="btn btn-primary flex-1" disabled={mgrCreating}>{mgrCreating ? 'Creating...' : '✅ Create Manager'}</button>
               </div>
             </form>
@@ -398,7 +402,7 @@ export default function Settings() {
               <input className="form-control" type="password" placeholder="Min 6 characters" value={mgrResetPw} onChange={e => setMgrResetPw(e.target.value)} autoFocus />
             </div>
             <div className="flex gap-2 mt-4">
-              <button type="button" className="btn btn-outline flex-1" onClick={() => setMgrResetModal(null)}>Cancel</button>
+              <button type="button" className="btn btn-outline flex-1" onClick={() => setMgrResetModal(null)}>{t('Cancel', 'रद्द करें')}</button>
               <button className="btn btn-primary flex-1" onClick={handleResetManagerPw}>✅ Reset Password</button>
             </div>
           </div>

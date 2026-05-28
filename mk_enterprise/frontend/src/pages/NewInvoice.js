@@ -6,6 +6,7 @@ import { productApi, customerApi, invoiceApi, dashboardApi, orderApi } from '../
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { 
   User, Users, Phone, MapPin, Calendar, Truck, FileText, 
   FileSpreadsheet, CheckCircle, AlertTriangle, Plus, Trash2, 
@@ -44,7 +45,8 @@ export default function NewInvoice() {
   const AUTO_DRAFT_KEY = `invoice_auto_draft_${userId}`;
   const DRAFTS_KEY = `invoice_drafts_${userId}`;
   const navigate = useNavigate();
-  const { settings } = useApp();
+  const { t, settings } = useApp();
+  const { theme } = useTheme();
   const gstEnabled = settings.gst_enabled !== false;
   const discountEnabled = settings.discount_enabled !== false;
   
@@ -69,6 +71,7 @@ export default function NewInvoice() {
   const [prevBalance, setPrevBalance] = useState(0);
   const [walkinMatch, setWalkinMatch] = useState(null);
   const [paymentConfirmModal, setPaymentConfirmModal] = useState(null);
+  const [cancelConfirmModal, setCancelConfirmModal] = useState(false);
   const [walkinWarningModal, setWalkinWarningModal] = useState(null);
   const [allPendingDues, setAllPendingDues] = useState([]);
   const [payments, setPayments] = useState([{ mode: 'cash', amount: '', reference: '' }]);
@@ -290,7 +293,24 @@ export default function NewInvoice() {
   // Auto-calculate total weight from items whenever items change
   useEffect(() => {
     const autoWeight = items.reduce((sum, item) => {
-      const wpv = parseFloat(item.weight) || 0;
+      let wpv = parseFloat(item.weight);
+      if (isNaN(wpv) || wpv === 0) {
+        // Fallback based on unit if weight_per_unit is not set
+        const unit = (item.unit || '').toLowerCase();
+        if (unit === 'kg' || unit === 'kgs' || unit === 'kilo') {
+          wpv = parseFloat(item.qty) || 0;
+        } else if (unit === 'gm' || unit === 'g' || unit === 'gram' || unit === 'grams') {
+          wpv = (parseFloat(item.qty) || 0) / 1000;
+        } else if (unit === 'ton' || unit === 'tonne' || unit === 'tons') {
+          wpv = (parseFloat(item.qty) || 0) * 1000;
+        } else if (unit === 'ltr' || unit === 'l' || unit === 'liter' || unit === 'liters') {
+          wpv = parseFloat(item.qty) || 0; // approx 1kg per ltr
+        } else if (unit === 'ml') {
+          wpv = (parseFloat(item.qty) || 0) / 1000;
+        } else {
+          wpv = 0;
+        }
+      }
       return sum + wpv;
     }, 0);
     if (autoWeight > 0) {
@@ -354,14 +374,30 @@ export default function NewInvoice() {
     toast.success('Draft saved!');
   };
 
-  const getCustomerInfo = () => {
+  const getCustomerInfo = (finalPayments = payments) => {
     if (customerMode === 'existing' && customerId) {
       const c = customers.find(c => c._id === customerId);
       return { customer_id: customerId, customer_name: c?.name || '', customer_phone: c?.phone || '', customer_address: c?.address || '' };
     }
+    
+    // Calculate balance to see if fully paid
+    const sub = items.reduce((s, i) => s + (i.taxable_amount || 0), 0);
+    const gstT = gstEnabled ? items.reduce((s, i) => s + (i.cgst || 0) + (i.sgst || 0), 0) : 0;
+    const d = parseFloat(discount) || 0;
+    const v = parseFloat(vehicleCharge) || 0;
+    const l = parseFloat(labourCharge) || 0;
+    const tot = Math.max(0, sub + gstT - d) + v + l;
+    const totPrev = tot + prevBalance;
+    const recv = finalPayments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    
+    let defaultName = 'Walk-in Customer';
+    if (totPrev - recv <= 0.01) {
+      defaultName = 'Anonymous Customer';
+    }
+
     return { 
       customer_id: null, 
-      customer_name: walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : 'Walk-in Customer', 
+      customer_name: walkIn.name ? formatCustomerName(walkIn.prefix, walkIn.name) : defaultName, 
       customer_phone: walkIn.phone, 
       customer_address: walkIn.address 
     };
@@ -390,7 +426,7 @@ export default function NewInvoice() {
       const mergedItems = Array.from(mergedMap.values());
 
       const payload = {
-        ...getCustomerInfo(),
+        ...getCustomerInfo(finalPayments),
         items: mergedItems
           .filter(i => i.product_name && parseFloat(i.qty) > 0)
           .map(i => ({
@@ -486,7 +522,7 @@ export default function NewInvoice() {
   };
 
   const handleWalkInNameBlur = () => {
-    setWalkIn(prev => ({ ...prev, name: applyAutoSuffix(prev.name) }));
+    // setWalkIn(prev => ({ ...prev, name: applyAutoSuffix(prev.name) }));
   };
 
   const addPayment = () => setPayments(prev => [...prev, { mode: 'cash', amount: '', reference: '' }]);
@@ -503,6 +539,32 @@ export default function NewInvoice() {
   const amtReceived = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
   const balanceDue = totalWithPrev - amtReceived;
   const fc = formatCurrency;
+
+  const cancelBill = () => {
+    setCancelConfirmModal(true);
+  };
+
+  const confirmCancelBill = () => {
+    localStorage.removeItem(AUTO_DRAFT_KEY);
+    setItems([newItem()]);
+    setCustomerMode('walkin');
+    setCustomerId('');
+    setWalkIn({ prefix: 'Shree', name: '', phone: '', address: '' });
+    setPayments([{ mode: 'cash', amount: '', reference: '' }]);
+    setDiscount('');
+    setConcessionReason('');
+    setNotes('');
+    setDriverName('');
+    setVehicleNumber('');
+    setTotalWeight('');
+    setVehicleCharge('');
+    setLabourCharge('');
+    setIsManualBill(false);
+    setManualBillRef('');
+    setStep(1);
+    setCancelConfirmModal(false);
+    toast.success("Bill cancelled and cleared.");
+  };
 
   const selectedCustomer = customers.find(c => c._id === customerId);
 
@@ -597,30 +659,29 @@ export default function NewInvoice() {
           setItems(mappedItems);
           setStep(3);
         }}
+        onCancel={cancelBill}
         gstEnabled={gstEnabled}
       />
     );
   }
 
-  // Step 3 layout (finalize invoice & transaction details)
-  return (
-    <div style={{ paddingBottom: '60px' }}>
-      
-      {/* Step 3 Header bar */}
+  
+  // Step 3 layout (Payment & Adjustments)
+  if (step === 3) {
+    return (
+      <div style={{ paddingBottom: '60px' }}>
+        {/* Step 3 Header bar */}
       <div className="no-print" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 10, marginBottom: 20,
-        background: '#fff', borderRadius: 12, padding: '12px 18px',
+        background: 'var(--bg-card)', borderRadius: 12, padding: '12px 18px',
         border: '1.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Receipt size={17} style={{ color: 'var(--primary)' }} /> Bill Details & Review
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
-              Review items and adjust transportation, payments & signature
-            </div>
+              <Receipt size={17} style={{ color: 'var(--primary)' }} />{t('Payment & Adjustments', 'भुगतान और समायोजन')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{t('Enter payments, transportation charges, and discounts', 'भुगतान, परिवहन शुल्क और छूट दर्ज करें')}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
@@ -628,11 +689,11 @@ export default function NewInvoice() {
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDrafts(v => !v); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                background: showDrafts ? 'var(--primary)' : '#f3f4f6',
+                background: showDrafts ? 'var(--primary)' : 'var(--border)',
                 border: showDrafts ? 'none' : '1.5px solid var(--border)',
                 borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
                 fontSize: 12.5, fontWeight: 600,
-                color: showDrafts ? '#fff' : 'var(--text-muted)',
+                color: showDrafts ? 'var(--bg-card)' : 'var(--text-muted)',
                 boxShadow: showDrafts ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
                 transition: 'all 0.15s',
               }}
@@ -641,7 +702,7 @@ export default function NewInvoice() {
               {drafts.length > 0 && (
                 <span style={{
                   background: showDrafts ? 'rgba(255,255,255,0.3)' : 'var(--primary)',
-                  color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10,
+                  color: 'var(--bg-card)', borderRadius: 10, padding: '1px 6px', fontSize: 10,
                 }}>
                   {drafts.length}
                 </span>
@@ -653,52 +714,62 @@ export default function NewInvoice() {
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/orders'); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                background: '#f3f4f6', border: '1.5px solid var(--border)',
+                background: 'var(--border)', border: '1.5px solid var(--border)',
                 borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
                 fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)',
                 transition: 'all 0.15s',
               }}
             >
-              <FileSpreadsheet size={12.5} /> Orders
-            </button>
+              <FileSpreadsheet size={12.5} />{t('Orders', 'ऑर्डर')}</button>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             type="button"
+            onClick={cancelBill}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '9px 16px', borderRadius: 8, cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+              background: 'var(--danger-light)', border: '1.5px solid #fecaca',
+              color: '#dc2626', transition: 'all 0.15s',
+            }}
+          >
+            <Trash2 size={14} />{t('Cancel Bill', 'बिल रद्द करें')}</button>
+          <button
+            type="button"
             onClick={() => setStep(2)}
             className="btn btn-outline"
             style={{ borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <ArrowLeft size={14} /> Back to Products
-          </button>
+            <ArrowLeft size={14} />{t('Back to Products', 'उत्पादों पर वापस')}</button>
           <button
             type="button"
-            onClick={() => saveDraft(items)}
+            onClick={() => setStep(4)}
             style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '9px 20px', borderRadius: 8, cursor: 'pointer',
               fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
-              background: 'linear-gradient(135deg, #16a34a, #15803d)',
-              border: 'none', color: '#fff',
+              background: 'var(--sidebar-bg)',
+              border: 'none', color: 'var(--bg-card)',
               boxShadow: '0 2px 10px rgba(22,163,74,0.35)',
               transition: 'all 0.15s',
             }}
-          >
-            <Save size={14} /> Save Draft
+          >{t('Review & Finalize', 'समीक्षा और अंतिम रूप')}<Check size={14} />
           </button>
         </div>
       </div>
 
-      {/* Drafts panel */}
+      
+        {/* Drafts panel */}
       {showDrafts && (
         <div className="card mb-3 animate-fade-in" style={{ border: '1.5px solid var(--border)', borderRadius: 12 }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
               <FolderOpen size={14.5} style={{ marginRight: 6 }} /> Saved Drafts
               {drafts.length > 0 && (
-                <span style={{ marginLeft: 8, background: 'var(--primary)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
+                <span style={{ marginLeft: 8, background: 'var(--primary)', color: 'var(--bg-card)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
                   {drafts.length}
                 </span>
               )}
@@ -726,7 +797,7 @@ export default function NewInvoice() {
                       key={d.id}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        background: '#f8fafc', border: '1.5px solid var(--border)',
+                        background: 'var(--bg)', border: '1.5px solid var(--border)',
                         borderRadius: 10, padding: '12px 14px',
                         cursor: 'pointer', transition: 'border-color 0.15s', gap: 10,
                       }}
@@ -737,7 +808,7 @@ export default function NewInvoice() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                            <span style={{ fontWeight: 700, fontSize: 14 }}>{d.customerName || 'Walk-in Customer'}</span>
-                           <span style={{ background: '#eff6ff', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
+                           <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
                         </div>
                         <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
                            <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {savedDate}</span>
@@ -758,216 +829,14 @@ export default function NewInvoice() {
         </div>
       )}
 
-      {/* Main step 3 grid */}
-      <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
-        
-        {/* LEFT COLUMN: Customer + Products + Payments */}
-        <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Customer Summary Card */}
+      
+        <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+          <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Payments Section Card */}
           <div className="card" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
               <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <User size={18} style={{ color: 'var(--primary)' }} /> Customer & Bill Details
-              </div>
-              <button 
-                onClick={() => setStep(1)}
-                className="btn btn-outline"
-                style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
-              >
-                Change Customer
-              </button>
-            </div>
-            
-            {customerMode === 'existing' && selectedCustomer ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800' }}>
-                    {selectedCustomer.name?.[0]?.toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text)' }}>{selectedCustomer.name}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Registered Customer</div>
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginTop: '12px', padding: '12px', background: 'var(--bg-hover)', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '13px' }}>
-                  {selectedCustomer.phone && <div><strong>Phone:</strong> +91 {selectedCustomer.phone}</div>}
-                  {selectedCustomer.address && <div><strong>Address:</strong> {selectedCustomer.address}</div>}
-                  {prevBalance !== 0 && (
-                    <div style={{ color: prevBalance > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: '700' }}>
-                      {prevBalance > 0 ? 'Pending Due:' : 'Advance Balance:'} {formatCurrency(Math.abs(prevBalance))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--primary)' }}>
-                  Walk-in Customer Details
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                  <div className="form-group mb-0">
-                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Walk-in Name</label>
-                    <input
-                      className="form-control"
-                      value={walkIn.name || ''}
-                      onChange={e => setWalkIn({ ...walkIn, name: e.target.value })}
-                      onBlur={handleWalkInNameBlur}
-                      placeholder="Enter customer name..."
-                    />
-                  </div>
-                  <div className="form-group mb-0">
-                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Walk-in Phone</label>
-                    <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
-                      <span style={{ padding: '6px 8px', background: '#f8fafc', borderRight: '1px solid var(--border)', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)' }}>+91</span>
-                      <input
-                        className="form-control"
-                        style={{ border: 'none', borderRadius: 0, padding: '6px' }}
-                        value={walkIn.phone || ''}
-                        onChange={e => setWalkIn({ ...walkIn, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                        placeholder="10-digit number"
-                      />
-                    </div>
-                  </div>
-                  <div className="form-group mb-0" style={{ gridColumn: '1 / -1' }}>
-                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Address</label>
-                    <input
-                      className="form-control"
-                      value={walkIn.address || ''}
-                      onChange={e => setWalkIn({ ...walkIn, address: e.target.value })}
-                      placeholder="Enter address..."
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <hr className="divider" style={{ margin: '20px 0' }} />
-
-            {/* Bill Type & Driver row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
-              <div className="form-group mb-0">
-                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Bill Type</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button type="button" className={`btn btn-sm ${!isManualBill ? 'btn-primary' : 'btn-outline'} d-inline-flex align-items-center gap-1`} style={{ flex: 1 }} onClick={() => setIsManualBill(false)}><Monitor size={12} /> Digital</button>
-                  <button type="button" className={`btn btn-sm ${isManualBill ? 'btn-warning' : 'btn-outline'} d-inline-flex align-items-center gap-1`} style={{ flex: 1 }} onClick={() => setIsManualBill(true)}><FileText size={12} /> Manual</button>
-                </div>
-              </div>
-              <div className="form-group mb-0">
-                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Bill Date</label>
-                <input className="form-control" type="datetime-local" value={billDate} max={new Date().toISOString().slice(0, 16)} onChange={e => setBillDate(e.target.value)} />
-              </div>
-              {isManualBill && (
-                <div className="form-group mb-0">
-                  <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Manual Ref. No.</label>
-                  <input className="form-control" value={manualBillRef} onChange={e => setManualBillRef(e.target.value)} placeholder="e.g. HW-042" />
-                </div>
-              )}
-            </div>
-
-            <hr className="divider" style={{ margin: '20px 0' }} />
-
-            {/* Logistics & Delivery Info */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
-              <div className="form-group mb-0">
-                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><Truck size={13} /> Vehicle Number</label>
-                <input
-                  className="form-control"
-                  value={vehicleNumber}
-                  onChange={e => setVehicleNumber(e.target.value.toUpperCase())}
-                  placeholder="e.g. UK04CB0199"
-                  style={{ textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: 'monospace' }}
-                />
-              </div>
-              <div className="form-group mb-0">
-                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><User size={13} /> Driver Name</label>
-                <input
-                  className="form-control"
-                  value={driverName}
-                  onChange={e => setDriverName(e.target.value)}
-                  placeholder="Enter driver name..."
-                />
-              </div>
-              <div className="form-group mb-0">
-                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><Package size={13} /> Total Weight</label>
-                <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
-                  <input
-                    className="form-control"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    style={{ border: 'none', borderRadius: 0, flex: 1, padding: '6px' }}
-                    value={totalWeight}
-                    onChange={e => setTotalWeight(e.target.value)}
-                    placeholder="Auto-calculated"
-                  />
-                  <span style={{ padding: '0 10px', background: '#f8fafc', borderLeft: '1px solid var(--border)', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700' }}>kg</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Selected Items Summary Card */}
-          <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Package size={18} style={{ color: 'var(--primary)' }} /> Selected Products ({items.length})
-              </div>
-              <button 
-                onClick={() => setStep(2)}
-                className="btn btn-outline"
-                style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
-              >
-                Edit Products
-              </button>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '380px', overflowY: 'auto', paddingRight: '4px' }}>
-              {items.map((item, idx) => (
-                <div 
-                  key={item._key || idx}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 16px',
-                    background: 'var(--bg-hover)',
-                    borderRadius: '12px',
-                    border: '1.5px solid var(--border)',
-                    gap: '16px',
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {item.product_name}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      {item.qty} {item.unit || 'bag'} × {formatCurrency(item.price)}
-                      {item.weight && <span style={{ marginLeft: '12px', background: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{item.weight} kg</span>}
-                    </div>
-                  </div>
-                  
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', fontFamily: 'monospace' }}>
-                      {formatCurrency(item.total)}
-                    </div>
-                    {item.gst > 0 && (
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
-                        Incl. GST ({item.gst}%)
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Payments Section Card */}
-          <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Wallet size={18} style={{ color: 'var(--success)' }} /> Payment Records
-              </div>
+                <Wallet size={18} style={{ color: 'var(--success)' }} />{t('Payment Records', 'भुगतान रिकॉर्ड')}</div>
               <button 
                 onClick={addPayment}
                 className="btn btn-outline"
@@ -1040,7 +909,7 @@ export default function NewInvoice() {
                       <input
                         type="text"
                         className="form-control"
-                        placeholder="Optional"
+                        placeholder={t('Optional', 'वैकल्पिक')}
                         value={p.reference}
                         onChange={e => updatePayment(idx, { reference: e.target.value })}
                         style={{ height: '38px', borderRadius: '6px' }}
@@ -1051,18 +920,63 @@ export default function NewInvoice() {
               ))}
 
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'cash', amount: totalWithPrev.toFixed(2), reference: '' }])}>Full Cash</button>
-                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'upi', amount: totalWithPrev.toFixed(2), reference: '' }])}>Full UPI</button>
-                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'cash', amount: '', reference: '' }])}>Clear Amount</button>
+                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'cash', amount: totalWithPrev.toFixed(2), reference: '' }])}>{t('Full Cash', 'पूरा नकद')}</button>
+                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'upi', amount: totalWithPrev.toFixed(2), reference: '' }])}>{t('Full UPI', 'पूरा यूपीआई')}</button>
+                <button className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px' }} onClick={() => setPayments([{ mode: 'cash', amount: '', reference: '' }])}>{t('Clear Amount', 'राशि साफ़ करें')}</button>
               </div>
             </div>
           </div>
 
-          {/* Discount & Remarks Card */}
+          
+          <div className="card" style={{ padding: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Truck size={18} style={{ color: 'var(--primary)' }} />{t('Logistics & Delivery Info', 'लॉजिस्टिक्स और डिलीवरी जानकारी')}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+              <div className="form-group mb-0">
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><Truck size={13} /> {t('Vehicle Number', 'वाहन संख्या')}</label>
+                <input
+                  className="form-control"
+                  value={vehicleNumber}
+                  onChange={e => setVehicleNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g. UK04CB0199"
+                  style={{ textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: 'monospace' }}
+                />
+              </div>
+              <div className="form-group mb-0">
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><User size={13} /> {t('Driver Name', 'ड्राइवर का नाम')}</label>
+                <input
+                  className="form-control"
+                  value={driverName}
+                  onChange={e => setDriverName(e.target.value)}
+                  placeholder={t('Enter driver name...', 'ड्राइवर का नाम दर्ज करें...')}
+                />
+              </div>
+              <div className="form-group mb-0">
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600' }}><Package size={13} /> {t('Total Weight', 'कुल वजन')}</label>
+                <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+                  <input
+                    className="form-control"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    style={{ border: 'none', borderRadius: 0, flex: 1, padding: '6px' }}
+                    value={totalWeight}
+                    onChange={e => setTotalWeight(e.target.value)}
+                    placeholder={t('Auto-calculated', 'स्वत: गणना')}
+                  />
+                  <span style={{ padding: '0 10px', background: 'var(--bg)', borderLeft: '1px solid var(--border)', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700' }}>kg</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+            {/* Discount & Remarks Card */}
           <div className="card" style={{ padding: '20px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
               <div className="form-group mb-0">
-                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Discount Amount (₹)</label>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>{t('Discount Amount (₹)', 'छूट राशि (₹)')}</label>
                 <input
                   className="form-control"
                   type="number"
@@ -1074,46 +988,44 @@ export default function NewInvoice() {
                 />
               </div>
               <div className="form-group mb-0">
-                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Concession Reason</label>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>{t('Concession Reason', 'रियायत का कारण')}</label>
                 <input
                   className="form-control"
                   value={concessionReason}
                   onChange={e => setConcessionReason(e.target.value)}
-                  placeholder="e.g. Loyal customer (optional)"
+                  placeholder={t('e.g. Loyal customer (optional)', 'जैसे: नियमित ग्राहक (वैकल्पिक)')}
                 />
               </div>
               <div className="form-group mb-0" style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Notes / Remarks</label>
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>{t('Notes / Remarks', 'नोट्स / टिप्पणी')}</label>
                 <textarea
                   className="form-control"
                   rows={2}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
-                  placeholder="Any additional remarks..."
+                  placeholder={t('Any additional remarks...', 'कोई अतिरिक्त टिप्पणी...')}
                 />
               </div>
             </div>
           </div>
 
-        </div>
-
-        {/* RIGHT COLUMN: Summary & Sign & Finalize */}
-        <div style={{ flex: '1 1 35%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Summary Panel */}
+        
+          </div>
+          <div style={{ flex: '1 1 35%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Summary Panel */}
           <div className="position-sticky" style={{ top: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
             <div className="card" style={{ padding: '20px' }}>
               <h4 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', fontSize: '16px', fontWeight: '800', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-                <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}><Wallet size={18} /> Billing Summary</span>
-                <span style={{ fontSize: '11px', background: 'var(--primary)', color: '#fff', padding: '3px 8px', borderRadius: '12px' }}>
+                <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}><Wallet size={18} />{t('Billing Summary', 'बिलिंग सारांश')}</span>
+                <span style={{ fontSize: '11px', background: 'var(--primary)', color: 'var(--bg-card)', padding: '3px 8px', borderRadius: '12px' }}>
                   {items.length} Items
                 </span>
               </h4>
 
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Subtotal (Before Tax)</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t('Subtotal (Before Tax)', 'उप-कुल (कर से पहले)')}</span>
                   <strong style={{ fontFamily: 'monospace' }}>{fc(subtotal)}</strong>
                 </li>
 
@@ -1135,11 +1047,11 @@ export default function NewInvoice() {
                   <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Transportation & Labour</div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)' }}>Vehicle ₹</label>
+                      <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)' }}>{t('Vehicle ₹', 'वाहन ₹')}</label>
                       <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={vehicleCharge} onChange={e => setVehicleCharge(e.target.value)} placeholder="0.00" style={{ height: '30px', padding: '4px 6px', fontSize: '12px' }} />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)' }}>Labour ₹</label>
+                      <label style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-muted)' }}>{t('Labour ₹', 'श्रम ₹')}</label>
                       <input className="form-control form-control-sm" type="number" min="0" step="0.01" value={labourCharge} onChange={e => setLabourCharge(e.target.value)} placeholder="0.00" style={{ height: '30px', padding: '4px 6px', fontSize: '12px' }} />
                     </div>
                   </div>
@@ -1153,7 +1065,7 @@ export default function NewInvoice() {
                 )}
 
                 <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
-                  <span style={{ fontWeight: '700', color: 'var(--text)' }}>Grand Total</span>
+                  <span style={{ fontWeight: '700', color: 'var(--text)' }}>{t('Grand Total', 'कुल राशि')}</span>
                   <strong style={{ color: 'var(--primary)', fontSize: '17px', fontFamily: 'monospace' }}>{fc(total)}</strong>
                 </li>
 
@@ -1166,14 +1078,14 @@ export default function NewInvoice() {
                       <strong style={{ fontFamily: 'monospace' }}>{fc(prevBalance)}</strong>
                     </li>
                     <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
-                      <span style={{ fontWeight: '700', color: 'var(--text)' }}>Net Payable</span>
+                      <span style={{ fontWeight: '700', color: 'var(--text)' }}>{t('Net Payable', 'देय राशि')}</span>
                       <strong style={{ color: 'var(--text)', fontSize: '17px', fontFamily: 'monospace' }}>{fc(totalWithPrev)}</strong>
                     </li>
                   </>
                 )}
 
                 <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  <span>Amount Paid</span>
+                  <span>{t('Amount Paid', 'भुगतान की गई राशि')}</span>
                   <strong style={{ fontFamily: 'monospace' }}>{fc(amtReceived)}</strong>
                 </li>
 
@@ -1187,7 +1099,7 @@ export default function NewInvoice() {
                     borderRadius: '8px',
                     background: balanceDue > 0.01 ? 'var(--danger-light)' : 'var(--success-light)',
                     color: balanceDue > 0.01 ? 'var(--danger)' : 'var(--success)',
-                    border: `1.5px solid ${balanceDue > 0.01 ? '#fecaca' : '#a7f3d0'}`
+                    border: '1.5px solid var(--border)'
                   }}
                 >
                   <span style={{ fontWeight: '800' }}>
@@ -1198,17 +1110,467 @@ export default function NewInvoice() {
               </ul>
             </div>
 
-            {/* Signature Canvas */}
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '0 20px 20px 20px' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setStep(4)}
+                style={{
+                  height: '48px',
+                  borderRadius: '12px',
+                  fontWeight: '800',
+                  fontSize: '16px',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >{t('Review & Finalize', 'समीक्षा और अंतिम रूप')}</button>
+            </div>
+          </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Step 4 layout (Review & Finalize)
+  return (
+    <div style={{ paddingBottom: '60px' }}>
+      {/* Step 3 Header bar */}
+      <div className="no-print" style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: 10, marginBottom: 20,
+        background: 'var(--bg-card)', borderRadius: 12, padding: '12px 18px',
+        border: '1.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Receipt size={17} style={{ color: 'var(--primary)' }} /> Bill Details & Review
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
+              Review items and adjust transportation, payments & signature
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDrafts(v => !v); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: showDrafts ? 'var(--primary)' : 'var(--border)',
+                border: showDrafts ? 'none' : '1.5px solid var(--border)',
+                borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
+                fontSize: 12.5, fontWeight: 600,
+                color: showDrafts ? 'var(--bg-card)' : 'var(--text-muted)',
+                boxShadow: showDrafts ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                transition: 'all 0.15s',
+              }}
+            >
+              <FolderOpen size={12.5} /> Drafts
+              {drafts.length > 0 && (
+                <span style={{
+                  background: showDrafts ? 'rgba(255,255,255,0.3)' : 'var(--primary)',
+                  color: 'var(--bg-card)', borderRadius: 10, padding: '1px 6px', fontSize: 10,
+                }}>
+                  {drafts.length}
+                </span>
+              )}
+            </button>
+            <span style={{ width: 1, height: 20, background: '#d1d5db', flexShrink: 0 }} />
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/orders'); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: 'var(--border)', border: '1.5px solid var(--border)',
+                borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
+                fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)',
+                transition: 'all 0.15s',
+              }}
+            >
+              <FileSpreadsheet size={12.5} />{t('Orders', 'ऑर्डर')}</button>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={cancelBill}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '9px 16px', borderRadius: 8, cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+              background: 'var(--danger-light)', border: '1.5px solid #fecaca',
+              color: '#dc2626', transition: 'all 0.15s',
+            }}
+          >
+            <Trash2 size={14} />{t('Cancel Bill', 'बिल रद्द करें')}</button>
+          <button
+            type="button"
+            onClick={() => setStep(3)}
+            className="btn btn-outline"
+            style={{ borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <ArrowLeft size={14} /> Back to Payments
+          </button>
+          <button
+            type="button"
+            onClick={() => saveDraft(items)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '9px 20px', borderRadius: 8, cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+              background: 'var(--sidebar-bg)',
+              border: 'none', color: 'var(--bg-card)',
+              boxShadow: '0 2px 10px rgba(22,163,74,0.35)',
+              transition: 'all 0.15s',
+            }}
+          >
+            <Save size={14} /> Save Draft
+          </button>
+        </div>
+      </div>
+
+      
+      {/* Drafts panel */}
+      {showDrafts && (
+        <div className="card mb-3 animate-fade-in" style={{ border: '1.5px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
+              <FolderOpen size={14.5} style={{ marginRight: 6 }} /> Saved Drafts
+              {drafts.length > 0 && (
+                <span style={{ marginLeft: 8, background: 'var(--primary)', color: 'var(--bg-card)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
+                  {drafts.length}
+                </span>
+              )}
+            </div>
+            <button className="btn btn-ghost btn-sm" style={{ fontSize: 12, color: 'var(--text-muted)' }} onClick={() => setShowDrafts(false)}>✕ Close</button>
+          </div>
+          <div style={{ padding: drafts.length === 0 ? 24 : '8px 12px' }}>
+            {drafts.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                <Inbox size={28} className="text-muted" style={{ marginBottom: 8 }} />
+                <div>No drafts saved yet. Click "Save Draft" to save one.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {drafts.map(d => {
+                  const savedDate = d.savedAt
+                    ? new Date(d.savedAt).toLocaleString('en-IN', {
+                        day: '2-digit', month: 'short', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit', hour12: true,
+                        timeZone: 'Asia/Kolkata',
+                      })
+                    : '—';
+                  return (
+                    <div
+                      key={d.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        background: 'var(--bg)', border: '1.5px solid var(--border)',
+                        borderRadius: 10, padding: '12px 14px',
+                        cursor: 'pointer', transition: 'border-color 0.15s', gap: 10,
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                      onClick={() => loadDraft(d)}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                           <span style={{ fontWeight: 700, fontSize: 14 }}>{d.customerName || 'Walk-in Customer'}</span>
+                           <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {savedDate}</span>
+                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileSpreadsheet size={12} /> {d.itemCount || 0} items</span>
+                           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>{formatCurrency(d.totalAmount || 0)}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                        <button className="btn btn-primary btn-sm" onClick={() => loadDraft(d)}><FolderOpen size={12} /> Load</button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => deleteDraft(d.id)}><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      
+      <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+        <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Customer Summary Card */}
+          <div className="card" style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <User size={18} style={{ color: 'var(--primary)' }} />{t('Customer & Bill Details', 'ग्राहक और बिल विवरण')}</div>
+              <button 
+                onClick={() => setStep(1)}
+                className="btn btn-outline"
+                style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
+              >{t('Change Customer', 'ग्राहक बदलें')}</button>
+            </div>
+            
+            {customerMode === 'existing' && selectedCustomer ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--sidebar-bg)', color: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800' }}>
+                    {selectedCustomer.name?.[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text)' }}>{selectedCustomer.name}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{t('Registered Customer', 'पंजीकृत ग्राहक')}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginTop: '12px', padding: '12px', background: 'var(--bg-hover)', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '13px' }}>
+                  {selectedCustomer.phone && <div><strong>Phone:</strong> +91 {selectedCustomer.phone}</div>}
+                  {selectedCustomer.address && <div><strong>Address:</strong> {selectedCustomer.address}</div>}
+                  {prevBalance !== 0 && (
+                    <div style={{ color: prevBalance > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: '700' }}>
+                      {prevBalance > 0 ? 'Pending Due:' : 'Advance Balance:'} {formatCurrency(Math.abs(prevBalance))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontWeight: '700', fontSize: '14px', color: 'var(--primary)' }}>
+                  Walk-in Customer Details
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  <div className="form-group mb-0">
+                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Walk-in Name</label>
+                    <input
+                      className="form-control"
+                      value={walkIn.name || ''}
+                      onChange={e => setWalkIn({ ...walkIn, name: e.target.value })}
+                      onBlur={handleWalkInNameBlur}
+                      placeholder="Enter customer name..."
+                    />
+                  </div>
+                  <div className="form-group mb-0">
+                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Walk-in Phone</label>
+                    <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                      <span style={{ padding: '6px 8px', background: 'var(--bg)', borderRight: '1px solid var(--border)', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)' }}>+91</span>
+                      <input
+                        className="form-control"
+                        style={{ border: 'none', borderRadius: 0, padding: '6px' }}
+                        value={walkIn.phone || ''}
+                        onChange={e => setWalkIn({ ...walkIn, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        placeholder="10-digit number"
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group mb-0" style={{ gridColumn: '1 / -1' }}>
+                    <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>{t('Address', 'पता')}</label>
+                    <input
+                      className="form-control"
+                      value={walkIn.address || ''}
+                      onChange={e => setWalkIn({ ...walkIn, address: e.target.value })}
+                      placeholder="Enter address..."
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <hr className="divider" style={{ margin: '20px 0' }} />
+
+            {/* Bill Type & Driver row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+              <div className="form-group mb-0">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Bill Type</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" className={`btn btn-sm ${!isManualBill ? 'btn-primary' : 'btn-outline'} d-inline-flex align-items-center gap-1`} style={{ flex: 1 }} onClick={() => setIsManualBill(false)}><Monitor size={12} />{t('Digital', 'डिजिटल')}</button>
+                  <button type="button" className={`btn btn-sm ${isManualBill ? 'btn-warning' : 'btn-outline'} d-inline-flex align-items-center gap-1`} style={{ flex: 1 }} onClick={() => setIsManualBill(true)}><FileText size={12} />{t('Manual', 'मैनुअल')}</button>
+                </div>
+              </div>
+              <div className="form-group mb-0">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Bill Date</label>
+                <input className="form-control" type="datetime-local" value={billDate} max={new Date().toISOString().slice(0, 16)} onChange={e => setBillDate(e.target.value)} />
+              </div>
+              {isManualBill && (
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontSize: '12px', fontWeight: '600' }}>Manual Ref. No.</label>
+                  <input className="form-control" value={manualBillRef} onChange={e => setManualBillRef(e.target.value)} placeholder="e.g. HW-042" />
+                </div>
+              )}
+            </div>
+
+            {/* Removed Logistics inputs from Step 4 */}
+          </div>
+
+          
+          {/* Selected Items Summary Card */}
+          <div className="card" style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={18} style={{ color: 'var(--primary)' }} /> Selected Products ({items.length})
+              </div>
+              <button 
+                onClick={() => setStep(2)}
+                className="btn btn-outline"
+                style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
+              >{t('Edit Products', 'उत्पाद संपादित करें')}</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '380px', overflowY: 'auto', paddingRight: '4px' }}>
+              {items.map((item, idx) => (
+                <div 
+                  key={item._key || idx}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    background: 'var(--bg-hover)',
+                    borderRadius: '12px',
+                    border: '1.5px solid var(--border)',
+                    gap: '16px',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.product_name}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {item.qty} {item.unit || 'bag'} × {formatCurrency(item.price)}
+                      {item.weight && <span style={{ marginLeft: '12px', background: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{item.weight} kg</span>}
+                    </div>
+                  </div>
+                  
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', fontFamily: 'monospace' }}>
+                      {formatCurrency(item.total)}
+                    </div>
+                    {item.gst > 0 && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                        Incl. GST ({item.gst}%)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          
+        </div>
+        <div style={{ flex: '1 1 35%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Summary Panel */}
+          <div className="position-sticky" style={{ top: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            <div className="card" style={{ padding: '20px' }}>
+              <h4 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', fontSize: '16px', fontWeight: '800', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}><Wallet size={18} />{t('Billing Summary', 'बिलिंग सारांश')}</span>
+                <span style={{ fontSize: '11px', background: 'var(--primary)', color: 'var(--bg-card)', padding: '3px 8px', borderRadius: '12px' }}>
+                  {items.length} Items
+                </span>
+              </h4>
+
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{t('Subtotal (Before Tax)', 'उप-कुल (कर से पहले)')}</span>
+                  <strong style={{ fontFamily: 'monospace' }}>{fc(subtotal)}</strong>
+                </li>
+
+                {gstEnabled && (
+                  <>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Central GST (CGST)</span>
+                      <span style={{ fontFamily: 'monospace' }}>{fc(gstTotal / 2)}</span>
+                    </li>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>State GST (SGST)</span>
+                      <span style={{ fontFamily: 'monospace' }}>{fc(gstTotal / 2)}</span>
+                    </li>
+                  </>
+                )}
+
+                {/* Logistics & Delivery Summary (Read-Only) */}
+                {(vehicleCharge > 0 || labourCharge > 0 || vehicleNumber || driverName || totalWeight > 0) && (
+                  <li style={{ background: 'var(--bg-hover)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.5px' }}>Logistics & Delivery</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+                      {vehicleNumber && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-muted)' }}>Vehicle</span><span style={{ fontWeight: '600' }}>{vehicleNumber}</span></div>}
+                      {driverName && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-muted)' }}>Driver</span><span style={{ fontWeight: '600' }}>{driverName}</span></div>}
+                      {totalWeight > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-muted)' }}>Total Weight</span><span style={{ fontWeight: '600' }}>{totalWeight} kg</span></div>}
+                      {vehicleCharge > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}><span style={{ color: 'var(--text-muted)' }}>Vehicle Charge</span><span style={{ fontWeight: '600', fontFamily: 'monospace' }}>{fc(vehicleCharge)}</span></div>}
+                      {labourCharge > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-muted)' }}>Labour Charge</span><span style={{ fontWeight: '600', fontFamily: 'monospace' }}>{fc(labourCharge)}</span></div>}
+                    </div>
+                  </li>
+                )}
+
+                {dis > 0 && (
+                  <li style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontSize: '14px', background: 'var(--success-light)', padding: '8px 12px', borderRadius: '8px', border: '1px dashed #a7f3d0' }}>
+                    <span style={{ fontWeight: '700' }}>Discount Applied</span>
+                    <strong style={{ fontFamily: 'monospace' }}>- {fc(dis)}</strong>
+                  </li>
+                )}
+
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--text)' }}>{t('Grand Total', 'कुल राशि')}</span>
+                  <strong style={{ color: 'var(--primary)', fontSize: '17px', fontFamily: 'monospace' }}>{fc(total)}</strong>
+                </li>
+
+                {prevBalance !== 0 && (
+                  <>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', background: 'var(--bg-hover)', padding: '6px 12px', borderRadius: '6px' }}>
+                      <span style={{ color: prevBalance > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: '700' }}>
+                        {prevBalance > 0 ? '⚠️ Previous Due' : '✅ Previous Advance'}
+                      </span>
+                      <strong style={{ fontFamily: 'monospace' }}>{fc(prevBalance)}</strong>
+                    </li>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                      <span style={{ fontWeight: '700', color: 'var(--text)' }}>{t('Net Payable', 'देय राशि')}</span>
+                      <strong style={{ color: 'var(--text)', fontSize: '17px', fontFamily: 'monospace' }}>{fc(totalWithPrev)}</strong>
+                    </li>
+                  </>
+                )}
+
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-muted)' }}>
+                  <span>{t('Amount Paid', 'भुगतान की गई राशि')}</span>
+                  <strong style={{ fontFamily: 'monospace' }}>{fc(amtReceived)}</strong>
+                </li>
+
+                <li 
+                  className={balanceDue > 0.01 ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    fontSize: '15px', 
+                    padding: '12px', 
+                    borderRadius: '8px',
+                    background: balanceDue > 0.01 ? 'var(--danger-light)' : 'var(--success-light)',
+                    color: balanceDue > 0.01 ? 'var(--danger)' : 'var(--success)',
+                    border: '1.5px solid var(--border)'
+                  }}
+                >
+                  <span style={{ fontWeight: '800' }}>
+                    {balanceDue > 0.01 ? 'Balance Due' : balanceDue < -0.01 ? 'Excess Paid' : 'Fully Paid'}
+                  </span>
+                  <strong style={{ fontSize: '17px', fontFamily: 'monospace' }}>{fc(Math.abs(balanceDue))}</strong>
+                </li>
+              </ul>
+            </div>
+
+            
+          {/* Signature Canvas */}
             <div className="card" style={{ padding: '16px' }}>
               <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
-                <PenTool size={13} /> Authorised Signature
-              </div>
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>Authorized signatory should sign below before finalized invoice</p>
+                <PenTool size={13} />{t('Authorised Signature', 'अधिकृत हस्ताक्षर')}</div>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>{t('Authorized signatory should sign below before finalized invoice', 'अंतिम बिल बनाने से पहले अधिकृत हस्ताक्षरकर्ता नीचे हस्ताक्षर करें')}</p>
               
-              <div style={{ background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--border)', padding: '4px' }}>
+              <div style={{ background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', padding: '4px' }}>
                 <SignatureCanvas
                   ref={sigRef}
-                  penColor="#0f172a"
+                  penColor={theme === 'dark' ? '#ffffff' : '#0f172a'}
                   minWidth={1.5}
                   maxWidth={3}
                   throttle={16}
@@ -1223,11 +1585,12 @@ export default function NewInvoice() {
                   style={{ fontSize: '11px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }} 
                   onClick={() => sigRef.current.clear()}
                 >
-                  <Trash2 size={11} /> Clear Signature
-                </button>
+                  <Trash2 size={11} />{t('Clear Signature', 'हस्ताक्षर साफ़ करें')}</button>
               </div>
             </div>
 
+            
+          
             {/* Action buttons */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <button
@@ -1246,7 +1609,7 @@ export default function NewInvoice() {
                   gap: '8px',
                 }}
               >
-                {saving ? 'Creating Invoice...' : 'Finalize & Create Invoice'}
+                {saving ? t('Creating Invoice...', 'बिल बन रहा है...') : t('Finalize & Create Invoice', 'बिल फाइनल करें और बनाएं')}
                 {!saving && <CheckCircle size={18} />}
               </button>
               
@@ -1255,21 +1618,17 @@ export default function NewInvoice() {
                 onClick={() => navigate(-1)}
                 style={{ height: '42px', borderRadius: '10px', fontWeight: '700' }}
               >
-                Cancel Invoice
+                {t('Cancel Invoice', 'बिल रद्द करें')}
               </button>
             </div>
-
           </div>
-
         </div>
-
       </div>
-
       {/* Disclaimers & Warning overlays */}
 
       {walkinWarningModal && (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-          <div className="modal card" style={{ maxWidth: '450px', background: '#fff', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+          <div className="modal card" style={{ maxWidth: '450px', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
             <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--warning)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
               {walkinWarningModal.title}
             </div>
@@ -1287,7 +1646,7 @@ export default function NewInvoice() {
 
       {paymentConfirmModal && (
         <div className="modal-overlay" onClick={() => setPaymentConfirmModal(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', background: '#fff', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
             <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--danger)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
               {paymentConfirmModal.title}
             </div>
@@ -1297,16 +1656,33 @@ export default function NewInvoice() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               {paymentConfirmModal.type === 'walkin_zero' ? (
                 <>
-                  <button className="btn btn-outline" onClick={() => setPaymentConfirmModal(null)}>Cancel</button>
+                  <button className="btn btn-outline" onClick={() => setPaymentConfirmModal(null)}>{t('Cancel', 'रद्द करें')}</button>
                   <button className="btn btn-danger" onClick={() => { setPaymentConfirmModal(null); processSubmit(payments); }}>Pending Due</button>
-                  <button className="btn btn-primary" onClick={() => { setPaymentConfirmModal(null); processSubmit([{ mode: 'cash', amount: totalWithPrev.toFixed(2), reference: '' }]); }}>Full Cash</button>
+                  <button className="btn btn-primary" onClick={() => { setPaymentConfirmModal(null); processSubmit([{ mode: 'cash', amount: totalWithPrev.toFixed(2), reference: '' }]); }}>{t('Full Cash', 'पूरा नकद')}</button>
                 </>
               ) : (
                 <>
-                  <button className="btn btn-outline" onClick={() => setPaymentConfirmModal(null)}>Cancel</button>
+                  <button className="btn btn-outline" onClick={() => setPaymentConfirmModal(null)}>{t('Cancel', 'रद्द करें')}</button>
                   <button className="btn btn-primary" onClick={() => { setPaymentConfirmModal(null); processSubmit(payments); }}>Proceed</button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelConfirmModal && (
+        <div className="modal-overlay" onClick={() => setCancelConfirmModal(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
+          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+            <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--danger)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <Trash2 size={18} /> Cancel Bill?
+            </div>
+            <p style={{ fontSize: '14px', lineHeight: '1.5', color: 'var(--text)', whiteSpace: 'pre-wrap', margin: '0 0 20px 0' }}>
+              Are you sure you want to cancel this bill? All unsaved progress will be permanently lost.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="btn btn-outline" onClick={() => setCancelConfirmModal(false)}>Keep Working</button>
+              <button className="btn btn-danger" onClick={confirmCancelBill}>Yes, Cancel Bill</button>
             </div>
           </div>
         </div>

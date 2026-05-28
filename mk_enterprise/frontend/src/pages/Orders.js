@@ -90,7 +90,7 @@ export default function OrdersPage() {
       {/* Filter tabs */}
       <div style={{
         display: 'flex', gap: 8, marginBottom: 18,
-        background: '#f3f4f6', borderRadius: 12, padding: '4px 5px',
+        background: 'var(--border)', borderRadius: 12, padding: '4px 5px',
         width: 'fit-content',
       }}>
         {[
@@ -105,7 +105,7 @@ export default function OrdersPage() {
               padding: '7px 16px', borderRadius: 9, border: 'none',
               cursor: 'pointer', fontSize: 13, fontWeight: 600,
               fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
-              background: filter === tab.key ? '#fff' : 'transparent',
+              background: filter === tab.key ? 'var(--bg-card)' : 'transparent',
               color: filter === tab.key ? 'var(--primary)' : 'var(--text-muted)',
               boxShadow: filter === tab.key ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
               transition: 'all 0.15s',
@@ -116,7 +116,7 @@ export default function OrdersPage() {
             {tab.count > 0 && (
               <span style={{
                 background: filter === tab.key ? 'var(--primary)' : '#d1d5db',
-                color: filter === tab.key ? '#fff' : '#6b7280',
+                color: filter === tab.key ? 'var(--bg-card)' : '#6b7280',
                 borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700,
               }}>{tab.count}</span>
             )}
@@ -130,7 +130,7 @@ export default function OrdersPage() {
       ) : filteredOrders.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '48px 20px',
-          background: '#fff', borderRadius: 14, border: '1.5px dashed #d1d5db',
+          background: 'var(--bg-card)', borderRadius: 14, border: '1.5px dashed #d1d5db',
         }}>
           <Inbox size={40} className="text-muted" style={{ marginBottom: 12 }} />
           <div style={{ fontWeight: 700, fontSize: 16 }}>No orders found</div>
@@ -161,7 +161,7 @@ export default function OrdersPage() {
               <div
                 key={order._id}
                 style={{
-                  background: '#fff',
+                  background: 'var(--bg-card)',
                   border: `1.5px solid ${isOverdue ? '#fca5a5' : isToday ? '#93c5fd' : '#e5e7eb'}`,
                   borderRadius: 12,
                   overflow: 'hidden',
@@ -172,7 +172,7 @@ export default function OrdersPage() {
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '12px 16px',
-                  background: isOverdue ? '#fef2f2' : isToday ? '#eff6ff' : '#f8fafc',
+                  background: isOverdue ? 'var(--danger-light)' : isToday ? 'var(--primary-light)' : 'var(--bg)',
                   borderBottom: '1px solid #f3f4f6',
                   flexWrap: 'wrap', gap: 8,
                 }}>
@@ -192,7 +192,7 @@ export default function OrdersPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {isOverdue && (
                       <span style={{
-                        background: '#fef2f2', color: '#dc2626',
+                        background: 'var(--danger-light)', color: '#dc2626',
                         fontSize: 11, fontWeight: 700, padding: '3px 9px',
                         borderRadius: 8, border: '1px solid #fca5a5',
                         display: 'inline-flex', alignItems: 'center', gap: 4
@@ -200,7 +200,7 @@ export default function OrdersPage() {
                     )}
                     {isToday && (
                       <span style={{
-                        background: '#eff6ff', color: 'var(--primary)',
+                        background: 'var(--primary-light)', color: 'var(--primary)',
                         fontSize: 11, fontWeight: 700, padding: '3px 9px',
                         borderRadius: 8, border: '1px solid #bfdbfe',
                         display: 'inline-flex', alignItems: 'center', gap: 4
@@ -208,7 +208,7 @@ export default function OrdersPage() {
                     )}
                     <span style={{
                       fontSize: 12, fontWeight: 600, color: '#374151',
-                      background: '#f3f4f6', padding: '3px 10px', borderRadius: 8,
+                      background: 'var(--border)', padding: '3px 10px', borderRadius: 8,
                     }}>
                       {order.delivery_date
                         ? (() => {
@@ -231,7 +231,7 @@ export default function OrdersPage() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {order.items?.map((item, idx) => (
                       <div key={idx} style={{
-                        background: '#f8fafc', border: '1px solid #e5e7eb',
+                        background: 'var(--bg)', border: '1px solid #e5e7eb',
                         borderRadius: 8, padding: '5px 12px',
                         fontSize: 13, fontWeight: 600, color: '#374151',
                         display: 'flex', alignItems: 'center', gap: 6,
@@ -256,7 +256,7 @@ export default function OrdersPage() {
                       {advanceTotal > 0 && (
                         <div style={{
                           fontSize: 12, fontWeight: 600,
-                          background: '#f0fdf4', color: '#16a34a',
+                          background: 'var(--success-light)', color: '#16a34a',
                           padding: '4px 10px', borderRadius: 8, border: '1px solid #86efac',
                           display: 'inline-flex', alignItems: 'center', gap: 4
                         }}>
@@ -277,7 +277,7 @@ export default function OrdersPage() {
                 <div style={{
                   display: 'flex', gap: 8, padding: '10px 16px',
                   borderTop: '1px solid #f3f4f6', flexWrap: 'wrap',
-                  background: '#fafafa',
+                  background: 'var(--bg-hover)',
                 }}>
                   <button
                     className="btn btn-primary btn-sm d-inline-flex align-items-center justify-content-center gap-1"
@@ -291,8 +291,7 @@ export default function OrdersPage() {
                     onClick={() => handleDelete(order._id)}
                     style={{ color: 'var(--danger)', borderColor: '#fca5a5' }}
                   >
-                    <Trash2 size={13} /> Delete
-                  </button>
+                    <Trash2 size={13} />{t('Delete', 'हटाएं')}</button>
                 </div>
               </div>
             );

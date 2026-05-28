@@ -9,14 +9,14 @@ const activityLogSchema = new mongoose.Schema({
   // What action was performed
   action: {
     type: String,
-    enum: ['create', 'update', 'delete', 'login', 'logout', 'payment', 'stock_adjust', 'status_change', 'other'],
+    enum: ['create', 'update', 'delete', 'login', 'logout', 'failed_login', 'security_alert', 'payment', 'stock_adjust', 'status_change', 'other'],
     required: true,
   },
 
   // On which entity
   entity_type: {
     type: String,
-    enum: ['invoice', 'product', 'customer', 'settlement', 'order', 'delivery', 'trip', 'manager', 'driver', 'setting', 'walkin', 'stock', 'other'],
+    enum: ['invoice', 'product', 'customer', 'settlement', 'order', 'delivery', 'trip', 'manager', 'driver', 'Admin', 'setting', 'walkin', 'stock', 'other'],
     required: true,
   },
   entity_id: { type: mongoose.Schema.Types.ObjectId, default: null },

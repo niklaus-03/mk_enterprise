@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { productApi, settingsApi, managerApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
@@ -41,7 +41,7 @@ function UnitInput({ value, onChange, placeholder = 'bag' }) {
         onBlur={() => setTimeout(() => setOpen(false), 180)}
       />
       {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 160, overflowY: 'auto' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-card)', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 160, overflowY: 'auto' }}>
           {filtered.map(u => (
             <div key={u}
               style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
@@ -52,7 +52,7 @@ function UnitInput({ value, onChange, placeholder = 'bag' }) {
           ))}
           {value && !allUnits.includes(value.toLowerCase().trim()) && (
             <div
-              style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
+              style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: 'var(--primary-light)' }}
               onMouseDown={() => { addCustomUnit(value); onChange(value); setOpen(false); toast(`Unit "${value}" saved`, { icon: '✓' }); }}
             >+ Add "{value}" as new unit</div>
           )}
@@ -70,8 +70,10 @@ const emptyForm = {
 export default function Products() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [highlightId, setHighlightId] = useState(location.state?.highlightProductId || null);
   const fromDashboard = searchParams.get('action') === 'add';
-  const { settings } = useApp();
+  const { t, settings } = useApp();
   const { user } = useAuth();
   const isAdmin = user?.role === 'supervisor';
 
@@ -106,12 +108,51 @@ export default function Products() {
   const [itemLists, setItemLists] = useState([]);
   const [addingToList, setAddingToList] = useState(false);
 
+  // Sync highlightId when navigating to the same page
+  useEffect(() => {
+    if (location.state?.highlightProductId) {
+      setHighlightId(location.state.highlightProductId);
+      // Clean up the history state immediately so it doesn't persist on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
   useEffect(() => {
     managerApi.getAll().then(res => setManagers(res.managers || [])).catch(e => console.error('Failed to load managers', e));
     if (isAdmin) {
       productListApi.getAll().then(setItemLists).catch(e => console.error('Failed to load item lists', e));
     }
   }, [isAdmin]);
+
+  // Scroll to highlighted product when products array changes (meaning they've been rendered)
+  useEffect(() => {
+    if (highlightId && products.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`product-${highlightId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [highlightId, products]);
+
+  // Clean up highlight on first click anywhere
+  useEffect(() => {
+    if (highlightId) {
+      const handleClick = () => {
+        setHighlightId(null);
+      };
+      // Delay attaching the listener slightly so the initial navigation click doesn't clear it instantly
+      const timer = setTimeout(() => {
+        document.addEventListener('click', handleClick);
+      }, 500);
+      
+      return () => {
+        clearTimeout(timer);
+        document.removeEventListener('click', handleClick);
+      };
+    }
+  }, [highlightId]);
 
   const handleShareSubmit = async (e) => {
     e.preventDefault();
@@ -195,7 +236,9 @@ export default function Products() {
 
   const load = useCallback((q = '', p = page, s = sortBy) => {
     setLoading(true);
-    productApi.getAll({ search: q, paginate: true, page: p, limit: LIMIT, sort: s })
+    // If highlighting, fetch a large limit so the product is guaranteed to be in the list
+    const requestLimit = highlightId ? 1000 : LIMIT;
+    productApi.getAll({ search: q, paginate: true, page: p, limit: requestLimit, sort: s })
       .then(res => {
         setProducts(res.products || []);
         setTotalPages(res.pages || 1);
@@ -203,7 +246,7 @@ export default function Products() {
       })
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
-  }, [page, sortBy]);
+  }, [page, sortBy, highlightId]);
 
   useEffect(() => { load(search, page, sortBy); }, [load, search, page, sortBy]);
 
@@ -317,24 +360,20 @@ export default function Products() {
           <div className="page-subtitle">Manage inventory, pricing, and stock levels</div>
         </div>
         <div className="flex gap-2">
-          {showForm ? (
-            <button className="btn btn-outline" onClick={() => { setShowForm(false); setEditId(null); }}>✕ Cancel</button>
-          ) : (
-            <button className="btn btn-primary" onClick={openAdd}>+ Add Product</button>
-          )}
+          <button className="btn btn-primary" onClick={openAdd}>+ Add Product</button>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 24, borderBottom: '1.5px solid #e2e8f0', marginBottom: 24, padding: '0 4px' }}>
         <div 
           onClick={() => setActiveTab('products')} 
-          style={{ padding: '10px 4px', borderBottom: activeTab === 'products' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'products' ? 700 : 600, color: activeTab === 'products' ? 'var(--primary)' : '#64748b', transition: 'all 0.2s' }}
+          style={{ padding: '10px 4px', borderBottom: activeTab === 'products' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'products' ? 700 : 600, color: activeTab === 'products' ? 'var(--primary)' : 'var(--text-muted)', transition: 'all 0.2s' }}
         >
           All Products
         </div>
         <div 
           onClick={() => setActiveTab('lists')} 
-          style={{ padding: '10px 4px', borderBottom: activeTab === 'lists' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'lists' ? 700 : 600, color: activeTab === 'lists' ? 'var(--primary)' : '#64748b', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ padding: '10px 4px', borderBottom: activeTab === 'lists' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'lists' ? 700 : 600, color: activeTab === 'lists' ? 'var(--primary)' : 'var(--text-muted)', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }}
         >
           <List size={16} /> Item Lists
         </div>
@@ -348,16 +387,22 @@ export default function Products() {
         <>
           {/* Add / Edit Form */}
       {showForm && (
-        <div className="card" style={{ marginBottom: 20, border: '1.5px solid #6366f1', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.15)' }}>
-          <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', borderBottom: '1.5px solid #e2e8f0' }}>
-            <div style={{ background: editId ? '#fef3c7' : '#ecfdf5', color: editId ? '#d97706' : '#059669', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {editId ? <Edit size={16} /> : <Plus size={16} />}
+        <div className="modal-overlay" onMouseDown={() => { setShowForm(false); setEditId(null); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.60)', zIndex: 9999, backdropFilter: 'blur(4px)', overflowY: 'auto', padding: '20px' }}>
+          <div className="modal" onMouseDown={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', borderRadius: 12, width: '100%', maxWidth: '800px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1.5px solid #e2e8f0', background: 'var(--sidebar-bg)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ background: editId ? 'var(--warning-light)' : 'var(--success-light)', color: editId ? '#d97706' : '#059669', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {editId ? <Edit size={16} /> : <Plus size={16} />}
+                </div>
+                <h3 style={{ margin: 0, fontWeight: 800, fontSize: '15.5px', color: 'var(--text)' }}>
+                  {editId ? 'Edit Product Details' : 'Add New Product Inventory'}
+                </h3>
+              </div>
+              <button className="btn-close" onClick={() => { setShowForm(false); setEditId(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
             </div>
-            <div className="card-title" style={{ margin: 0, fontWeight: 800, fontSize: '15.5px', color: '#1e293b' }}>
-              {editId ? 'Edit Product Details' : 'Add New Product Inventory'}
-            </div>
-          </div>
-          <div className="card-body" style={{ padding: '20px 24px' }}>
+            <div className="modal-body" style={{ padding: '20px 24px' }}>
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(12, 1fr)', 
@@ -366,7 +411,7 @@ export default function Products() {
             }}>
               {/* Name */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 4' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Product Name *</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Product Name *</label>
                 <input className="form-control" value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. Cement Bag, Rice" autoFocus style={{ borderRadius: 8 }} />
@@ -374,23 +419,23 @@ export default function Products() {
 
               {/* Unit — dynamic */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Unit</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Unit</label>
                 <UnitInput value={form.unit} onChange={v => setForm(f => ({ ...f, unit: v }))} />
               </div>
 
               {/* Weight per unit */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Weight per Unit (kg)</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Weight per Unit (kg)</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.weight_per_unit}
                   onChange={e => { setForm(f => ({ ...f, weight_per_unit: e.target.value })); setPriceCalculated(false); }}
                   placeholder="e.g. 50" style={{ borderRadius: 8 }} />
-                <div className="form-hint" style={{ fontSize: '11px', color: '#64748b', marginTop: 4 }}>Used for quintal price calculation</div>
+                <div className="form-hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>Used for quintal price calculation</div>
               </div>
 
               {/* Base Price */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Base Price ₹ *</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Base Price ₹ *</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.price}
                   onChange={e => { setForm(f => ({ ...f, price: e.target.value })); setPriceCalculated(false); }}
@@ -399,7 +444,7 @@ export default function Products() {
 
               {/* GST */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>GST %</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>GST %</label>
                 <select className="form-control" value={form.gst}
                   onChange={e => { setForm(f => ({ ...f, gst: e.target.value })); setPriceCalculated(false); }}
                   style={{ borderRadius: 8 }}>
@@ -409,7 +454,7 @@ export default function Products() {
 
               {/* Suggested Final Price */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 5' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 700, color: '#475569' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 700, color: 'var(--text-muted)' }}>
                   <span>Suggested Final Price ₹</span>
                   <button
                     type="button"
@@ -424,14 +469,14 @@ export default function Products() {
                   value={form.suggested_price}
                   onChange={e => setForm(f => ({ ...f, suggested_price: e.target.value }))}
                   placeholder="Auto-calculated or manual" style={{ borderRadius: 8 }} />
-                <div className="form-hint" style={{ fontSize: '11px', color: '#64748b', marginTop: 4 }}>
+                <div className="form-hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>
                   Formula: Base + (Weight ÷ 100 × Quintal Charge) + GST.
                 </div>
               </div>
 
               {/* Stock */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 3' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Current Stock</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Current Stock</label>
                 <input className="form-control" type="number" min="0"
                   value={form.stock}
                   onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
@@ -440,18 +485,20 @@ export default function Products() {
 
               {/* Custom Low Stock Alert */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 4' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#475569' }}>Custom Low Stock Alert</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Custom Low Stock Alert</label>
                 <input className="form-control" type="number" min="0"
                   value={form.custom_low_stock}
                   onChange={e => setForm(f => ({ ...f, custom_low_stock: e.target.value }))}
                   placeholder={`Global: ${threshold}`} style={{ borderRadius: 8 }} />
-                <div className="form-hint" style={{ fontSize: '11px', color: '#64748b', marginTop: 4 }}>Leave blank to use global threshold ({threshold})</div>
+                <div className="form-hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>Leave blank to use global threshold ({threshold})</div>
               </div>
             </div>
 
-            <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 20, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
+            </div>
+
+            <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 12, justifyContent: 'flex-end', background: 'var(--bg)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }}>
               <button className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }} onClick={() => { setShowForm(false); setEditId(null); }}>
-                <X size={14} /> Cancel
+                {t('Cancel', 'रद्द करें')}
               </button>
               <button className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }} onClick={handleSave} disabled={saving}>
                 {saving ? (
@@ -488,15 +535,14 @@ export default function Products() {
               >✕</button>
             )}
           </div>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: isMobile ? '100%' : 'auto' }}>
-            <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
-              <ArrowDownAZ size={16} />
-            </span>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' }} title="Sort Products" onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}>
+            <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', color: '#64748b' }}>
+              <ArrowDownAZ size={18} />
+            </div>
             <select
-              className="form-control"
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
-              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8, minWidth: 180, cursor: 'pointer', appearance: 'none' }}
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', appearance: 'none' }}
             >
               <option value="recently_added">Sort: Recently Added</option>
               <option value="last_updated">Sort: Last Updated</option>
@@ -526,7 +572,7 @@ export default function Products() {
           ) : products.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 24px', textAlign: 'center' }}>
               <div style={{ color: '#cbd5e1', marginBottom: 12, display: 'flex', justifyContent: 'center' }}><Package size={48} /></div>
-              <div className="empty-text" style={{ fontSize: 15, fontWeight: 600, color: '#475569' }}>{search ? `No products match "${search}"` : 'No products yet'}</div>
+              <div className="empty-text" style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-muted)' }}>{search ? `No products match "${search}"` : 'No products yet'}</div>
               <div className="empty-sub" style={{ marginTop: 8 }}>
                 {!search && (
                   <button className="btn btn-primary" onClick={openAdd} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, marginTop: 12 }}>
@@ -538,15 +584,15 @@ export default function Products() {
           ) : (
             <>
               {window.innerWidth < 768 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 16px', padding: '10px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 16px', padding: '10px 14px', background: 'var(--primary-light)', border: '1px solid #bae6fd', borderRadius: 10, color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
                   <Info size={14} style={{ flexShrink: 0 }} />
                   <span>Swipe horizontally ↔ to view full details (GST, Weight, Stock, Actions).</span>
                 </div>
               )}
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <table style={{ minWidth: '850px', width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc' }}>
+                  <tr style={{ background: 'var(--bg)' }}>
                     {['Product Name', 'Base Price', 'GST', 'Final Price', 'Weight', 'Stock', 'Actions'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: h.includes('Price') || h === 'Stock' || h === 'GST' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
@@ -562,16 +608,16 @@ export default function Products() {
                       if (!search.trim() || !text) return text || '—';
                       const i = text.toLowerCase().indexOf(search.trim().toLowerCase());
                       if (i === -1) return text;
-                      return <>{text.slice(0, i)}<mark style={{ background: '#fef08a', padding: 0, borderRadius: 2 }}>{text.slice(i, i + search.trim().length)}</mark>{text.slice(i + search.trim().length)}</>;
+                      return <>{text.slice(0, i)}<mark style={{ background: 'var(--warning-light)', padding: 0, borderRadius: 2 }}>{text.slice(i, i + search.trim().length)}</mark>{text.slice(i + search.trim().length)}</>;
                     };
 
                     return (
-                      <tr key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: !p.is_active ? '#fafafa' : idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <tr id={`product-${p._id}`} key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: highlightId === p._id ? 'var(--warning-light)' : (!p.is_active ? 'var(--bg-hover)' : idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)'), transition: 'background-color 0.5s ease' }}>
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                             {hl(p.name)}
-                            {isNewProduct(p.createdAt) && <span style={{ fontSize: 9, background: '#ef4444', color: 'white', padding: '2px 6px', borderRadius: 4, fontWeight: 700, letterSpacing: 0.5 }}>NEW</span>}
-                            {!p.is_active && <span style={{ fontSize: 10, background: '#f3f4f6', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
+                            {isNewProduct(p.createdAt) && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 800, letterSpacing: 0.5 }}>NEW</span>}
+                            {!p.is_active && <span style={{ fontSize: 10, background: 'var(--border)', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
                             <span>{p.unit}</span>
@@ -582,7 +628,7 @@ export default function Products() {
                           <div style={{ fontSize: 14 }}>{fc(p.price)}</div>
                           <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={10} /> {formatLastUpdated(p.updatedAt)}</div>
-                            {p.last_updated_by && <div style={{ fontSize: 9, color: '#64748b' }}>by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
+                            {p.last_updated_by && <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
                           </div>
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--text-muted)' }}>
@@ -599,10 +645,10 @@ export default function Products() {
                             {p.stock} {p.unit}
                           </span>
                           {p.stock === 0 && (
-                            <span style={{ marginLeft: 4, fontSize: 10, background: '#fef2f2', color: 'var(--danger)', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>Out</span>
+                            <span style={{ marginLeft: 4, fontSize: 10, background: 'var(--danger-light)', color: 'var(--danger)', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>Out</span>
                           )}
                           {p.stock > 0 && p.stock <= minStock && (
-                            <span style={{ marginLeft: 4, fontSize: 10, background: '#fffbeb', color: '#92400e', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>Low</span>
+                            <span style={{ marginLeft: 4, fontSize: 10, background: 'var(--warning-light)', color: '#92400e', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>Low</span>
                           )}
                         </td>
                         <td style={{ padding: '10px 14px' }}>
@@ -621,8 +667,7 @@ export default function Products() {
                               onClick={() => openEdit(p)}
                               style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}
                             >
-                              <Edit size={12} /> Edit
-                            </button>
+                              <Edit size={12} />{t('Edit', 'संपादित करें')}</button>
                             <button 
                               className="btn btn-ghost btn-sm" 
                               style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }}
@@ -700,18 +745,18 @@ export default function Products() {
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
         <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.60)', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: '400px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e2e8f0', margin: '16px', padding: '20px' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', borderRadius: 12, width: '100%', maxWidth: '400px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e2e8f0', margin: '16px', padding: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-              <div style={{ background: '#fee2e2', color: '#ef4444', padding: 12, borderRadius: '50%', flexShrink: 0 }}>
+              <div style={{ background: 'var(--danger-light)', color: '#ef4444', padding: 12, borderRadius: '50%', flexShrink: 0 }}>
                 <AlertTriangle size={24} />
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Delete Product?</h3>
-                <p style={{ margin: '8px 0 0', fontSize: 14, color: '#64748b', lineHeight: 1.5 }}>Are you sure you want to delete this product? This action cannot be undone.</p>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>Delete Product?</h3>
+                <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.5 }}>Are you sure you want to delete this product? This action cannot be undone.</p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
-              <button className="btn btn-outline" onClick={() => setDeleteConfirmId(null)} style={{ borderRadius: 8, padding: '8px 16px' }}>Cancel</button>
+              <button className="btn btn-outline" onClick={() => setDeleteConfirmId(null)} style={{ borderRadius: 8, padding: '8px 16px' }}>{t('Cancel', 'रद्द करें')}</button>
               <button className="btn btn-primary" onClick={confirmDelete} style={{ background: '#ef4444', borderColor: '#ef4444', borderRadius: 8, padding: '8px 16px' }}>Yes, Delete</button>
             </div>
           </div>
@@ -721,13 +766,13 @@ export default function Products() {
       {/* Share Modal */}
       {shareModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 400 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>Share Product</h3>
               <button className="btn-close" onClick={() => setShareModal(null)}><X size={20} /></button>
             </div>
             <div className="modal-body" style={{ padding: '20px' }}>
-              <p style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>
+              <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>
                 Give a manager access to <strong>{shareModal.name}</strong>.
               </p>
               <form onSubmit={handleShareSubmit}>
@@ -746,7 +791,7 @@ export default function Products() {
                   </select>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShareModal(null)}>Cancel</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShareModal(null)}>{t('Cancel', 'रद्द करें')}</button>
                   <button type="submit" className="btn btn-primary" disabled={sharing}>
                     {sharing ? 'Sharing...' : 'Share Product'}
                   </button>
@@ -762,17 +807,17 @@ export default function Products() {
       {/* Add To List Modal */}
       {showAddToListModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 450 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
             <div className="modal-header">
               <h3>Add {selectedProductIds.length} Items to List</h3>
               <button className="btn-close" onClick={() => setShowAddToListModal(false)}><X size={20} /></button>
             </div>
             <div className="modal-body" style={{ padding: '20px' }}>
               <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-                <div onClick={() => setAddToListMode('existing')} style={{ flex: 1, textAlign: 'center', padding: '10px', background: addToListMode === 'existing' ? '#eff6ff' : '#f8fafc', border: `1px solid ${addToListMode === 'existing' ? '#bfdbfe' : '#e2e8f0'}`, borderRadius: 8, cursor: 'pointer', fontWeight: addToListMode === 'existing' ? 700 : 500, color: addToListMode === 'existing' ? '#1d4ed8' : '#64748b' }}>
+                <div onClick={() => setAddToListMode('existing')} style={{ flex: 1, textAlign: 'center', padding: '10px', background: addToListMode === 'existing' ? 'var(--primary-light)' : 'var(--bg)', border: `1px solid ${addToListMode === 'existing' ? '#bfdbfe' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer', fontWeight: addToListMode === 'existing' ? 700 : 500, color: addToListMode === 'existing' ? '#1d4ed8' : 'var(--text-muted)' }}>
                   Existing List
                 </div>
-                <div onClick={() => setAddToListMode('new')} style={{ flex: 1, textAlign: 'center', padding: '10px', background: addToListMode === 'new' ? '#eff6ff' : '#f8fafc', border: `1px solid ${addToListMode === 'new' ? '#bfdbfe' : '#e2e8f0'}`, borderRadius: 8, cursor: 'pointer', fontWeight: addToListMode === 'new' ? 700 : 500, color: addToListMode === 'new' ? '#1d4ed8' : '#64748b' }}>
+                <div onClick={() => setAddToListMode('new')} style={{ flex: 1, textAlign: 'center', padding: '10px', background: addToListMode === 'new' ? 'var(--primary-light)' : 'var(--bg)', border: `1px solid ${addToListMode === 'new' ? '#bfdbfe' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer', fontWeight: addToListMode === 'new' ? 700 : 500, color: addToListMode === 'new' ? '#1d4ed8' : 'var(--text-muted)' }}>
                   Create New List
                 </div>
               </div>
@@ -788,7 +833,7 @@ export default function Products() {
                       ))}
                     </select>
                   ) : (
-                    <div style={{ color: '#64748b', fontSize: 14, padding: '10px 0' }}>No lists found. Please create a new one.</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: 14, padding: '10px 0' }}>No lists found. Please create a new one.</div>
                   )}
                 </div>
               ) : (
@@ -799,7 +844,7 @@ export default function Products() {
               )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                <button type="button" className="btn btn-outline" onClick={() => setShowAddToListModal(false)}>Cancel</button>
+                <button type="button" className="btn btn-outline" onClick={() => setShowAddToListModal(false)}>{t('Cancel', 'रद्द करें')}</button>
                 <button type="button" className="btn btn-primary" onClick={handleAddToListSubmit} disabled={addingToList}>
                   {addingToList ? 'Saving...' : 'Confirm'}
                 </button>

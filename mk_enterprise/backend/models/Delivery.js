@@ -37,6 +37,7 @@ const deliverySchema = new mongoose.Schema({
     enum: ['vehicle_incoming', 'walkin_delivery', 'outgoing'], 
     default: 'vehicle_incoming' 
   },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   notes: { type: String, default: '' },
   // When delivered, record actual time
   delivered_at: { type: Date, default: null },

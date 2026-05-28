@@ -65,7 +65,7 @@ function calcItem(item, gstEnabled) {
 export default function EditInvoice() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { settings } = useApp();
+  const { t, settings } = useApp();
   const gstEnabled = settings.gst_enabled !== false;
 
   const [original, setOriginal] = useState(null);
@@ -290,11 +290,11 @@ export default function EditInvoice() {
               <div className="summary-row"><span className="text-muted">SGST</span><span className="mono">{fc(gstTotal / 2)}</span></div>
             </>}
             {dis > 0 && <div className="summary-row text-success"><span>Discount</span><span className="mono">- {fc(dis)}</span></div>}
-            <div className="summary-row total"><span>Total</span><span className="mono">{fc(total)}</span></div>
+            <div className="summary-row total"><span>{t('Total', 'कुल')}</span><span className="mono">{fc(total)}</span></div>
             {prevBal > 0 && <div className="summary-row prev"><span>+ Prev. Balance</span><span className="mono">{fc(prevBal)}</span></div>}
             {prevBal > 0 && <div className="summary-row total" style={{ fontSize: 15 }}><span>Net Payable</span><span className="mono">{fc(totalWithPrev)}</span></div>}
             <hr className="divider" />
-            <div className="summary-row paid"><span>Amount Received</span><span className="mono">{fc(amtReceived)}</span></div>
+            <div className="summary-row paid"><span>{t('Amount Received', 'प्राप्त राशि')}</span><span className="mono">{fc(amtReceived)}</span></div>
             <div className={`summary-row ${balanceDue > 0.01 ? 'due' : 'paid'}`}>
               <span>{balanceDue > 0.01 ? 'Balance Due' : 'Change'}</span>
               <span className="mono">{fc(Math.abs(balanceDue))}</span>
@@ -302,7 +302,7 @@ export default function EditInvoice() {
             <button className="btn btn-success btn-block btn-lg mt-3 d-inline-flex align-items-center justify-content-center gap-1" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving...' : <><Save size={16} /> Save Changes</>}
             </button>
-            <button className="btn btn-outline btn-block mt-2 d-inline-flex align-items-center justify-content-center" onClick={() => navigate(-1)}>Cancel</button>
+            <button className="btn btn-outline btn-block mt-2 d-inline-flex align-items-center justify-content-center" onClick={() => navigate(-1)}>{t('Cancel', 'रद्द करें')}</button>
           </div>
         </div>
       </div>

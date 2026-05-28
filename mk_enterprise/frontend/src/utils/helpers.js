@@ -28,14 +28,43 @@ export function formatCurrency(n) {
   return '₹' + (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function numToWords(num) {
-  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  if (!num || num === 0) return 'Zero Rupees Only';
+export function numToWords(num, isHindi = false) {
+  if (!num || num === 0) return isHindi ? 'शून्य रुपये मात्र' : 'Zero Rupees Only';
   const absNum = Math.abs(num);
   const n = Math.floor(absNum);
   const paise = Math.round((absNum - n) * 100);
+
+  if (isHindi) {
+    const a = ['', 'एक', 'दो', 'तीन', 'चार', 'पांच', 'छह', 'सात', 'आठ', 'नौ', 'दस',
+      'ग्यारह', 'बारह', 'तेरह', 'चौदह', 'पंद्रह', 'सोलह', 'सत्रह', 'अठारह', 'उन्नीस', 'बीस',
+      'इक्कीस', 'बाईस', 'तेईस', 'चौबीस', 'पच्चीस', 'छब्बीस', 'सत्ताईस', 'अट्ठाईस', 'उनतीस', 'तीस',
+      'इकतीस', 'बत्तीस', 'तैंतीस', 'चौंतीस', 'पैंतीस', 'छत्तीसों', 'सैंतीस', 'अड़तीस', 'उनतालीस', 'चालीस',
+      'इकतालीस', 'बयालीस', 'तैंतालीस', 'चवालीस', 'पैंतालीस', 'छियालीस', 'सैंतालीस', 'अड़तालीस', 'उनचास', 'पचास',
+      'इक्यावन', 'बावन', 'तिरेपन', 'चौवन', 'पचपन', 'छप्पन', 'सत्तावन', 'अट्ठावन', 'उनसठ', 'साठ',
+      'इकसठ', 'बासठ', 'तिरसठ', 'चौंसठ', 'पैंसठ', 'छियासठ', 'सड़सठ', 'अड़सठ', 'उनहत्तर', 'सत्तर',
+      'इकहत्तर', 'बहत्तर', 'तिहत्तर', 'चौहत्तर', 'पचहत्तर', 'छिहत्तर', 'सतहत्तर', 'अठहत्तर', 'उनासी', 'अस्सी',
+      'इक्यासी', 'बयासी', 'तिरासी', 'चौरासी', 'पचासी', 'छियासी', 'सत्तासी', 'अट्ठासी', 'नवासी', 'नब्बे',
+      'इक्यानवे', 'बानवे', 'तिरानवे', 'चौरानवे', 'पचानवे', 'छियानवे', 'संतानवे', 'अट्ठानवे', 'निन्यानवे'];
+    
+    function convHi(v) {
+      if (v < 100) return a[v];
+      if (v < 1000) return a[Math.floor(v / 100)] + ' सौ' + (v % 100 ? ' ' + convHi(v % 100) : '');
+      if (v < 100000) return convHi(Math.floor(v / 1000)) + ' हज़ार' + (v % 1000 ? ' ' + convHi(v % 1000) : '');
+      if (v < 10000000) return convHi(Math.floor(v / 100000)) + ' लाख' + (v % 100000 ? ' ' + convHi(v % 100000) : '');
+      return convHi(Math.floor(v / 10000000)) + ' करोड़' + (v % 10000000 ? ' ' + convHi(v % 10000000) : '');
+    }
+    let result = '';
+    if (n > 0) result += convHi(n) + ' रुपये';
+    if (paise > 0) {
+      if (result) result += ' और ';
+      result += convHi(paise) + ' पैसे';
+    }
+    return result ? result + ' मात्र' : 'शून्य रुपये मात्र';
+  }
+
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+    'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   function conv(v) {
     if (v < 20) return a[v];
     if (v < 100) return b[Math.floor(v / 10)] + (v % 10 ? ' ' + a[v % 10] : '');

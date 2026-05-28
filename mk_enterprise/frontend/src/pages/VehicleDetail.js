@@ -159,12 +159,12 @@ export default function VehicleDetail() {
             <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
               <Truck size={24} />
             </span>
-            <span>{delivery.vehicle_number}</span>
+            <span>{(delivery.vehicle_number || '').toUpperCase()}</span>
           </div>
-          <div className="page-subtitle" style={{ fontSize: '13.5px', color: '#64748b', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+          <div className="page-subtitle" style={{ fontSize: '13.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             {delivery.supplier && (
               <>
-                <span style={{ fontWeight: 700, color: '#1e293b' }}>{delivery.supplier}</span>
+                <span style={{ fontWeight: 700, color: 'var(--text)' }}>{delivery.supplier}</span>
                 <span>·</span>
               </>
             )}
@@ -193,7 +193,7 @@ export default function VehicleDetail() {
       </div>
 
       {isDelivered && (
-        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 12, padding: '12px 18px', marginBottom: 20, fontSize: 13.5, color: '#065f46', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ background: 'var(--success-light)', border: '1px solid #a7f3d0', borderRadius: 12, padding: '12px 18px', marginBottom: 20, fontSize: 13.5, color: '#065f46', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
           <CheckCircle size={16} style={{ color: '#059669' }} />
           <span>This delivery is complete. Stock and prices were updated at {delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}.</span>
         </div>
@@ -207,7 +207,7 @@ export default function VehicleDetail() {
 
               {/* Supplier Charges */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: '#1e293b', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: 'var(--text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
                   <span>🏭</span> {isMobile ? 'Supplier (₹)' : 'Supplier Charges (Total ₹)'}
                 </div>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -271,7 +271,7 @@ export default function VehicleDetail() {
                   )}
                 </div>
                 {!isMobile && (
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
                     Per item: ₹{((parseFloat(supplierCharge) || 0) / Math.max(1, items.filter(i => i.item_name).length)).toFixed(2)} → then ÷ qty per item
                   </div>
                 )}
@@ -279,7 +279,7 @@ export default function VehicleDetail() {
 
               {/* Quintal Charge */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: '#1e293b', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: 'var(--text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
                   <span>⚖️</span> {isMobile ? 'Quintal' : 'Quintal Charge (₹ per 100 kg)'}
                 </div>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -318,7 +318,7 @@ export default function VehicleDetail() {
                   </button>
                 </div>
                 {!isMobile && (
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
                     Formula: Base + (QC × Weight ÷ 100) + SupplierCharge + GST
                   </div>
                 )}
@@ -330,21 +330,21 @@ export default function VehicleDetail() {
 
       {/* Item Details */}
       <div className="card" style={{ borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
-        <div className="card-header" style={{ background: '#f8fafc', padding: '12px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: '#1e293b', fontSize: '14.5px' }}>
+        <div className="card-header" style={{ background: 'var(--bg)', padding: '12px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--text)', fontSize: '14.5px' }}>
             <span style={{ color: '#4f46e5', display: 'flex', alignItems: 'center' }}>
               <LayoutGrid size={16} />
             </span>
             <span>Item Details & Pricing</span>
           </div>
           {!isDelivered && (
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>
               Edit weight & pricing. Final Price is auto-calculated but editable.
             </div>
           )}
         </div>
 
-        <div className="card-body no-pad" style={{ background: '#fff' }}>
+        <div className="card-body no-pad" style={{ background: 'var(--bg-card)' }}>
           {false ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 12 }}>
               {items.map((item, idx) => {
@@ -353,7 +353,7 @@ export default function VehicleDetail() {
 
                 return (
                   <div key={idx} style={{
-                    background: '#fff',
+                    background: 'var(--bg-card)',
                     borderRadius: 14,
                     padding: 16,
                     border: '1px solid #e2e8f0',
@@ -365,15 +365,15 @@ export default function VehicleDetail() {
                     {/* Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: 10 }}>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: '14.5px', color: '#1e293b' }}>{item.item_name}</div>
-                        <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600, marginTop: 2 }}>Unit: {item.unit}</div>
+                        <div style={{ fontWeight: 800, fontSize: '14.5px', color: 'var(--text)' }}>{item.item_name}</div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>Unit: {item.unit}</div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <span style={{ fontSize: 10.5, fontWeight: 700, background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, background: 'var(--bg-hover)', color: 'var(--text-muted)', padding: '3px 8px', borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
                           {item.label || 'Goods'}
                         </span>
                         {!item.product_id && (
-                          <span style={{ fontSize: 10.5, background: '#fffbeb', color: '#b45309', padding: '3px 8px', borderRadius: 8, fontWeight: 700, border: '1px solid #fef3c7', fontFamily: "'Inter', sans-serif" }}>
+                          <span style={{ fontSize: 10.5, background: 'var(--warning-light)', color: '#b45309', padding: '3px 8px', borderRadius: 8, fontWeight: 700, border: '1px solid #fef3c7', fontFamily: "'Inter', sans-serif" }}>
                             New Item
                           </span>
                         )}
@@ -381,15 +381,15 @@ export default function VehicleDetail() {
                     </div>
 
                     {/* Stock Summary */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: '#f8fafc', padding: 10, borderRadius: 10, fontFamily: "'Inter', sans-serif" }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: 'var(--bg)', padding: 10, borderRadius: 10, fontFamily: "'Inter', sans-serif" }}>
                       <div>
-                        <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, marginBottom: 2 }}>Current Stock:</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2 }}>Current Stock:</div>
                         <div style={{ fontWeight: 700, fontSize: 12.5, color: stockColor }}>
                           {item.current_stock != null ? `${item.current_stock} ${item.unit}` : (item.product_id ? 'Loading...' : '—')}
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, marginBottom: 2 }}>Incoming Qty:</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2 }}>Incoming Qty:</div>
                         <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--primary)' }}>
                           +{item.quantity} {item.unit}
                         </div>
@@ -397,39 +397,39 @@ export default function VehicleDetail() {
                     </div>
 
                     {isDelivered ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, background: '#f8fafc', padding: 12, borderRadius: 10, fontFamily: "'Inter', sans-serif" }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, background: 'var(--bg)', padding: 12, borderRadius: 10, fontFamily: "'Inter', sans-serif" }}>
                         <div>
-                          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Final Stock:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: '#1e293b', marginLeft: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Final Stock:</span>
+                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
                             {item.final_stock ?? item.quantity} {item.unit}
                           </span>
                         </div>
                         <div>
-                          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Weight:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: '#1e293b', marginLeft: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Weight:</span>
+                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
                             {item.weight ? `${item.weight} kg` : '—'}
                           </span>
                         </div>
                         <div>
-                          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Base Price:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: '#1e293b', marginLeft: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Base Price:</span>
+                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
                             {item.base_price ? fc(item.base_price) : '—'}
                           </span>
                         </div>
                         <div>
-                          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Quintal:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: '#1e293b', marginLeft: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Quintal:</span>
+                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
                             {item.quintal_charge ? fc(item.quintal_charge) : '—'}
                           </span>
                         </div>
                         <div>
-                          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>GST %:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: '#1e293b', marginLeft: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>GST %:</span>
+                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
                             {item.gst}%
                           </span>
                         </div>
                         <div>
-                          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Final Price:</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Final Price:</span>
                           <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--primary)', marginLeft: 6 }}>
                             {item.final_price ? fc(item.final_price) : '—'}
                           </span>
@@ -440,7 +440,7 @@ export default function VehicleDetail() {
                         
                         {/* Final Stock */}
                         <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Final Stock</label>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Final Stock</label>
                           <div>
                             <input
                               type="number" min="0" step="0.01"
@@ -450,7 +450,7 @@ export default function VehicleDetail() {
                               onChange={e => updateItem(idx, 'final_stock', e.target.value)}
                             />
                             {item.current_stock != null && (
-                              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
                                 → {(item.current_stock + (parseFloat(item.final_stock) || 0)).toFixed(0)} total
                               </div>
                             )}
@@ -459,7 +459,7 @@ export default function VehicleDetail() {
 
                         {/* Weight */}
                         <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Weight (kg)</label>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Weight (kg)</label>
                           <input type="number" min="0" step="0.01" className="form-control"
                             style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
                             value={item.weight}
@@ -469,7 +469,7 @@ export default function VehicleDetail() {
 
                         {/* Base Price */}
                         <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Base Price ₹</label>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Base Price ₹</label>
                           <input type="number" min="0" step="0.01" className="form-control"
                             style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
                             value={item.base_price}
@@ -479,7 +479,7 @@ export default function VehicleDetail() {
 
                         {/* Quintal Charge */}
                         <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Quintal Charge ₹</label>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Quintal Charge ₹</label>
                           <div>
                             <input type="number" min="0" step="0.01" className="form-control"
                               style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
@@ -487,7 +487,7 @@ export default function VehicleDetail() {
                               placeholder="per 100kg"
                               onChange={e => updateItem(idx, 'quintal_charge', e.target.value)} />
                             {parseFloat(item.quintal_charge) > 0 && parseFloat(item.weight) > 0 && (
-                              <div style={{ fontSize: 9.5, color: '#64748b', marginTop: 2 }}>
+                              <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 2 }}>
                                 +{fc((parseFloat(item.quintal_charge) * parseFloat(item.weight)) / 100)}
                               </div>
                             )}
@@ -496,7 +496,7 @@ export default function VehicleDetail() {
 
                         {/* GST % */}
                         <div style={{ gridColumn: 'span 5' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>GST %</label>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>GST %</label>
                           <select className="form-control" style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
                             value={item.gst}
                             onChange={e => updateItem(idx, 'gst', e.target.value)}>
@@ -506,14 +506,14 @@ export default function VehicleDetail() {
 
                         {/* Final Price */}
                         <div style={{ gridColumn: 'span 7' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Final Price ₹</label>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Final Price ₹</label>
                           <div>
                             <input type="number" min="0" step="0.01" className="form-control"
                               style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8, fontWeight: 700 }}
                               value={item.final_price}
                               placeholder="Auto"
                               onChange={e => updateItem(idx, 'final_price', e.target.value)} />
-                            <div style={{ fontSize: 9.5, color: '#64748b', marginTop: 2, fontWeight: 500 }}>Auto-calculated</div>
+                            <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 2, fontWeight: 500 }}>Auto-calculated</div>
                           </div>
                         </div>
 
@@ -527,13 +527,13 @@ export default function VehicleDetail() {
             <div className="table-wrap" style={{ border: 'none', borderRadius: 0, overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0' }}>
+                  <tr style={{ background: 'var(--bg)', borderBottom: '1.5px solid #e2e8f0' }}>
                     {[
                       'Item', 'Type', 'Current Stock', 'Incoming Qty',
                       'Final Stock', 'Weight (kg)',
                       'Base Price ₹', 'Quintal Charge ₹', 'GST %', 'Final Price ₹'
                     ].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif" }}>{h}</th>
+                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -543,20 +543,20 @@ export default function VehicleDetail() {
                     const stockColor = getLowStockColor(item.current_stock || 0);
 
                     return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#fff' : '#fafafa', transition: 'all 0.2s' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)', transition: 'all 0.2s' }}>
                         {/* Item Name */}
                         <td style={{ padding: '12px 16px', minWidth: 140, fontFamily: "'Inter', sans-serif" }}>
-                          <div style={{ fontWeight: 800, color: '#1e293b' }}>{item.item_name}</div>
-                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, fontWeight: 600 }}>{item.unit}</div>
+                          <div style={{ fontWeight: 800, color: 'var(--text)' }}>{item.item_name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>{item.unit}</div>
                           {!item.product_id && (
-                            <span style={{ fontSize: 10, background: '#fffbeb', color: '#b45309', padding: '2px 6px', borderRadius: 6, fontWeight: 700, border: '1px solid #fef3c7', marginTop: 4, display: 'inline-block' }}>
+                            <span style={{ fontSize: 10, background: 'var(--warning-light)', color: '#b45309', padding: '2px 6px', borderRadius: 6, fontWeight: 700, border: '1px solid #fef3c7', marginTop: 4, display: 'inline-block' }}>
                               New Item
                             </span>
                           )}
                         </td>
                         {/* Label */}
                         <td style={{ padding: '12px 16px', fontFamily: "'Inter', sans-serif" }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: 8 }}>{item.label || 'Goods'}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, background: 'var(--bg-hover)', color: 'var(--text-muted)', padding: '4px 10px', borderRadius: 8 }}>{item.label || 'Goods'}</span>
                         </td>
                         {/* Current Stock */}
                         <td style={{ padding: '12px 16px', fontFamily: "'Inter', sans-serif" }}>
@@ -588,7 +588,7 @@ export default function VehicleDetail() {
                                 onChange={e => updateItem(idx, 'final_stock', e.target.value)}
                               />
                               {item.current_stock != null && (
-                                <div style={{ fontSize: 10, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
+                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
                                   → {(item.current_stock + (parseFloat(item.final_stock) || 0)).toFixed(0)} total
                                 </div>
                               )}
@@ -631,7 +631,7 @@ export default function VehicleDetail() {
                                 placeholder="per 100kg"
                                 onChange={e => updateItem(idx, 'quintal_charge', e.target.value)} />
                               {parseFloat(item.quintal_charge) > 0 && parseFloat(item.weight) > 0 && (
-                                <div style={{ fontSize: 10, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
+                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
                                   +{fc((parseFloat(item.quintal_charge) * parseFloat(item.weight)) / 100)}
                                 </div>
                               )}
@@ -663,7 +663,7 @@ export default function VehicleDetail() {
                                 value={item.final_price}
                                 placeholder="Auto"
                                 onChange={e => updateItem(idx, 'final_price', e.target.value)} />
-                              <div style={{ fontSize: 9.5, color: '#64748b', marginTop: 4, fontWeight: 500 }}>
+                              <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
                                 Auto-calculated
                               </div>
                             </div>
@@ -681,7 +681,7 @@ export default function VehicleDetail() {
 
       {/* Pricing Formula */}
       {!isDelivered && (
-        <div style={{ marginTop: 14, padding: '12px 18px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, fontSize: '13px', color: '#1e40af', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ marginTop: 14, padding: '12px 18px', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 12, fontSize: '13px', color: '#1e40af', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>💡</span>
           <span><strong>Pricing Formula:</strong> Final Price = Base Price + (Quintal Charge × Weight ÷ 100) + GST%. Final Price is auto-calculated but can be manually overridden.</span>
         </div>

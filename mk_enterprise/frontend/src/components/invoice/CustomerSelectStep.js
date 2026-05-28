@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
+import { useApp } from '../../context/AppContext';
 import toast from 'react-hot-toast';
 import { customerApi } from '../../utils/api';
 import { formatCurrency } from '../../utils/helpers';
 import { ArrowLeft, Search, X, UserPlus, User, Phone, MapPin, Plus } from 'lucide-react';
-import { FormattedName, formatCustomerName, getPrefixOptions, applyAutoSuffix, parseCustomerName } from '../../utils/nameFormatter';
+import { parseCustomerName } from '../../utils/nameFormatter';
 
 export default function CustomerSelectStep({
   customers = [],
@@ -12,12 +13,12 @@ export default function CustomerSelectStep({
   onBack,
   onCustomerCreated,
 }) {
+  const { t } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Form State
-  const [prefix, setPrefix] = useState('Shree');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -55,18 +56,7 @@ export default function CustomerSelectStep({
   };
 
   const handleNameChange = (e) => {
-    const val = e.target.value;
-    setName(val);
-    const opts = getPrefixOptions(val);
-    if (opts && opts.length > 0) {
-      // Keep selected prefix appropriate to Hindi/English
-      const currentH = /[\u0900-\u097F]/.test(val);
-      if (currentH && prefix === 'Shree') {
-        setPrefix('श्री');
-      } else if (!currentH && prefix === 'श्री') {
-        setPrefix('Shree');
-      }
-    }
+    setName(e.target.value);
   };
 
   const handleSaveCustomer = async (e) => {
@@ -82,22 +72,14 @@ export default function CustomerSelectStep({
 
     setLoading(true);
     try {
-      // Auto suffix with "jii" / "जी" as per project norms
-      const suffixedName = applyAutoSuffix(name);
-      const fullName = formatCustomerName(prefix, suffixedName);
-
       const balNum = parseFloat(balance) || 0;
-      // If balance type is advance, it should be stored as negative balance, or based on DB design
-      // Let's verify how balance is stored in Customer.js.
-      // Usually, positive balance = due, negative balance = advance (or vice versa).
-      // Let's store positive balance for due, negative balance for advance.
       const openingBalance = balanceType === 'advance' ? -Math.abs(balNum) : Math.abs(balNum);
 
       const payload = {
-        name: fullName,
+        name: name.trim(),
         phone: phone.trim(),
         address: address.trim(),
-        opening_balance: openingBalance,
+        balance: openingBalance,
       };
 
       const newCust = await customerApi.create(payload);
@@ -108,7 +90,6 @@ export default function CustomerSelectStep({
       setPhone('');
       setAddress('');
       setBalance('');
-      setPrefix('Shree');
       setBalanceType('due');
       setShowAddModal(false);
 
@@ -135,8 +116,8 @@ export default function CustomerSelectStep({
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h1 className="page-title" style={{ margin: 0 }}>Select Customer</h1>
-          <p className="page-subtitle" style={{ margin: '2px 0 0 0' }}>Choose a customer to initiate the invoice</p>
+          <h1 className="page-title" style={{ margin: 0 }}>{t('Select Customer', 'ग्राहक चुनें')}</h1>
+          <p className="page-subtitle" style={{ margin: '2px 0 0 0' }}>{t('Choose a customer to initiate the invoice', 'बिल शुरू करने के लिए ग्राहक चुनें')}</p>
         </div>
       </div>
 
@@ -148,7 +129,7 @@ export default function CustomerSelectStep({
           <input
             type="text"
             className="form-control cs-search-input"
-            placeholder="Search by name or phone number..."
+            placeholder={t('Search by name or phone number...', 'नाम या फोन नंबर से खोजें...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -227,7 +208,7 @@ export default function CustomerSelectStep({
 
         {/* Counter */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', color: 'var(--text-muted)', padding: '0 4px' }}>
-          <span>Total Customers: {customers.length}</span>
+          <span>{t('Total Customers:', 'कुल ग्राहक:')} {customers.length}</span>
           {searchQuery && <span>Found: {filteredCustomers.length}</span>}
         </div>
       </div>
@@ -297,7 +278,7 @@ export default function CustomerSelectStep({
                     height: '48px',
                     borderRadius: '50%',
                     background: getAvatarColor(customer.name),
-                    color: '#fff',
+                    color: 'var(--bg-card)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -313,7 +294,7 @@ export default function CustomerSelectStep({
                 {/* Details */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <FormattedName fullName={customer.name} />
+                    {customer.name}
                   </div>
                   {customer.phone && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
@@ -401,21 +382,11 @@ export default function CustomerSelectStep({
             
             <form onSubmit={handleSaveCustomer} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
-              {/* Name and Prefix */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label className="form-label" style={{ fontWeight: '600', fontSize: '13px' }}>Customer Name *</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select
-                    className="form-control"
-                    value={prefix}
-                    onChange={(e) => setPrefix(e.target.value)}
-                    style={{ width: '110px', height: '42px', borderRadius: '8px' }}
-                  >
-                    {getPrefixOptions(name).map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                  <input
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {t('Customer Name *', 'ग्राहक का नाम *')}
+                    </label>
+                    <input
                     type="text"
                     className="form-control"
                     placeholder="Enter name..."
@@ -425,7 +396,6 @@ export default function CustomerSelectStep({
                     style={{ flex: 1, height: '42px', borderRadius: '8px' }}
                   />
                 </div>
-              </div>
 
               {/* Phone */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

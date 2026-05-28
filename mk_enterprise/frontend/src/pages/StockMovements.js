@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { stockApi, productApi } from '../utils/api';
 import { formatIST } from '../utils/helpers';
@@ -7,6 +8,7 @@ import { Package, Plus, Filter, ArrowDownRight, ArrowUpRight, FileText, Settings
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
 export default function StockMovements() {
+  const { t } = useApp();
   const [movements, setMovements] = useState([]);
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -57,7 +59,7 @@ export default function StockMovements() {
       <div className="page-header" style={{ marginBottom: 24 }}>
         <div>
           <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ background: '#fef3c7', color: '#d97706', padding: 8, borderRadius: 12, display: 'flex' }}>
+            <div style={{ background: 'var(--warning-light)', color: '#d97706', padding: 8, borderRadius: 12, display: 'flex' }}>
               <Layers size={24} strokeWidth={2.5} />
             </div>
             <span>Stock Ledger</span>
@@ -77,9 +79,9 @@ export default function StockMovements() {
 
       {/* ── FILTERS ── */}
       <div className="card" style={{ marginBottom: 24, borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-        <div className="card-body" style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', background: '#f8fafc', borderRadius: 16 }}>
+        <div className="card-body" style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', background: 'var(--bg)', borderRadius: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Filter size={16} /> Filters
             </span>
             <select
@@ -105,7 +107,7 @@ export default function StockMovements() {
             </select>
           </div>
 
-          <div style={{ marginLeft: 'auto', background: '#fff', padding: '6px 12px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
+          <div style={{ marginLeft: 'auto', background: 'var(--bg-card)', padding: '6px 12px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
             {total} Records Found
           </div>
         </div>
@@ -118,21 +120,21 @@ export default function StockMovements() {
             <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><span className="spinner"></span></div>
           ) : movements.length === 0 ? (
              <div className="empty-state" style={{ padding: 60, textAlign: 'center' }}>
-                <div style={{ background: '#f8fafc', width: 64, height: 64, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#94a3b8' }}>
+                <div style={{ background: 'var(--bg)', width: 64, height: 64, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#94a3b8' }}>
                   <Layers size={32} />
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>No Movements Found</div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>Try adjusting your filters or record a new movement.</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>No Movements Found</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Try adjusting your filters or record a new movement.</div>
               </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+              <thead style={{ background: 'var(--bg)', borderBottom: '2px solid #e2e8f0' }}>
                 <tr>
                   {['Date (IST)', 'Product', 'Type', 'Source', 'Qty', 'Unit', 'Before', 'After', 'Vehicle / Driver', 'Notes'].map((h, i) => (
                     <th key={h} style={{
                       padding: '16px 20px',
                       textAlign: (i === 4 || i === 6 || i === 7) ? 'right' : 'left',
-                      fontSize: 11.5, fontWeight: 800, color: '#475569',
+                      fontSize: 11.5, fontWeight: 800, color: 'var(--text-muted)',
                       textTransform: 'uppercase', letterSpacing: '0.5px'
                     }}>{h}</th>
                   ))}
@@ -144,16 +146,16 @@ export default function StockMovements() {
                   return (
                     <tr key={m._id} style={{
                       borderBottom: '1px solid #f1f5f9',
-                      background: idx % 2 === 0 ? '#fff' : '#fafafa',
+                      background: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)',
                       transition: 'background 0.2s'
-                    }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#fafafa'}>
+                    }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'} onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)'}>
                       
-                      <td style={{ padding: '14px 20px', fontSize: 12.5, color: '#475569', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 600, color: '#1e293b' }}>{m.ist_formatted ? m.ist_formatted.split(' ')[0] : formatIST(m.date).split(' ')[0]}</div>
+                      <td style={{ padding: '14px 20px', fontSize: 12.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text)' }}>{m.ist_formatted ? m.ist_formatted.split(' ')[0] : formatIST(m.date).split(' ')[0]}</div>
                         <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{m.ist_formatted ? m.ist_formatted.split(' ').slice(1).join(' ') : formatIST(m.date).split(' ').slice(1).join(' ')}</div>
                       </td>
 
-                      <td style={{ padding: '14px 20px', fontWeight: 600, color: '#1e293b', fontSize: 14 }}>
+                      <td style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>
                         {m.product_name}
                       </td>
 
@@ -171,7 +173,7 @@ export default function StockMovements() {
                       <td style={{ padding: '14px 20px' }}>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 5,
-                          color: '#475569',
+                          color: 'var(--text-muted)',
                           fontSize: 12, fontWeight: 600, textTransform: 'capitalize'
                         }}>
                           <span style={{ color: m.source === 'invoice' ? '#6366f1' : m.source === 'manual' ? '#94a3b8' : '#f59e0b', display: 'flex' }}>
@@ -185,7 +187,7 @@ export default function StockMovements() {
                         {isIncoming ? '+' : '−'}{m.qty}
                       </td>
 
-                      <td style={{ padding: '14px 20px', fontSize: 12.5, color: '#64748b', fontWeight: 600 }}>
+                      <td style={{ padding: '14px 20px', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>
                         {m.qty_unit || '—'}
                       </td>
 
@@ -193,15 +195,15 @@ export default function StockMovements() {
                         {m.stock_before}
                       </td>
 
-                      <td style={{ padding: '14px 20px', textAlign: 'right', fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: '#1e293b' }}>
+                      <td style={{ padding: '14px 20px', textAlign: 'right', fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
                         {m.stock_after}
                       </td>
 
                       <td style={{ padding: '14px 20px' }}>
                         {(m.vehicle_number || m.driver_name) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {m.vehicle_number && <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {m.vehicle_number}</span>}
-                            {m.driver_name && <span style={{ fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.driver_name}</span>}
+                            {m.vehicle_number && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {(m.vehicle_number || '').toUpperCase()}</span>}
+                            {m.driver_name && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.driver_name}</span>}
                           </div>
                         ) : (
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4, fontStyle: 'italic' }}>
@@ -213,8 +215,8 @@ export default function StockMovements() {
                       <td style={{ padding: '14px 20px' }}>
                         {(m.notes || m.supplier) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 180 }}>
-                            {m.supplier && <span style={{ fontSize: 12, fontWeight: 600, color: '#1e293b' }}>{m.supplier}</span>}
-                            {m.notes && <span style={{ fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'flex-start', gap: 4 }}><AlignLeft size={12} style={{ marginTop: 2, flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notes}</span></span>}
+                            {m.supplier && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{m.supplier}</span>}
+                            {m.notes && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'flex-start', gap: 4 }}><AlignLeft size={12} style={{ marginTop: 2, flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notes}</span></span>}
                           </div>
                         ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                       </td>
@@ -231,26 +233,26 @@ export default function StockMovements() {
       {/* ── RECORD MODAL ── */}
       {showModal && (
         <div className="modal-overlay" style={{ background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', inset: 0, zIndex: 1000 }}>
-          <div className="modal" style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 650, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)', overflow: 'hidden', animation: 'modalSlideUp 0.3s ease' }}>
+          <div className="modal" style={{ background: 'var(--bg-card)', borderRadius: 20, width: '100%', maxWidth: 650, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)', overflow: 'hidden', animation: 'modalSlideUp 0.3s ease' }}>
             
-            <div className="modal-header" style={{ background: '#f8fafc', padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="modal-header" style={{ background: 'var(--bg)', padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ background: '#e0e7ff', color: '#4f46e5', padding: 8, borderRadius: 10 }}>
+                <div style={{ background: 'var(--primary-light)', color: '#4f46e5', padding: 8, borderRadius: 10 }}>
                   <Package size={20} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Record Stock Movement</h3>
-                  <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Manually adjust inventory levels</div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--sidebar-bg)' }}>Record Stock Movement</h3>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>Manually adjust inventory levels</div>
                 </div>
               </div>
-              <button onClick={() => setShowModal(false)} style={{ background: '#f1f5f9', border: 'none', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'} onMouseLeave={e => e.currentTarget.style.background = '#f1f5f9'}>✕</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'var(--bg-hover)', border: 'none', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-hover)'}>✕</button>
             </div>
 
             <div className="modal-body" style={{ padding: 24 }}>
               
               <div className="form-group" style={{ marginBottom: 20 }}>
-                <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Select Product <span className="text-danger">*</span></label>
-                <select className="form-control" value={form.product_id} onChange={onProductChange} style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px 16px', fontSize: 14, fontWeight: 600, color: form.product_id ? '#0f172a' : '#94a3b8', cursor: 'pointer' }}>
+                <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Select Product <span className="text-danger">*</span></label>
+                <select className="form-control" value={form.product_id} onChange={onProductChange} style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px 16px', fontSize: 14, fontWeight: 600, color: form.product_id ? 'var(--sidebar-bg)' : '#94a3b8', cursor: 'pointer' }}>
                   <option value="">-- Choose a product from inventory --</option>
                   {products.map(p => <option key={p._id} value={p._id}>{p.name} (Current: {p.stock} {p.unit})</option>)}
                 </select>
@@ -258,35 +260,35 @@ export default function StockMovements() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
                 <div className="form-group mb-0">
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Movement Type <span className="text-danger">*</span></label>
-                  <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 4 }}>
-                    <button onClick={() => setForm({ ...form, type: 'incoming' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'incoming' ? '#fff' : 'transparent', color: form.type === 'incoming' ? '#16a34a' : '#64748b', fontWeight: form.type === 'incoming' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'incoming' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Movement Type <span className="text-danger">*</span></label>
+                  <div style={{ display: 'flex', background: 'var(--bg-hover)', borderRadius: 10, padding: 4 }}>
+                    <button onClick={() => setForm({ ...form, type: 'incoming' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'incoming' ? 'var(--bg-card)' : 'transparent', color: form.type === 'incoming' ? '#16a34a' : 'var(--text-muted)', fontWeight: form.type === 'incoming' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'incoming' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
                       <ArrowDownRight size={16} /> Incoming
                     </button>
-                    <button onClick={() => setForm({ ...form, type: 'outgoing' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'outgoing' ? '#fff' : 'transparent', color: form.type === 'outgoing' ? '#dc2626' : '#64748b', fontWeight: form.type === 'outgoing' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'outgoing' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
+                    <button onClick={() => setForm({ ...form, type: 'outgoing' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'outgoing' ? 'var(--bg-card)' : 'transparent', color: form.type === 'outgoing' ? '#dc2626' : 'var(--text-muted)', fontWeight: form.type === 'outgoing' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'outgoing' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
                       <ArrowUpRight size={16} /> Outgoing
                     </button>
                   </div>
                 </div>
                 <div className="form-group mb-0">
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Quantity <span className="text-danger">*</span></label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Quantity <span className="text-danger">*</span></label>
                   <input className="form-control" type="number" min="0.01" step="0.01" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} placeholder="0.00" style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px 16px', fontSize: 15, fontWeight: 700, fontFamily: 'monospace' }} />
                 </div>
                 <div className="form-group mb-0">
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Unit</label>
+                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Unit</label>
                   <select className="form-control" value={form.qty_unit} onChange={e => setForm({ ...form, qty_unit: e.target.value })} style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px', fontSize: 14, fontWeight: 600 }}>
                     {QTY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px dashed #cbd5e1', marginBottom: 24 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ background: 'var(--bg)', padding: 16, borderRadius: 12, border: '1px dashed #cbd5e1', marginBottom: 24 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Info size={14} /> Optional Details
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                   <div>
-                    <input className="form-control" value={form.vehicle_number} onChange={e => setForm({ ...form, vehicle_number: e.target.value })} placeholder="Vehicle Number (e.g. UK07 AB 1234)" style={{ borderRadius: 10, fontSize: 13 }} />
+                    <input className="form-control" value={(form.vehicle_number || '').toUpperCase()} onChange={e => setForm({ ...form, vehicle_number: e.target.value.toUpperCase() })} placeholder="Vehicle Number (e.g. UK07 AB 1234)" style={{ borderRadius: 10, fontSize: 13 }} />
                   </div>
                   <div>
                     <input className="form-control" value={form.driver_name} onChange={e => setForm({ ...form, driver_name: e.target.value })} placeholder="Driver Name" style={{ borderRadius: 10, fontSize: 13 }} />
@@ -298,7 +300,7 @@ export default function StockMovements() {
               </div>
 
               <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', paddingTop: 20, borderTop: '1px solid #e2e8f0' }}>
-                <button className="btn btn-outline" onClick={() => setShowModal(false)} style={{ borderRadius: 10, fontWeight: 600, padding: '10px 20px' }}>Cancel</button>
+                <button className="btn btn-outline" onClick={() => setShowModal(false)} style={{ borderRadius: 10, fontWeight: 600, padding: '10px 20px' }}>{t('Cancel', 'रद्द करें')}</button>
                 <button className="btn btn-primary" onClick={handleCreate} disabled={saving || !form.product_id} style={{ borderRadius: 10, fontWeight: 700, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
                   {saving ? <span className="spinner" style={{ width: 16, height: 16 }}></span> : <CheckCircle2 size={16} />} 
                   {saving ? 'Saving...' : 'Confirm Movement'}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { tripApi, notificationApi, invoiceApi } from '../utils/api';
@@ -12,6 +13,7 @@ const GOODS_TYPES = [
 ];
 
 export default function DriverDashboard() {
+  const { t } = useApp();
   const { user, logout } = useAuth();
   const location = useLocation();
   const [view, setView] = useState('home'); // home, short, long, history, settings, active_trip
@@ -435,9 +437,9 @@ export default function DriverDashboard() {
   );
 
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #d1d5db', fontSize: 14, fontFamily: 'inherit', outline: 'none' };
-  const btnPrimary = { background: 'linear-gradient(135deg,#2563eb,#1d4ed8)', border: 'none', color: '#fff', padding: '12px 20px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%' };
-  const btnDanger = { background: '#dc2626', border: 'none', color: '#fff', padding: '12px 20px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%' };
-  const btnOutline = { background: '#f8fafc', border: '1.5px solid #e5e7eb', color: '#374151', padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
+  const btnPrimary = { background: 'var(--sidebar-bg)', border: 'none', color: '#ffffff', padding: '12px 20px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%' };
+  const btnDanger = { background: '#dc2626', border: 'none', color: '#ffffff', padding: '12px 20px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%' };
+  const btnOutline = { background: 'var(--bg)', border: '1.5px solid #e5e7eb', color: '#374151', padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
 
   // ── TRIP FORM (shared for short/long) ──
   const renderTripForm = (type) => (
@@ -471,11 +473,11 @@ export default function DriverDashboard() {
                 <div className="row g-3 mb-3">
                   <div className="col-sm-6">
                     <label className="form-label text-secondary fw-bold" style={{ fontSize: '10px' }}>Owner Name (Consignor)</label>
-                    <input className="form-control" placeholder="Name" value={c.owner_name} onChange={e => { const n = [...cargoEntries]; n[i].owner_name = e.target.value; setCargoEntries(n); }} />
+                    <input className="form-control" placeholder={t('Name', 'नाम')} value={c.owner_name} onChange={e => { const n = [...cargoEntries]; n[i].owner_name = e.target.value; setCargoEntries(n); }} />
                   </div>
                   <div className="col-sm-6">
                     <label className="form-label text-secondary fw-bold" style={{ fontSize: '10px' }}>Owner Phone</label>
-                    <input className="form-control" placeholder="Phone Number" value={c.owner_phone} onChange={e => { const n = [...cargoEntries]; n[i].owner_phone = e.target.value; setCargoEntries(n); }} />
+                    <input className="form-control" placeholder="Phone Number" value={c.owner_phone} onChange={e=> { const n = [...cargoEntries]; n[i].owner_phone = e.target.value; setCargoEntries(n); }} />
                   </div>
                 </div>
 
@@ -485,7 +487,7 @@ export default function DriverDashboard() {
                     <thead className="table-light">
                       <tr>
                         <th>Particulars (Item)</th>
-                        <th width="80">Qty</th>
+                        <th width="80">{t('Qty', 'मात्रा')}</th>
                         <th width="100">Weight (kg)</th>
                         <th width="40"></th>
                       </tr>
@@ -620,7 +622,7 @@ export default function DriverDashboard() {
                           <thead className="table-light border-bottom">
                             <tr>
                               <th className="fw-bold text-secondary">Particulars</th>
-                              <th className="fw-bold text-secondary text-center" width="80">Qty</th>
+                              <th className="fw-bold text-secondary text-center" width="80">{t('Qty', 'मात्रा')}</th>
                               <th className="fw-bold text-secondary text-end" width="100">Weight (kg)</th>
                             </tr>
                           </thead>
@@ -761,7 +763,7 @@ export default function DriverDashboard() {
                         })
                         .catch(err => toast.error(err.message));
                     }} className="btn btn-primary btn-sm px-3 fw-bold">Start Leg</button>
-                    <button type="button" onClick={() => setShowNextLegForm(false)} className="btn btn-outline btn-sm px-3 fw-bold">Cancel</button>
+                    <button type="button" onClick={() => setShowNextLegForm(false)} className="btn btn-outline btn-sm px-3 fw-bold">{t('Cancel', 'रद्द करें')}</button>
                   </div>
                 </div>
               )}
@@ -771,7 +773,7 @@ export default function DriverDashboard() {
                   <p className="text-muted mb-3" style={{ fontSize: '12px' }}>This will close the active log and submit all details to management permanently.</p>
                   <div className="d-flex gap-2">
                     <button type="button" onClick={endTrip} className="btn btn-danger btn-sm px-3 fw-bold">Yes, End Trip</button>
-                    <button type="button" onClick={() => setShowEndTripConfirm(false)} className="btn btn-outline btn-sm px-3 fw-bold">Cancel</button>
+                    <button type="button" onClick={() => setShowEndTripConfirm(false)} className="btn btn-outline btn-sm px-3 fw-bold">{t('Cancel', 'रद्द करें')}</button>
                   </div>
                 </div>
               )}
@@ -817,7 +819,7 @@ export default function DriverDashboard() {
               };
               return (
                 <div key={i} className="list-group-item list-group-item-action d-flex gap-3 py-3 align-items-center">
-                  <div style={{ background: '#f8fafc', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #e2e8f0' }}>
+                  <div style={{ background: 'var(--bg)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #e2e8f0' }}>
                     {renderTimelineIcon(t.type)}
                   </div>
                   <div className="d-flex gap-2 w-100 justify-content-between">
@@ -862,7 +864,7 @@ export default function DriverDashboard() {
         trips.length === 0 ? <div style={{ textAlign: 'center', color: '#6b7280', padding: 40 }}>No completed trips yet.</div> :
         Object.entries(groupTripsByDate()).map(([dateLabel, dateTrips]) => (
           <div key={dateLabel} className="mb-4 text-start">
-            <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: '12px', paddingLeft: '8px', borderLeft: '3px solid #059669', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: '12px', paddingLeft: '8px', borderLeft: '3px solid #059669', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Calendar size={12} /> {dateLabel}
             </div>
             {dateTrips.map(trip => (
@@ -937,10 +939,10 @@ export default function DriverDashboard() {
               <LogOut size={32} strokeWidth={2.5} />
             </div>
             
-            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10, color: '#0f172a', letterSpacing: '-0.5px' }}>
+            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10, color: 'var(--sidebar-bg)', letterSpacing: '-0.5px' }}>
               Confirm Logout
             </h3>
-            <p style={{ fontSize: 14.5, color: '#64748b', marginBottom: 0, lineHeight: 1.6, padding: '0 10px' }}>
+            <p style={{ fontSize: 14.5, color: 'var(--text-muted)', marginBottom: 0, lineHeight: 1.6, padding: '0 10px' }}>
               Are you sure you want to sign out? You'll need to login again to access your dashboard.
             </p>
             
@@ -959,7 +961,7 @@ export default function DriverDashboard() {
       {/* Active Live Dispatched Invoice Data Banners */}
       {view === 'home' && !activeTrip && notifications.filter(n => n.type === 'driver_dispatch' && !n.is_read).map(dispatchNotif => (
         <div key={dispatchNotif._id} style={{ 
-          background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', 
+          background: 'var(--sidebar-bg)', 
           border: '1.5px solid #bfdbfe', 
           borderRadius: 14, 
           padding: '16px', 
@@ -973,7 +975,7 @@ export default function DriverDashboard() {
           <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(37,99,235,0.1)', filter: 'blur(20px)' }} />
           
           <div style={{ display: 'flex', alignItems: 'start', gap: 12 }}>
-            <div style={{ background: '#3b82f6', color: '#fff', borderRadius: '50%', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ background: '#3b82f6', color: '#ffffff', borderRadius: '50%', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Bell size={16} className="animate-bounce" />
             </div>
             <div style={{ flex: 1 }}>
@@ -1081,7 +1083,7 @@ export default function DriverDashboard() {
                   }}
                   style={{
                     background: '#1d4ed8',
-                    color: '#fff',
+                    color: '#ffffff',
                     border: 'none',
                     padding: '6px 12px',
                     borderRadius: 8,
@@ -1146,7 +1148,7 @@ export default function DriverDashboard() {
       {/* SETTINGS (simple) */}
       {view === 'settings' && (
         <div>
-          <button onClick={() => setView('home')} className="action-glow-btn mb-4 text-start d-inline-flex align-items-center justify-content-center gap-1" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px', background: 'linear-gradient(135deg, #4b5563, #1f2937)', boxShadow: '0 4px 14px rgba(75, 85, 99, 0.25)' }}><ArrowLeft size={14} /> Back to Home</button>
+          <button onClick={() => setView('home')} className="action-glow-btn mb-4 text-start d-inline-flex align-items-center justify-content-center gap-1" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px', background: 'var(--sidebar-bg)', boxShadow: '0 4px 14px rgba(75, 85, 99, 0.25)' }}><ArrowLeft size={14} /> Back to Home</button>
           <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20, color: '#4b5563', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }}><Settings size={20} /> System Settings</h2>
           <div className="premium-white-card text-start" style={{ borderLeft: '4px solid #4b5563' }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Driver: {user?.display_name || user?.username}</div>

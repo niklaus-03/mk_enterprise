@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useApp } from '../context/AppContext';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { tripApi } from '../utils/api';
 import toast from 'react-hot-toast';
 import { Truck, Car, MapPin, Package, Clock, Landmark, ArrowLeft, Play, Wallet, RefreshCw, CheckCircle, FileText, Phone, User, Download } from 'lucide-react';
 
 export default function TripView() {
+  const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
   const [trip, setTrip] = useState(null);
@@ -42,15 +44,15 @@ export default function TripView() {
         {/* LEFT COLUMN - Trip Details */}
         <div className="col-md-7 col-lg-8">
           <div className="card shadow-sm mb-4 border-0">
-            <div className="card-header py-3 border-bottom-0" style={{ background: isActive ? 'linear-gradient(135deg, #059669, #10b981)' : '#fff' }}>
-              <h4 className="mb-0 fw-bold d-flex align-items-center gap-2" style={{ fontSize: '20px', color: isActive ? '#fff' : '#1e293b' }}>
+            <div className="card-header py-3 border-bottom-0" style={{ background: isActive ? 'linear-gradient(135deg, #059669, #10b981)' : 'var(--bg-card)' }}>
+              <h4 className="mb-0 fw-bold d-flex align-items-center gap-2" style={{ fontSize: '20px', color: isActive ? 'var(--bg-card)' : 'var(--bg-hover)' }}>
                 {trip.type === 'short' ? <Car size={24} /> : <Truck size={24} />}
                 {trip.type.toUpperCase()} TRIP — {trip.driver_name}
                 {isActive && <span className="badge bg-white text-success ms-2 px-3 py-1" style={{ fontSize: '11px', fontWeight: 800 }}>● LIVE</span>}
               </h4>
-              <p className="mb-0 mt-1" style={{ fontSize: '13px', fontWeight: 600, color: isActive ? 'rgba(255,255,255,0.85)' : '#64748b' }}>
+              <p className="mb-0 mt-1" style={{ fontSize: '13px', fontWeight: 600, color: isActive ? 'rgba(255,255,255,0.85)' : 'var(--text-muted)' }}>
                 Started: {new Date(trip.started_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
-                {trip.vehicle_number && <> · Vehicle: <strong>{trip.vehicle_number}</strong></>}
+                {trip.vehicle_number && <> · Vehicle: <strong>{(trip.vehicle_number || '').toUpperCase()}</strong></>}
               </p>
             </div>
             
@@ -115,7 +117,7 @@ export default function TripView() {
                             <thead className="table-light border-bottom">
                               <tr>
                                 <th className="fw-bold text-secondary">Particulars</th>
-                                <th className="fw-bold text-secondary text-center" width="80">Qty</th>
+                                <th className="fw-bold text-secondary text-center" width="80">{t('Qty', 'मात्रा')}</th>
                                 <th className="fw-bold text-secondary text-end" width="110">Weight (kg)</th>
                               </tr>
                             </thead>
@@ -216,7 +218,7 @@ export default function TripView() {
               };
               return (
                 <div key={i} className="list-group-item border-0 border-bottom d-flex gap-3 py-3 align-items-center">
-                  <div style={{ background: '#f8fafc', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #e2e8f0' }}>
+                  <div style={{ background: 'var(--bg)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid #e2e8f0' }}>
                     {renderTimelineIcon(t.type)}
                   </div>
                   <div className="d-flex gap-2 w-100 justify-content-between">

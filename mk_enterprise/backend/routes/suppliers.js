@@ -15,17 +15,59 @@ router.get('/', async (req, res) => {
     const query = { is_active: true };
     if (q && q.trim()) query.name = { $regex: q.trim(), $options: 'i' };
 
-    // Manager scoping: see own suppliers + supervisor-created (global) suppliers
+    // Removed manager scoping: all managers can see all suppliers as requested
+    // They will still only see their own payment history due to the limitation below
+
+    let suppliers = await Supplier.find(query).sort({ name: 1 });
+
+    // If manager, compute amount paid by them
     if (req.user.role === 'manager') {
-      const supervisorIds = (await Admin.find({ role: 'supervisor' }, '_id')).map(s => s._id);
-      query.$or = [
-        { created_by: req.user.id },
-        { created_by: { $in: supervisorIds } },
-        { created_by: null }, // legacy suppliers without an owner
-      ];
+      const mongoose = require('mongoose');
+      const managerId = req.user.id;
+      
+      const settlements = await Settlement.aggregate([
+        { 
+          $match: { 
+            type: { $in: ['paid_to_supplier', 'other_expense'] }, 
+            created_by: new mongoose.Types.ObjectId(managerId) 
+          } 
+        },
+        { 
+          $group: { 
+            _id: { $toLower: "$party_name" }, 
+            total_paid: { $sum: "$amount" } 
+          } 
+        }
+      ]);
+      
+      const paymentMap = {};
+      settlements.forEach(s => {
+        paymentMap[s._id] = s.total_paid;
+      });
+      
+      const matchedNames = new Set();
+      suppliers = suppliers.map(s => {
+        const obj = s.toObject();
+        obj.manager_paid_amount = paymentMap[(obj.name || '').toLowerCase()] || 0;
+        matchedNames.add((obj.name || '').toLowerCase());
+        return obj;
+      });
+
+      // Add virtual suppliers for anyone paid by the manager who isn't in the DB!
+      settlements.forEach(s => {
+        if (!matchedNames.has(s._id) && s.total_paid > 0) {
+          suppliers.push({
+            _id: 'virtual_' + s._id.replace(/\\s+/g, '_'), 
+            name: s._id.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), 
+            phone: '',
+            address: 'Ad-hoc / Walk-in Payment',
+            is_virtual: true,
+            manager_paid_amount: s.total_paid
+          });
+        }
+      });
     }
 
-    const suppliers = await Supplier.find(query).sort({ name: 1 });
     res.json(suppliers);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

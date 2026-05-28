@@ -47,6 +47,16 @@ router.get('/', async (req, res) => {
     const { date, all, status } = req.query;
     let query = {};
 
+    if (req.user && req.user.role === 'manager') {
+      const mId = req.user?.id || req.user?._id || req.admin?.id || req.admin?._id;
+      if (mId) {
+        query.created_by = mId;
+      } else {
+        // Fallback to prevent showing everything if ID extraction fails
+        query.created_by = '000000000000000000000000';
+      }
+    }
+
     if (all !== 'true') {
       // Default to today IST
       const { startUTC, endUTC } = todayUTCRange();
@@ -181,7 +191,7 @@ router.patch('/:id/status', checkProductEditPermission, async (req, res) => {
         });
         if (!existingSupplier) {
           try {
-            await Supplier.create({ name: delivery.supplier.trim(), is_active: true });
+            await Supplier.create({ name: delivery.supplier.trim(), is_active: true, created_by: req.user?.id || req.user?._id || req.admin?.id || req.admin?._id || null });
           } catch (e) { /* ignore duplicate */ }
         }
       }
@@ -341,7 +351,8 @@ router.patch('/:id/payment', async (req, res) => {
       if (delivery.vehicle_number === 'WALK-IN') {
         const Settlement = require('../models/Settlement');
         const totalAmount = delivery.items.reduce((s, i) => {
-          return s + ((parseFloat(i.price) || 0) * (parseFloat(i.quantity) || 0));
+          const priceToUse = parseFloat(i.base_price) || parseFloat(i.final_price) || 0;
+          return s + (priceToUse * (parseFloat(i.quantity) || 0));
         }, 0);
         if (totalAmount > 0) {
           const now = new Date();
@@ -357,6 +368,7 @@ router.patch('/:id/payment', async (req, res) => {
             date: now,
             ist_date,
             ist_formatted: formatIST(now),
+            created_by: req.user ? req.user.id : null,
           });
         }
       }

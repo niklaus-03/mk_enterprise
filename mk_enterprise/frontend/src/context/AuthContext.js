@@ -49,6 +49,13 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('shopbill_token');
+    // Clear auto drafts on logout so they don't persist across sessions
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('invoice_auto_draft_')) {
+        localStorage.removeItem(key);
+      }
+    }
     setUser(null);
     window.location.href = '/login';
   };

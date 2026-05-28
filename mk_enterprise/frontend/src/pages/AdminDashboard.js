@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, customerApi, productApi, managerApi } from '../utils/api';
+import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, customerApi, productApi, managerApi, productListApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare } from 'lucide-react';
+import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare, Download, List, Minus } from 'lucide-react';
+import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
+import PaymentModal from '../components/PaymentModal';
+import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
 
 
 const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'others'];
@@ -78,6 +81,8 @@ export default function AdminDashboard() {
   const [showTodaySales, setShowTodaySales] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [showWalkinMatchModal, setShowWalkinMatchModal] = useState(false);
+  const [paymentDelivery, setPaymentDelivery] = useState(null);
+  const [detailsDelivery, setDetailsDelivery] = useState(null);
   const [allManagers, setAllManagers] = useState([]);
   const [walkinMatch, setWalkinMatch] = useState(null);
   const salesPanelRef = React.useRef(null);
@@ -94,7 +99,7 @@ export default function AdminDashboard() {
     if (except !== 'dues') { setShowAllDues(false); setDuesSearch(''); setShowWalkinDueForm(false); }
     if (except !== 'customers') { setShowCustomerDues(false); setCustomerSearch(''); }
     if (except !== 'products') { setShowProducts(false); setProductSearch(''); }
-    if (except !== 'departure') { setShowDeparture(false); setShowDeliveryForm(false); setShowWalkinDelivery(false); }
+    if (except !== 'departure') { setShowDeparture(false); setShowDeliveryForm(false); setShowWalkinModal(false); }
   };
   // Fix 2 & 3 & 4: Settlement state — includes search, sort, view mode
   const [settlementData, setSettlementData] = useState({ settlements: [], totalOut: 0, totalIn: 0, partyNames: [] });
@@ -122,6 +127,9 @@ export default function AdminDashboard() {
   const [showMoreSales, setShowMoreSales] = useState(false);
   const [showMoreTopProducts, setShowMoreTopProducts] = useState(false);
   const [editableLowStock, setEditableLowStock] = useState([]);
+  const [productLists, setProductLists] = useState([]);
+  const [activeListFilter, setActiveListFilter] = useState(null);
+  const [showListFilter, setShowListFilter] = useState(false);
 
   // Fix 5: Supplier management within Settlement
   const [showSuppliers, setShowSuppliers] = useState(false);
@@ -284,12 +292,7 @@ export default function AdminDashboard() {
   const [supplierSuggestions, setSupplierSuggestions] = useState([]);
   const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
   const [deliveryDateInput, setDeliveryDateInput] = useState(''); // temp input before OK
-  const [showWalkinDelivery, setShowWalkinDelivery] = useState(false);
-  const [walkinDeliveryForm, setWalkinDeliveryForm] = useState({
-    supplier: '', items: [{ item_name: '', quantity: '0', unit: 'bag', price: '' }],
-    notes: '', mode: 'cash', paid: false,
-  });
-  const [walkinDeliverySaving, setWalkinDeliverySaving] = useState(false);
+  const [showWalkinModal, setShowWalkinModal] = useState(false);
 
   const ITEM_LABELS = ['Goods', 'Fruits', 'Vegetables', 'Hardware', 'Others'];
 
@@ -315,59 +318,7 @@ export default function AdminDashboard() {
     localStorage.setItem('custom_units', JSON.stringify(updated));
   };
 
-  const handleWalkinDelivery = async () => {
-    if (!walkinDeliveryForm.supplier.trim()) return toast.error('Supplier/Party name is required');
-    const validItems = walkinDeliveryForm.items.filter(i => i.item_name && parseFloat(i.quantity) > 0);
-    if (!validItems.length) return toast.error('Add at least one item with quantity');
-    setWalkinDeliverySaving(true);
-    try {
-      // Store as a delivery with no vehicle_number
-      const totalAmount = validItems.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseFloat(i.quantity) || 0)), 0);
-      // Fix 5: Save supplier if new (not in existing list)
-      const existingSupplier = suppliers.find(s => s.name.toLowerCase() === walkinDeliveryForm.supplier.trim().toLowerCase());
-      if (!existingSupplier && walkinDeliveryForm.supplier.trim()) {
-        try { await supplierApi.create({ name: walkinDeliveryForm.supplier.trim() }); } catch (e) { }
-      }
 
-      await deliveryApi.create({
-        vehicle_number: 'WALK-IN',
-        supplier: walkinDeliveryForm.supplier,
-        driver_name: '',
-        expected_arrival: new Date().toISOString(),
-        items: validItems,
-        notes: walkinDeliveryForm.notes,
-      });
-      // If paid, record in settlement
-      if (walkinDeliveryForm.paid && totalAmount > 0) {
-        await settlementApi.create({
-          type: 'paid_to_supplier',
-          party_name: walkinDeliveryForm.supplier,
-          amount: totalAmount,
-          mode: walkinDeliveryForm.mode,
-          notes: 'Walk-in delivery payment',
-        });
-      }
-      toast.success('Walk-in delivery recorded');
-      setShowWalkinDelivery(false);
-      setWalkinDeliveryForm({ supplier: '', items: [{ item_name: '', quantity: '0', unit: 'bag', price: '' }], notes: '', mode: 'cash', paid: false });
-      // Refresh settlements so paid walk-in appears in settlement panel
-      loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, settlementSortDate, settlementSortAmount);
-      loadDeliveries(deliveryDateFilter || getTodayIST());
-    } catch (err) { toast.error(err.message); }
-    finally { setWalkinDeliverySaving(false); }
-  };
-
-  const updateWalkinItem = (idx, field, value) => {
-    setWalkinDeliveryForm(f => {
-      const items = [...f.items];
-      items[idx] = { ...items[idx], [field]: value };
-      // Auto-add row when last row has item_name
-      if (idx === items.length - 1 && field === 'item_name' && value.trim()) {
-        items.push({ item_name: '', quantity: '', unit: 'pcs', price: '', label: 'Goods' });
-      }
-      return { ...f, items };
-    });
-  };
   const [productSuggestions, setProductSuggestions] = useState([]);
   const [productSuggestIdx, setProductSuggestIdx] = useState(null); // which row is open
 
@@ -482,6 +433,7 @@ export default function AdminDashboard() {
     try {
       await deliveryApi.updatePayment(id, 'paid', mode || 'cash');
       toast.success('Walk-in delivery marked as paid');
+      setPaymentDelivery(null);
       loadDeliveries(deliveryDateFilter || getTodayIST());
     } catch (err) { toast.error(err.message); }
   };
@@ -718,6 +670,11 @@ export default function AdminDashboard() {
   };
 
   // Re-fetches whenever selectedDate changes — no manual refresh needed
+  // Load product lists for Low Stock filter
+  useEffect(() => {
+    productListApi.getAll().then(res => setProductLists(res || [])).catch(() => {});
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     setSalesSearch('');
@@ -829,6 +786,49 @@ export default function AdminDashboard() {
 
   return (
     <div>
+      {showWalkinModal && (
+        <WalkInDeliveryModal
+          isOpen={showWalkinModal}
+          onClose={() => setShowWalkinModal(false)}
+          onSuccess={() => {
+            loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, settlementSortDate, settlementSortAmount);
+            loadDeliveries(deliveryDateFilter || getTodayIST());
+            dashboardApi.get(selectedDate).then(setData).catch(() => {});
+            loadSuppliers('');
+          }}
+          suppliers={suppliers}
+          allUnits={allUnits}
+          onAddCustomUnit={addCustomUnit}
+          onSearchSuppliers={searchSuppliers}
+          supplierSuggestions={supplierSuggestions}
+          setSupplierSuggestions={setSupplierSuggestions}
+          onSearchProducts={searchProducts}
+          productSuggestions={productSuggestions}
+        />
+      )}
+
+      {showWalkinMatchModal && walkinMatch && (
+        <div className="modal-overlay" onClick={() => setShowWalkinMatchModal(false)}>
+          {/* ... existing modal code ... */}
+        </div>
+      )}
+
+      {/* ── MODALS ── */}
+      {paymentDelivery && (
+        <PaymentModal 
+          isOpen={true} 
+          onClose={() => setPaymentDelivery(null)}
+          onConfirm={(mode) => handleMarkWalkinPaid(paymentDelivery._id, mode)}
+          amount={paymentDelivery?.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0}
+        />
+      )}
+      
+      <DeliveryDetailsModal 
+        isOpen={!!detailsDelivery}
+        onClose={() => setDetailsDelivery(null)}
+        delivery={detailsDelivery}
+      />
+
       {/* ── Dashboard Header (Premium Command Center) ─────────────────────────── */}
       <div style={{
         background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
@@ -1256,7 +1256,6 @@ export default function AdminDashboard() {
                 window.open(`https://wa.me/?text=${msg}`, '_blank');
               }}><MessageSquare size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> WhatsApp</button>
               <Link to="/products?action=add" className="btn btn-primary btn-sm">+ Add Product</Link>
-              <button className="btn btn-outline btn-sm" onClick={() => { setShowProducts(false); setProductSearch(''); }}>✕ Close</button>
             </div>
           </div>
           <div className="card-body" style={{ paddingBottom: 0 }}>
@@ -1292,7 +1291,7 @@ export default function AdminDashboard() {
                 if (productSort === 'stock_desc') return (b.stock || 0) - (a.stock || 0);
                 if (productSort === 'price_asc') return (a.price || 0) - (b.price || 0);
                 if (productSort === 'price_desc') return (b.price || 0) - (a.price || 0);
-                return (a.name || '').localeCompare(b.name || ''); // name_asc default
+                return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()); // name_asc default
               });
 
               if (!filtered.length) return (
@@ -1322,7 +1321,12 @@ export default function AdminDashboard() {
                         };
                         return (
                           <tr key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                            <td style={{ padding: '9px 16px', fontWeight: 600 }}>{hl(p.name)}</td>
+                            <td style={{ padding: '9px 16px', fontWeight: 600 }}>
+                              <div>{hl(p.name)}</div>
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, marginTop: 2 }}>
+                                Added by: {p.created_by?.display_name || p.created_by?.username || 'System / Admin'}
+                              </div>
+                            </td>
                             <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: 700, color: stockColor }}>
                               {p.stock} {p.unit}
                               {p.stock === 0 && <span style={{ marginLeft: 4, fontSize: 10, background: '#fef2f2', color: 'var(--danger)', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>Out</span>}
@@ -1366,10 +1370,6 @@ export default function AdminDashboard() {
                 onToggle={() => { closeAllSortMenus('customer'); setCustomerSortOpen(o => !o); }}
               />
               <Link to="/customers?action=add" className="btn btn-primary btn-sm">+ Add Customer</Link>
-              <button className="btn btn-outline btn-sm" onClick={() => {
-                setShowCustomerDues(false);
-                setCustomerSearch('');
-              }}>✕ Close</button>
             </div>
           </div>
           <div className="card-body">
@@ -1546,7 +1546,6 @@ export default function AdminDashboard() {
                     ]
                   });
                   setShowDeliveryForm(d => !d);
-                  setShowWalkinDelivery(false);
                 }}
               >
                 {showDeliveryForm && !editDeliveryId ? '✕ Cancel' : '+ Add Vehicle'}
@@ -1554,12 +1553,9 @@ export default function AdminDashboard() {
               {/* Walk-in Delivery button */}
               <button
                 className="btn btn-warning btn-sm"
-                onClick={() => {
-                  setShowWalkinDelivery(d => !d);
-                  setShowDeliveryForm(false);
-                }}
+                onClick={() => setShowWalkinModal(true)}
               >
-                {showWalkinDelivery ? '✕ Cancel' : <><UserCheck size={13} style={{ marginRight: 4 }} /> Walk-in Delivery</>}
+                <UserCheck size={13} style={{ marginRight: 4 }} /> Walk-in Delivery
               </button>
               <SortDropdown
                 options={[
@@ -1575,220 +1571,10 @@ export default function AdminDashboard() {
                 open={vehicleSortOpen}
                 onToggle={() => { closeAllSortMenus('vehicle'); setVehicleSortOpen(o => !o); }}
               />
-              <button className="btn btn-outline btn-sm" onClick={() => {
-                setShowDeparture(false);
-                setShowDeliveryForm(false);
-                setShowWalkinDelivery(false);
-              }}>✕ Close</button>
             </div>
           </div>
 
           <div className="card-body">
-
-            {/* Walk-in Delivery Form */}
-            {showWalkinDelivery && (
-              <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '16px 18px', marginBottom: 18 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}><><User size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Walk-in Delivery (No Vehicle Required)</></div>
-                <div className="form-row">
-                  <div className="form-group" style={{ position: 'relative' }}>
-                    <label className="form-label">Supplier / Party Name *</label>
-                    <input className="form-control"
-                      value={walkinDeliveryForm.supplier}
-                      onChange={e => {
-                        setWalkinDeliveryForm(f => ({ ...f, supplier: e.target.value }));
-                        searchSuppliers(e.target.value);
-                      }}
-                      onBlur={() => setTimeout(() => setSupplierSuggestions([]), 200)}
-                      placeholder="Type supplier name..." />
-                    {/* Supplier suggestions + add-new */}
-                    {walkinDeliveryForm.supplier && supplierSuggestions !== null && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100 }}>
-                        {supplierSuggestions.map(s => (
-                          <div key={s._id}
-                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
-                            onMouseDown={() => { setWalkinDeliveryForm(f => ({ ...f, supplier: s.name })); setSupplierSuggestions([]); }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
-                            onMouseLeave={e => e.currentTarget.style.background = ''}
-                          >
-                            <div style={{ fontWeight: 600 }}>{s.name}</div>
-                            {s.phone && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.phone}</div>}
-                          </div>
-                        ))}
-                        {/* Always show add-new supplier option */}
-                        <div
-                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
-                          onMouseDown={() => {
-                            // Keep typed name, close dropdown
-                            setSupplierSuggestions([]);
-                            // Will be saved to supplier list on delivery via handleWalkinDelivery
-                            toast('Supplier will be saved when delivery is recorded', { icon: 'ℹ️', duration: 2500 });
-                          }}
-                        >
-                          + Add "{walkinDeliveryForm.supplier}" as new supplier
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Notes</label>
-                    <input className="form-control" value={walkinDeliveryForm.notes}
-                      onChange={e => setWalkinDeliveryForm(f => ({ ...f, notes: e.target.value }))}
-                      placeholder="Optional notes" />
-                  </div>
-                </div>
-
-                {/* Items — same dynamic logic as Incoming Vehicle, Type removed */}
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}><Package size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Items</div>
-                {walkinDeliveryForm.items.map((item, idx) => (
-                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.8fr 0.8fr auto', gap: 8, marginBottom: 8, alignItems: 'flex-end' }}>
-                    {/* Item Name with product suggestions */}
-                    <div style={{ position: 'relative' }}>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Item Name *</div>}
-                      <input className="form-control" value={item.item_name}
-                        placeholder="Type to search..."
-                        onChange={e => {
-                          const val = e.target.value;
-                          updateWalkinItem(idx, 'item_name', val);
-                          // Auto qty to 1 on first char
-                          if (val && item.quantity === '0') updateWalkinItem(idx, 'quantity', '1');
-                          setProductSuggestIdx(1000 + idx); // offset to differentiate from delivery form
-                          searchProducts(val);
-                        }}
-                        onBlur={() => setTimeout(() => { setProductSuggestions([]); setProductSuggestIdx(null); }, 200)}
-                      />
-                      {productSuggestIdx === 1000 + idx && item.item_name.trim() && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto' }}>
-                          {productSuggestions.map(p => (
-                            <div key={p._id}
-                              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}
-                              onMouseDown={() => {
-                                setWalkinDeliveryForm(f => {
-                                  const items = [...f.items];
-                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || 'bag', product_id: p._id };
-                                  if (idx === items.length - 1) items.push({ item_name: '', quantity: '0', unit: 'bag', price: '', label: 'Goods' });
-                                  return { ...f, items };
-                                });
-                                setProductSuggestions([]); setProductSuggestIdx(null);
-                              }}
-                              onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
-                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <div>
-                                <div style={{ fontWeight: 600 }}>{p.name}</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Stock: {p.stock} {p.unit} · ₹{p.price}</div>
-                              </div>
-                            </div>
-                          ))}
-                          <div
-                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
-                            onMouseDown={() => { setProductSuggestions([]); setProductSuggestIdx(null); toast('New item saved on delivery', { icon: 'ℹ️' }); }}
-                          >
-                            + Use "{item.item_name}" as new item
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Qty */}
-                    <div>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Qty</div>}
-                      <input className="form-control" type="number" min="0" step="0.01"
-                        value={item.quantity}
-                        onChange={e => updateWalkinItem(idx, 'quantity', e.target.value)}
-                        placeholder="0" />
-                    </div>
-
-                    {/* Unit — dynamic search */}
-                    <div style={{ position: 'relative' }}>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Unit</div>}
-                      <input className="form-control" value={item.unit || ''}
-                        placeholder="bag"
-                        onChange={e => { updateWalkinItem(idx, 'unit', e.target.value); setProductSuggestIdx(`wunit_${idx}`); }}
-                        onFocus={() => setProductSuggestIdx(`wunit_${idx}`)}
-                        onBlur={() => setTimeout(() => setProductSuggestIdx(null), 200)}
-                      />
-                      {productSuggestIdx === `wunit_${idx}` && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 160, overflowY: 'auto' }}>
-                          {allUnits
-                            .filter(u => !item.unit || u.toLowerCase().includes((item.unit || '').toLowerCase()))
-                            .map(u => (
-                              <div key={u}
-                                style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
-                                onMouseDown={() => { updateWalkinItem(idx, 'unit', u); setProductSuggestIdx(null); }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                              >{u}</div>
-                            ))}
-                          {item.unit && !allUnits.includes(item.unit.toLowerCase().trim()) && (
-                            <div
-                              style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
-                              onMouseDown={() => { addCustomUnit(item.unit); setProductSuggestIdx(null); toast(`Unit "${item.unit}" saved`, { icon: '✓' }); }}
-                            >+ Add "{item.unit}" as new unit</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Price */}
-                    <div>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Price ₹</div>}
-                      <input className="form-control" type="number" min="0" step="0.01"
-                        value={item.price}
-                        onChange={e => updateWalkinItem(idx, 'price', e.target.value)}
-                        placeholder="0.00" />
-                    </div>
-
-                    <div>
-                      {walkinDeliveryForm.items.length > 1 && (
-                        <button className="btn btn-danger btn-sm"
-                          onClick={() => setWalkinDeliveryForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}>✕</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Total + Payment */}
-                {(() => {
-                  const total = walkinDeliveryForm.items.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseFloat(i.quantity) || 0)), 0);
-                  return total > 0 ? (
-                    <div style={{ background: '#fff', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 14px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>Total: <span style={{ color: 'var(--primary)' }}>{fc(total)}</span></div>
-                        {/* Fix 5: Unpaid indicator */}
-                        {!walkinDeliveryForm.paid && (
-                          <span style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: 11, padding: '2px 8px', borderRadius: 12, fontWeight: 700 }}>
-                            <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={12} /> Unpaid</span>
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13.5 }}>
-                          <input type="checkbox" checked={walkinDeliveryForm.paid}
-                            onChange={e => setWalkinDeliveryForm(f => ({ ...f, paid: e.target.checked }))} />
-                          Mark as Paid
-                        </label>
-                        {walkinDeliveryForm.paid && (
-                          <select className="form-control" style={{ width: 'auto', fontSize: 12 }}
-                            value={walkinDeliveryForm.mode}
-                            onChange={e => setWalkinDeliveryForm(f => ({ ...f, mode: e.target.value }))}>
-                            <option value="cash">Cash</option>
-                            <option value="upi">UPI</option>
-                            <option value="online">Online</option>
-                          </select>
-                        )}
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-
-                <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
-                  <button className="btn btn-outline" onClick={() => setShowWalkinDelivery(false)}>Cancel</button>
-                  <button className="btn btn-warning" onClick={handleWalkinDelivery} disabled={walkinDeliverySaving}>
-                    {walkinDeliverySaving ? <><span className="spinner"></span> Saving...</> : <><Check size={14} style={{ marginRight: 4 }} /> Save Walk-in Delivery</>}
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Add / Edit Delivery Form */}
             {showDeliveryForm && (
@@ -1846,15 +1632,17 @@ export default function AdminDashboard() {
                           </div>
                         ))}
                         {/* Add new supplier option — same as walk-in */}
-                        <div
-                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
-                          onMouseDown={() => {
-                            setSupplierSuggestions([]);
-                            toast('Supplier will be saved when delivery is marked complete', { icon: 'ℹ️', duration: 2500 });
-                          }}
-                        >
-                          + Add "{deliveryForm.supplier}" as new supplier
-                        </div>
+                        {!supplierSuggestions.some(s => s.name.toLowerCase() === deliveryForm.supplier.trim().toLowerCase()) && (
+                          <div
+                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
+                            onMouseDown={() => {
+                              setSupplierSuggestions([]);
+                              toast('Supplier will be saved when delivery is marked complete', { icon: 'ℹ️', duration: 2500 });
+                            }}
+                          >
+                            + Add "{deliveryForm.supplier}" as new supplier
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2168,16 +1956,18 @@ export default function AdminDashboard() {
                           <tr key={d._id} style={{
                             borderBottom: '1px solid #f3f4f6',
                             background: d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid'
-                              ? '#fffbeb'  // yellow for unpaid walk-in
+                              ? 'rgba(245, 158, 11, 0.08)'  // slightly dim yellow for unpaid walk-in
                               : d.status === 'arriving_soon'
                                 ? '#fef9ec'
                                 : idx % 2 === 0 ? '#fff' : '#fafafa',
                             borderLeft: d.vehicle_number === 'WALK-IN' && d.status !== 'delivered'
                               ? '3px solid #f59e0b' : 'none',
-                          }}>
+                            cursor: 'pointer'
+                          }} onClick={() => setDetailsDelivery(d)}>
                             <td style={{ padding: '10px 12px' }}>
                               <Link
                                 to={`/vehicle/${d._id}`}
+                                onClick={e => e.stopPropagation()}
                                 style={{ fontWeight: 800, fontFamily: 'monospace', letterSpacing: 0.5, color: 'var(--primary)', textDecoration: 'none' }}
                               >
                                 {d.vehicle_number}
@@ -2225,7 +2015,8 @@ export default function AdminDashboard() {
                                     <button
                                       className="btn btn-success btn-sm"
                                       style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         if (window.confirm(`Mark as delivered? Stock will be updated automatically for matched products.`))
                                           handleDeliveryStatus(d._id, 'delivered');
                                       }}
@@ -2233,12 +2024,12 @@ export default function AdminDashboard() {
                                     <button
                                       className="btn btn-outline btn-sm"
                                       style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                      onClick={() => handleDeliveryStatus(d._id, 'not_delivered')}
+                                      onClick={(e) => { e.stopPropagation(); handleDeliveryStatus(d._id, 'not_delivered'); }}
                                     ><XCircle size={11} /> Not Delivered</button>
                                     <button
                                       className="btn btn-warning btn-sm"
                                       style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                                      onClick={() => openEditDelivery(d)}
+                                      onClick={(e) => { e.stopPropagation(); openEditDelivery(d); }}
                                     ><Edit2 size={11} /></button>
                                   </>
                                 )}
@@ -2247,7 +2038,7 @@ export default function AdminDashboard() {
                                   <button
                                     className="btn btn-outline btn-sm"
                                     style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                    onClick={() => handleDeliveryStatus(d._id, 'pending')}
+                                    onClick={(e) => { e.stopPropagation(); handleDeliveryStatus(d._id, 'pending'); }}
                                   ><RotateCcw size={11} /> Reopen</button>
                                 )}
                                 {/* Walk-in specific: Paid button separate from delivery status */}
@@ -2255,17 +2046,21 @@ export default function AdminDashboard() {
                                   <button
                                     className="btn btn-warning btn-sm"
                                     style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                    onClick={() => {
-                                      const mode = window.prompt('Payment mode? (cash/upi/online)', 'cash');
-                                      if (mode !== null) handleMarkWalkinPaid(d._id, mode || 'cash');
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setPaymentDelivery(d);
                                     }}
-                                  ><CreditCard size={11} /> Mark Paid</button>
+                                  ><CreditCard size={11} /> Mark Paid {(() => {
+                                      const amt = d.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
+                                      return amt > 0 ? `(₹${amt.toLocaleString('en-IN')})` : '';
+                                    })()}</button>
                                 )}
                                 {d.status !== 'delivered' && (
                                   <button
                                     className="btn btn-ghost btn-sm"
                                     style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                                    onClick={() => handleDeleteDelivery(d._id)}
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteDelivery(d._id); }}
                                   ><Trash2 size={11} /></button>
                                 )}
                               </div>
@@ -2337,7 +2132,6 @@ export default function AdminDashboard() {
                 {showAddSettlement ? '✕ Cancel' : '+ Add Entry'}
               </button>
               <Link to="/suppliers" className="btn btn-outline btn-sm"><><Users size={14} style={{ marginRight: 4 }} /> Suppliers</></Link>
-              <button className="btn btn-outline btn-sm" onClick={() => setShowStatement(false)}>✕ Close</button>
             </div>
           </div>
 
@@ -2856,13 +2650,6 @@ export default function AdminDashboard() {
               <button className="btn btn-warning btn-sm" onClick={() => setShowWalkinDueForm(w => !w)}>
                 {showWalkinDueForm ? '✕' : '+ Walk-in Due'}
               </button>
-              <button className="btn btn-outline btn-sm" onClick={() => {
-                setShowAllDues(false);
-                setDuesSearch('');
-                setDuesCardDate('');
-                setDueDateInvoices(null);
-                setShowWalkinDueForm(false);
-              }}>✕ Close</button>
             </div>
           </div>
           <div className="card-body">
@@ -2953,10 +2740,10 @@ export default function AdminDashboard() {
                     }}>Today</button>
                   )}
                   {duesCardDate && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => {
+                    <button className="btn btn-outline btn-sm" style={{ borderRadius: '20px', fontWeight: 600, color: 'var(--primary)', borderColor: 'var(--primary)', padding: '0px 14px' }} onClick={() => {
                       setDuesCardDate('');
                       setDueDateInvoices(null);
-                    }}>✕ All</button>
+                    }}>Show All</button>
                   )}
                 </div>
               </div>
@@ -3204,13 +2991,6 @@ export default function AdminDashboard() {
                   loadCardSales(d);
                 }}
               />
-              <button className="btn btn-outline btn-sm" onClick={() => {
-                setShowTodaySales(false);
-                setTodaySalesCardDate(getTodayIST());  // reset date on close
-                setCardSalesData(null);
-                setSalesSearch('');
-                setSalesSuggestions([]);
-              }}>✕ Close</button>
             </div>
           </div>
           <div className="card-body no-pad">
@@ -3487,85 +3267,165 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Low Stock */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={18} className="text-warning" /> {t('Low Stock Alerts', 'कम स्टॉक')}</div>
-            <div className="flex gap-2">
+        {/* Low Stock — Redesigned, Responsive */}
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {/* Card Header */}
+          <div className="card-header" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #fef3c7, #fde68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <AlertTriangle size={16} style={{ color: '#d97706' }} />
+              </div>
+              <div>
+                <div className="card-title" style={{ margin: 0, lineHeight: 1.2 }}>{t('Low Stock Alerts', 'कम स्टॉक')}</div>
+                {data.lowStockProducts?.length > 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                    <span style={{ background: '#fef3c7', color: '#b45309', padding: '1px 7px', borderRadius: 20, fontWeight: 700 }}>
+                      {data.lowStockProducts.length} item{data.lowStockProducts.length !== 1 ? 's' : ''} need restock
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {data.lowStockProducts?.length > 0 && (
                 <>
-                  <button className="btn btn-primary btn-sm" onClick={() => {
+                  <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
                     const threshold = parseInt(settings?.low_stock_threshold) || 10;
-                    setEditableLowStock(data.lowStockProducts.map(p => ({
+                    const source = activeListFilter
+                      ? data.lowStockProducts.filter(p => {
+                          const lst = productLists.find(l => l._id === activeListFilter);
+                          return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
+                        })
+                      : data.lowStockProducts;
+                    setEditableLowStock(source.map(p => ({
                       ...p,
                       orderQty: orderQty[p._id] !== undefined
                         ? orderQty[p._id]
                         : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
                     })));
                     setShowLowStockEditor(true);
-                  }}><><Edit2 size={14} style={{ marginRight: 4 }} /> Edit & Send</></button>
-                  {/* Quick WhatsApp send using current order quantities */}
-                  <button className="btn btn-success btn-sm" onClick={() => {
+                  }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
+                  <button className="btn btn-success btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
                     const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-                    const lines = data.lowStockProducts
-                      .map(p => `  • ${p.name}: *${getOrderQty(p)} ${p.unit}*`)
-                      .join('\n');
-                    const msg = encodeURIComponent(
-                      `*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${data.lowStockProducts.length} items`
-                    );
+                    const source = activeListFilter
+                      ? data.lowStockProducts.filter(p => {
+                          const lst = productLists.find(l => l._id === activeListFilter);
+                          return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
+                        })
+                      : data.lowStockProducts;
+                    const lines = source.map(p => `  • ${p.name}: *${getOrderQty(p)} ${p.unit}*`).join('\n');
+                    const msg = encodeURIComponent(`*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${source.length} items`);
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
-                  }}><><Phone size={14} style={{ marginRight: 4 }} /> Send Order</></button>
+                  }}><Phone size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Send Order</span></button>
                 </>
               )}
-              <Link to="/products" className="btn btn-outline btn-sm">{t('Manage', 'प्रबंधन')}</Link>
+              <Link to="/products" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }}>{t('Manage', 'प्रबंधन')}</Link>
             </div>
           </div>
+
+          {/* List filter pills */}
+          {productLists.length > 0 && data.lowStockProducts?.length > 0 && (
+            <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                onClick={() => setActiveListFilter(null)}
+                style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#fff' : 'var(--text-muted)' }}
+              >
+                All Items
+              </button>
+              {productLists.map(list => {
+                const listProductIds = (list.products || []).map(p => p._id || p);
+                const lowInList = data.lowStockProducts.filter(p => listProductIds.includes(p._id)).length;
+                if (lowInList === 0) return null;
+                return (
+                  <button
+                    key={list._id}
+                    onClick={() => setActiveListFilter(list._id === activeListFilter ? null : list._id)}
+                    style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5, background: activeListFilter === list._id ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === list._id ? '#fff' : 'var(--text-muted)' }}
+                  >
+                    <List size={11} />
+                    {list.name}
+                    <span style={{ background: activeListFilter === list._id ? 'rgba(255,255,255,0.25)' : '#e2e8f0', padding: '0 5px', borderRadius: 10, fontSize: 10, color: activeListFilter === list._id ? '#fff' : '#64748b' }}>{lowInList}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="card-body no-pad">
-            {!data.lowStockProducts?.length ? (
-              <div className="empty-state" style={{ padding: 24 }}>All products adequately stocked</div>
-            ) : (
-              <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
-                {/* One item per row — clean layout, no overflow */}
-                <div style={{ maxHeight: 350, overflowY: 'auto', padding: '4px 0' }}>
-                  {data.lowStockProducts.map((p, idx) => {
+            {(() => {
+              const filteredLowStock = activeListFilter
+                ? data.lowStockProducts?.filter(p => {
+                    const lst = productLists.find(l => l._id === activeListFilter);
+                    return lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
+                  })
+                : (data.lowStockProducts || []);
+              if (!filteredLowStock?.length) return (
+                <div style={{ padding: '32px 20px', textAlign: 'center' }}>
+                  <div style={{ color: '#d1d5db', marginBottom: 8 }}><Package size={36} /></div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>
+                    {activeListFilter ? 'No low stock items in this list' : 'All products adequately stocked'}
+                  </div>
+                </div>
+              );
+              return (
+                <div style={{ maxHeight: 370, overflowY: 'auto' }}>
+                  {filteredLowStock.map((p, idx) => {
                     const toOrder = getOrderQty(p);
+                    const isOut = p.stock === 0;
                     return (
                       <div key={p._id} style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '10px 16px',
-                        borderBottom: idx < data.lowStockProducts.length - 1 ? '1px solid #f3f4f6' : 'none',
-                        background: idx % 2 === 0 ? '#fff' : '#fafafa',
+                        padding: '10px 14px',
+                        borderBottom: idx < filteredLowStock.length - 1 ? '1px solid var(--border)' : 'none',
+                        background: idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--bg, #fafafa)',
                         flexWrap: 'wrap', gap: 8,
-                      }}>
-                        {/* Item name — wraps cleanly */}
-                        <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, minWidth: 120, wordBreak: 'break-word' }}>
-                          {p.name}
-                          <span style={{ marginLeft: 6, fontSize: 11, color: p.stock === 0 ? 'var(--danger)' : 'var(--warning)', fontWeight: 700 }}>
-                            ({p.stock === 0 ? 'Out' : `${p.stock} ${p.unit}`})
+                        borderLeft: `3px solid ${isOut ? 'var(--danger)' : '#f59e0b'}`,
+                        transition: 'background 0.15s',
+                      }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, #f0f4ff)'}
+                        onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--bg, #fafafa)'}
+                      >
+                        {/* Product info */}
+                        <div style={{ flex: 1, minWidth: 100 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text)', lineHeight: 1.3 }}>{p.name}</div>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 3,
+                            fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                            background: isOut ? '#fef2f2' : '#fffbeb',
+                            color: isOut ? 'var(--danger)' : '#d97706',
+                            border: `1px solid ${isOut ? '#fecaca' : '#fde68a'}`,
+                          }}>
+                            {isOut ? '⚠ Out of Stock' : `${p.stock} ${p.unit} left`}
                           </span>
                         </div>
-                        {/* Order qty controls */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                          <button className="btn btn-outline btn-sm" style={{ padding: '2px 8px', fontSize: 14, lineHeight: 1 }} onClick={() => adjustOrderQty(p._id, -1)}>−</button>
+                        {/* Stepper control */}
+                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, borderRadius: 8, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                          <button
+                            onClick={() => adjustOrderQty(p._id, -1)}
+                            style={{ background: '#f8fafc', border: 'none', cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                          ><Minus size={12} /></button>
                           <input
                             type="number" min="0"
                             value={toOrder}
                             onChange={e => { const val = parseInt(e.target.value) || 0; setOrderQty(prev => ({ ...prev, [p._id]: Math.max(0, val) })); }}
-                            style={{ width: 56, textAlign: 'center', fontWeight: 700, color: 'var(--primary)', border: '1.5px solid var(--border)', borderRadius: 6, padding: '3px 4px', fontSize: 13, outline: 'none', fontFamily: 'monospace' }}
+                            style={{ width: 44, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13.5, background: '#fff', padding: '0 2px' }}
                           />
-                          <button className="btn btn-outline btn-sm" style={{ padding: '2px 8px', fontSize: 14, lineHeight: 1 }} onClick={() => adjustOrderQty(p._id, 1)}>+</button>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 2 }}>{p.unit}</span>
+                          <button
+                            onClick={() => adjustOrderQty(p._id, 1)}
+                            style={{ background: '#f8fafc', border: 'none', cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                          ><Plus size={12} /></button>
                         </div>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 22, textAlign: 'left' }}>{p.unit}</span>
                       </div>
                     );
                   })}
                 </div>
-
-
-              </div>
-
-            )}
-
+              );
+            })()}
           </div>
         </div>
 
@@ -3689,7 +3549,6 @@ export default function AdminDashboard() {
                         <td className="tr mono fw-600">{fc(p.revenue)}</td>
                       </tr>
                     ))}
-                    {/* Removed Show More button per user request */}
                   </tbody>
                 </table>
               </div>
@@ -3697,104 +3556,165 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
-      {/* Low Stock Edit & Send Modal */}
+
+      {/* Low Stock Edit & Send Modal — Redesigned, Fully Responsive */}
       {showLowStockEditor && (
-        <div className="modal-overlay" onClick={() => setShowLowStockEditor(false)}>
-          <div className="modal" style={{ maxWidth: 680, width: '96vw' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={18} className="text-warning" /> Edit Order List — Low Stock</div>
-              <button className="modal-close" onClick={() => setShowLowStockEditor(false)}>✕</button>
+        <div className="modal-overlay" onClick={() => setShowLowStockEditor(false)} style={{ padding: '12px' }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 16, width: '100%', maxWidth: 660,
+              maxHeight: '92vh', display: 'flex', flexDirection: 'column',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              background: 'linear-gradient(135deg, #1a1f2e 0%, #2d3a5c 100%)',
+              padding: '18px 20px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <AlertTriangle size={20} style={{ color: '#fff' }} />
+                </div>
+                <div>
+                  <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>Edit Order List</div>
+                  <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24', padding: '1px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+                      {editableLowStock.length} item{editableLowStock.length !== 1 ? 's' : ''}
+                    </span>
+                    <span>Adjust quantities before sending</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLowStockEditor(false)}
+                style={{ background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', color: '#94a3b8', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0, transition: 'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+              >✕</button>
             </div>
-            <div className="modal-body">
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-                Edit quantities before sending. You can add/remove items and adjust amounts.
+
+            {/* List body — scrollable */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
+              {/* Table header */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Item Name</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center', minWidth: 120 }}>Order Qty</span>
+                <span style={{ width: 32 }}></span>
               </div>
 
-              {/* Editable item list */}
-              <div style={{ maxHeight: 340, overflowY: 'auto', marginBottom: 14 }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc' }}>
-                      {['Item Name', 'Order Qty', ''].map(h => (
-                        <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Order Qty' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {editableLowStock.map((p, idx) => (
-                      <tr key={p._id || idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>
-                          <input className="form-control" style={{ fontSize: 13 }}
-                            value={p.name}
-                            onChange={e => setEditableLowStock(prev => {
-                              const u = [...prev]; u[idx] = { ...u[idx], name: e.target.value }; return u;
-                            })} />
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                          <input
-                            type="number" min="0"
-                            className="form-control"
-                            style={{ width: 80, textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}
-                            value={p.orderQty}
-                            onChange={e => setEditableLowStock(prev => {
-                              const u = [...prev];
-                              u[idx] = { ...u[idx], orderQty: Math.max(0, parseInt(e.target.value) || 0) };
-                              return u;
-                            })}
-                          />
-                        </td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}
-                            onClick={() => setEditableLowStock(prev => prev.filter((_, i) => i !== idx))}>
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {editableLowStock.map((p, idx) => (
+                <div
+                  key={p._id || idx}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafbff' }}
+                >
+                  {/* Item name input */}
+                  <input
+                    value={p.name}
+                    onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], name: e.target.value }; return u; })}
+                    placeholder="Item name"
+                    style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                    onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  />
+                  {/* Stepper */}
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minWidth: 120 }}>
+                    <button
+                      onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, u[idx].orderQty - 1) }; return u; })}
+                      style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                    ><Minus size={12} /></button>
+                    <input
+                      type="number" min="0"
+                      value={p.orderQty}
+                      onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, parseInt(e.target.value) || 0) }; return u; })}
+                      style={{ flex: 1, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 14, background: '#fff', padding: '0 4px', minWidth: 0 }}
+                    />
+                    <button
+                      onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: u[idx].orderQty + 1 }; return u; })}
+                      style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                    ><Plus size={12} /></button>
+                  </div>
+                  {/* Remove */}
+                  <button
+                    onClick={() => setEditableLowStock(prev => prev.filter((_, i) => i !== idx))}
+                    style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 7, cursor: 'pointer', color: 'var(--danger)', transition: 'all 0.15s', flexShrink: 0 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#fecaca'; }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+
+              {/* Add Item */}
+              <div style={{ padding: '10px 16px' }}>
+                <button
+                  onClick={() => setEditableLowStock(prev => [...prev, { _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1 }])}
+                  style={{ width: '100%', padding: '9px', border: '1.5px dashed #cbd5e1', borderRadius: 9, background: 'transparent', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
+                >
+                  <Plus size={14} /> Add Item
+                </button>
               </div>
+            </div>
 
-              {/* Add custom item */}
-              <button className="btn btn-outline btn-sm" style={{ marginBottom: 16 }}
-                onClick={() => setEditableLowStock(prev => [...prev, { _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1 }])}>
-                + Add Item
-              </button>
-
-              {/* Action buttons */}
-              <div className="flex gap-2" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                <button className="btn btn-outline" onClick={() => setShowLowStockEditor(false)}>Cancel</button>
-
-
+            {/* Modal Footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1.5px solid var(--border)', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowLowStockEditor(false)}
+                style={{ padding: '8px 18px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+              >Cancel</button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {/* WhatsApp */}
+                <button
+                  className="btn btn-success btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => {
+                    const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    const lines = editableLowStock.filter(p => p.orderQty > 0 && p.name).map(p => `  • ${p.name}: *${p.orderQty} ${p.unit || ''}*`).join('\n');
+                    const msg = encodeURIComponent(`*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${editableLowStock.filter(p => p.orderQty > 0 && p.name).length} items`);
+                    window.open(`https://wa.me/?text=${msg}`, '_blank');
+                  }}
+                ><Phone size={13} /> <span>WhatsApp</span></button>
                 {/* PDF */}
-                <button className="btn btn-primary" onClick={() => {
-                  const prevTitle = document.title;
-                  document.title = `Stock-Order-${getTodayIST()}`;
-                  const rows = editableLowStock.filter(p => p.orderQty > 0 && p.name).map((p, i) =>
-                    `<tr style="border-bottom:1px solid #e5e7eb">
-                        <td style="padding:8px 12px">${i + 1}</td>
-                        <td style="padding:8px 12px;font-weight:600">${p.name}</td>
-                        <td style="padding:8px 12px;text-align:right;color:#2563eb;font-weight:800">${p.orderQty} ${p.unit || ''}</td>
-                      </tr>`).join('');
-                  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
-                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${document.title}</title>
-                      <style>@page{margin:12mm 10mm;size:A4;}body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;}
-                      table{width:100%;border-collapse:collapse;}thead tr{background:#1a1f2e;color:#fff;}
-                      th{padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}</style>
-                      </head><body>
-                      <div style="display:flex;justify-content:space-between;padding-bottom:14px;border-bottom:2px solid #1a1f2e;margin-bottom:18px">
-                        <div><h2 style="margin:0">${settings?.business_name || 'My Shop'}</h2>
-                        <p style="margin:4px 0;color:#6b7280">Stock Order — ${today}</p></div>
-                      </div>
-                      <table><thead><tr><th>#</th><th>Item Name</th>
-                        <th style="text-align:right;color:#93c5fd">Order Qty</th></tr></thead>
-                      <tbody>${rows}</tbody></table>
-                      </body></html>`;
-                  const win = window.open('', '_blank', 'width=900,height=700');
-                  win.document.write(html);
-                  win.document.close();
-                  win.onload = () => { win.focus(); win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
-                }}><FileText size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> PDF</button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => {
+                    const prevTitle = document.title;
+                    document.title = `Stock-Order-${getTodayIST()}`;
+                    const rows = editableLowStock.filter(p => p.orderQty > 0 && p.name).map((p, i) =>
+                      `<tr style="border-bottom:1px solid #e5e7eb">
+                          <td style="padding:8px 12px">${i + 1}</td>
+                          <td style="padding:8px 12px;font-weight:600">${p.name}</td>
+                          <td style="padding:8px 12px;text-align:right;color:#2563eb;font-weight:800">${p.orderQty} ${p.unit || ''}</td>
+                        </tr>`).join('');
+                    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${document.title}</title>
+                        <style>@page{margin:12mm 10mm;size:A4;}body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;}
+                        table{width:100%;border-collapse:collapse;}thead tr{background:#1a1f2e;color:#fff;}
+                        th{padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}</style>
+                        </head><body>
+                        <div style="display:flex;justify-content:space-between;padding-bottom:14px;border-bottom:2px solid #1a1f2e;margin-bottom:18px">
+                          <div><h2 style="margin:0">${settings?.business_name || 'My Shop'}</h2>
+                          <p style="margin:4px 0;color:#6b7280">Low Stock Report — ${today}</p></div>
+                        </div>
+                        <table><thead><tr><th>#</th><th>Item Name</th>
+                          <th style="text-align:right;color:#93c5fd">Order Qty</th></tr></thead>
+                        <tbody>${rows}</tbody></table>
+                        </body></html>`;
+                    const win = window.open('', '_blank', 'width=900,height=700');
+                    win.document.write(html);
+                    win.document.close();
+                    win.onload = () => { win.focus(); win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
+                  }}
+                ><FileText size={13} /> <span>PDF</span></button>
               </div>
             </div>
           </div>

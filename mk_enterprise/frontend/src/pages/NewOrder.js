@@ -15,7 +15,7 @@ const emptyItem = () => ({ product_name: '', product_id: '', qty: '', price: '' 
 export default function NewOrder() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { settings } = useApp();
+  const { t, settings } = useApp();
   const fc = formatCurrency;
 
   // ── Form state ─────────────────────────────────────────────
@@ -196,9 +196,9 @@ export default function NewOrder() {
               {/* Phone — +91 prefix, 10 digits only */}
               <div className="form-group">
                 <label className="form-label">Phone Number *</label>
-                <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-card)' }}>
                   <span style={{
-                    padding: '9px 10px', background: '#f8fafc', borderRight: '1.5px solid var(--border)',
+                    padding: '9px 10px', background: 'var(--bg)', borderRight: '1.5px solid var(--border)',
                     fontSize: 13.5, fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap',
                   }}>+91</span>
                   <input
@@ -282,7 +282,7 @@ export default function NewOrder() {
                   {activeSuggestIdx === idx && item.product_name.trim() && (
                     <div style={{
                       position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                      background: '#fff', border: '1.5px solid var(--border)', borderRadius: 7,
+                      background: 'var(--bg-card)', border: '1.5px solid var(--border)', borderRadius: 7,
                       boxShadow: '0 4px 16px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto',
                     }}>
                       {suggestions.length > 0 && suggestions.map(p => (
@@ -299,12 +299,12 @@ export default function NewOrder() {
                               Stock: {p.stock} {p.unit} · ₹{p.suggested_price || p.price}
                             </div>
                           </div>
-                          <span style={{ fontSize: 10, background: '#f3f4f6', padding: '2px 7px', borderRadius: 10, color: 'var(--text-muted)' }}>{p.unit}</span>
+                          <span style={{ fontSize: 10, background: 'var(--border)', padding: '2px 7px', borderRadius: 10, color: 'var(--text-muted)' }}>{p.unit}</span>
                         </div>
                       ))}
                       {/* Add new item option */}
                       <div
-                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
+                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: 'var(--primary-light)' }}
                         onMouseDown={() => {
                           updateItem(idx, 'product_id', '');
                           setSuggestions([]);
@@ -362,7 +362,7 @@ export default function NewOrder() {
 
             {/* Item total */}
             {itemTotal > 0 && (
-              <div style={{ marginTop: 8, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--border)' }}>
+              <div style={{ marginTop: 8, padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--border)' }}>
                 <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>Items Total</span>
                 <span style={{ fontSize: 17, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)' }}>{fc(itemTotal)}</span>
               </div>
@@ -413,7 +413,7 @@ export default function NewOrder() {
 
             {/* Summary box */}
             {itemTotal > 0 && (
-              <div style={{ marginTop: 12, background: advance > 0 ? '#f0fdf4' : '#f8fafc', border: `1.5px solid ${advance > 0 ? '#86efac' : 'var(--border)'}`, borderRadius: 10, padding: '14px 18px' }}>
+              <div style={{ marginTop: 12, background: advance > 0 ? 'var(--success-light)' : 'var(--bg)', border: `1.5px solid ${advance > 0 ? '#86efac' : 'var(--border)'}`, borderRadius: 10, padding: '14px 18px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 13.5 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Items Total</span>
                   <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fc(itemTotal)}</span>
@@ -433,7 +433,7 @@ export default function NewOrder() {
                   </span>
                 </div>
                 {advance > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-muted)', background: '#eff6ff', borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-muted)', background: 'var(--primary-light)', borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Info size={13} /> <span>Advance of {fc(advance)} via {advanceMode.toUpperCase()} will be recorded in Settlement as Received → Advance Payment</span>
                   </div>
                 )}
@@ -444,9 +444,7 @@ export default function NewOrder() {
 
         {/* ── Action Buttons ────────────────────────────── */}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginBottom: 40 }}>
-          <button className="btn btn-outline" onClick={() => navigate('/orders')}>
-            Cancel
-          </button>
+          <button className="btn btn-outline" onClick={() => navigate('/orders')}>{t('Cancel', 'रद्द करें')}</button>
           <button
             className="btn btn-primary btn-lg d-inline-flex align-items-center gap-2"
             onClick={handleSubmit}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useApp } from '../../context/AppContext';
 import toast from 'react-hot-toast';
-import { productApi } from '../../utils/api';
+import { productApi, productListApi } from '../../utils/api';
 import { formatCurrency } from '../../utils/helpers';
 import { ArrowLeft, Search, X, Plus, Minus, Package, ShoppingCart, Check } from 'lucide-react';
 
@@ -11,14 +12,17 @@ export default function ProductGridStep({
   onNext,
   onBack,
   onSaveDraft,
+  onCancel,
   gstEnabled = true,
 }) {
+  const { t } = useApp();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [itemLists, setItemLists] = useState([]);
 
   // Map of product_id -> item details
   const [selectedItems, setSelectedItems] = useState(new Map());
@@ -29,6 +33,7 @@ export default function ProductGridStep({
   const [newProductUnit, setNewProductUnit] = useState('bag');
   const [newProductCategory, setNewProductCategory] = useState('');
   const [newProductGst, setNewProductGst] = useState('0');
+  const [newProductWeight, setNewProductWeight] = useState('');
 
   // Load products and categories on mount
   useEffect(() => {
@@ -41,6 +46,10 @@ export default function ProductGridStep({
 
     productApi.getCategories().then(cats => {
       setCategories(Array.isArray(cats) ? cats : []);
+    }).catch(() => {});
+
+    productListApi.getAll().then(lists => {
+      setItemLists(Array.isArray(lists) ? lists : []);
     }).catch(() => {});
   }, []);
 
@@ -135,11 +144,24 @@ export default function ProductGridStep({
     setSelectedItems(newMap);
   }, [selectedItems, gstEnabled]);
 
-  // Filter products by category and search
+  // Filter products by category, item list and search
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      // Category filter
-      if (selectedCategory !== 'all') {
+      // Category / Item List filter      // 2) Handle Item Lists vs Unmarked vs Categories
+      if (selectedCategory.startsWith('list_')) {
+        const listId = selectedCategory.replace('list_', '');
+        const list = itemLists.find(l => l._id === listId);
+        if (list && list.products) {
+          const listProductIds = list.products.map(prod => prod._id);
+          if (!listProductIds.includes(p._id)) return false;
+        } else {
+          return false;
+        }
+      } else if (selectedCategory === 'unmarked') {
+        const allListProductIds = new Set();
+        itemLists.forEach(l => l.products?.forEach(prod => allListProductIds.add(prod._id)));
+        if (allListProductIds.has(p._id)) return false;
+      } else if (selectedCategory !== 'all') {
         if (selectedCategory === 'none') {
           if (p.category && p.category.trim()) return false;
         } else {
@@ -157,7 +179,7 @@ export default function ProductGridStep({
 
       return true;
     });
-  }, [products, selectedCategory, searchQuery]);
+  }, [products, selectedCategory, searchQuery, itemLists]);
 
   // Category product counts
   const categoryCounts = useMemo(() => {
@@ -172,6 +194,28 @@ export default function ProductGridStep({
     });
     return counts;
   }, [products]);
+
+  // Item List product counts
+  const itemListCounts = useMemo(() => {
+    const counts = {};
+    const allListProductIds = new Set();
+    itemLists.forEach(l => {
+      counts[l._id] = 0;
+      l.products?.forEach(prod => allListProductIds.add(prod._id));
+    });
+    let unmarkedCount = 0;
+    products.forEach(p => {
+      let inAnyList = false;
+      itemLists.forEach(l => {
+        if (l.products?.map(prod => prod._id).includes(p._id)) {
+          counts[l._id]++;
+          inAnyList = true;
+        }
+      });
+      if (!inAnyList) unmarkedCount++;
+    });
+    return { ...counts, unmarked: unmarkedCount };
+  }, [products, itemLists]);
 
   // Total invoice cost for selected items
   const totalCost = useMemo(() => {
@@ -227,6 +271,7 @@ export default function ProductGridStep({
         unit: newProductUnit,
         category: newProductCategory.trim(),
         gst: parseFloat(newProductGst) || 0,
+        weight_per_unit: parseFloat(newProductWeight) || 0,
         stock: 9999, // default large stock for custom items
       };
 
@@ -257,6 +302,7 @@ export default function ProductGridStep({
       setNewProductUnit('bag');
       setNewProductCategory('');
       setNewProductGst('0');
+      setNewProductWeight('');
       setShowAddProductModal(false);
     } catch (err) {
       toast.error(err.message || 'Failed to add product');
@@ -274,7 +320,7 @@ export default function ProductGridStep({
   };
 
   return (
-    <div className="pg-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#1a1f2e', color: '#e2e8f0', margin: '-28px', padding: '28px', overflow: 'hidden' }}>
+    <div className="pg-container">
       
       {/* Header */}
       <div className="pg-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #242b3d', paddingBottom: '16px', flexShrink: 0 }}>
@@ -282,14 +328,14 @@ export default function ProductGridStep({
           <button 
             onClick={onBack}
             className="btn btn-outline" 
-            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: '#242b3d', color: '#e2e8f0', background: '#242b3d' }}
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: 'var(--bg-hover)', color: 'var(--text)', background: 'var(--bg-hover)' }}
             title="Back"
           >
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 className="page-title" style={{ margin: 0, color: '#ffffff' }}>Select Items</h1>
-            <p className="page-subtitle" style={{ margin: '2px 0 0 0', color: '#94a3b8' }}>
+            <h1 className="page-title" style={{ margin: 0, color: 'var(--text)' }}>{t('Select Items', 'सामान चुनें')}</h1>
+            <p className="page-subtitle" style={{ margin: '2px 0 0 0', color: 'var(--text-muted)' }}>
               Customer: <strong style={{ color: '#c5a059' }}>{getCustomerDisplayName()}</strong>
             </p>
           </div>
@@ -297,14 +343,29 @@ export default function ProductGridStep({
 
         {/* Action Buttons Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              className="btn"
+              style={{
+                background: '#ef4444',
+                color: 'var(--bg-card)',
+                borderRadius: '12px',
+                fontWeight: '700',
+                padding: '10px 16px',
+              }}
+            >
+              CANCEL
+            </button>
+          )}
           <button
             onClick={() => setShowSearch(prev => !prev)}
             style={{
               padding: '10px',
               borderRadius: '12px',
-              background: showSearch ? '#2563eb' : '#242b3d',
+              background: showSearch ? 'var(--primary)' : 'var(--bg-hover)',
               border: 'none',
-              color: '#ffffff',
+              color: 'var(--text)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -319,7 +380,7 @@ export default function ProductGridStep({
             className="btn"
             style={{
               background: '#059669',
-              color: '#ffffff',
+              color: 'var(--bg-card)',
               borderRadius: '12px',
               fontWeight: '700',
               padding: '10px 16px',
@@ -332,8 +393,8 @@ export default function ProductGridStep({
             onClick={handleSaveDraftClick}
             className="btn"
             style={{
-              background: '#475569',
-              color: '#ffffff',
+              background: 'var(--text-muted)',
+              color: 'var(--bg-card)',
               borderRadius: '12px',
               fontWeight: '700',
               padding: '10px 16px',
@@ -348,7 +409,7 @@ export default function ProductGridStep({
       {showSearch && (
         <div style={{ padding: '12px 0', borderBottom: '1px solid #242b3d', flexShrink: 0 }}>
           <div style={{ position: 'relative' }}>
-            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input
               type="text"
               placeholder="Search product by name or category..."
@@ -357,12 +418,12 @@ export default function ProductGridStep({
               style={{
                 width: '100%',
                 height: '44px',
-                background: '#242b3d',
+                background: 'var(--bg-hover)',
                 border: '1.5px solid #334155',
                 borderRadius: '10px',
                 paddingLeft: '44px',
                 paddingRight: '40px',
-                color: '#ffffff',
+                color: 'var(--text)',
                 fontSize: '14px',
               }}
               autoFocus
@@ -377,7 +438,7 @@ export default function ProductGridStep({
                   transform: 'translateY(-50%)',
                   background: 'none',
                   border: 'none',
-                  color: '#94a3b8',
+                  color: 'var(--text-muted)',
                   cursor: 'pointer',
                 }}
               >
@@ -389,22 +450,10 @@ export default function ProductGridStep({
       )}
 
       {/* Main Grid Workspace */}
-      <div className="pg-workspace" style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '16px 0 80px 0', gap: '20px' }}>
+      <div className="pg-workspace">
         
         {/* Left Sidebar - Categories */}
-        <div 
-          className="pg-category-sidebar" 
-          style={{ 
-            width: '220px', 
-            overflowY: 'auto', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '8px',
-            flexShrink: 0,
-            borderRight: '1px solid #242b3d',
-            paddingRight: '12px',
-          }}
-        >
+        <div className="pg-category-sidebar">
           {/* All Items */}
           <button
             onClick={() => setSelectedCategory('all')}
@@ -412,8 +461,8 @@ export default function ProductGridStep({
             style={{
               padding: '12px 14px',
               borderRadius: '10px',
-              background: selectedCategory === 'all' ? '#2563eb' : '#242b3d',
-              color: '#ffffff',
+              background: selectedCategory === 'all' ? 'var(--primary)' : 'var(--bg-hover)',
+              color: selectedCategory === 'all' ? '#ffffff' : 'var(--text)',
               border: 'none',
               cursor: 'pointer',
               textAlign: 'left',
@@ -425,8 +474,8 @@ export default function ProductGridStep({
               transition: 'all 0.2s',
             }}
           >
-            <span>All Items</span>
-            <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.15)', padding: '2px 6px', borderRadius: '10px' }}>
+            <span>{t('All Items', 'सभी सामान')}</span>
+            <span style={{ fontSize: '11px', background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: '10px' }}>
               {categoryCounts.all}
             </span>
           </button>
@@ -444,8 +493,8 @@ export default function ProductGridStep({
                 style={{
                   padding: '12px 14px',
                   borderRadius: '10px',
-                  background: isActive ? '#2563eb' : '#242b3d',
-                  color: '#ffffff',
+                  background: isActive ? 'var(--primary)' : 'var(--bg-hover)',
+                  color: isActive ? '#ffffff' : 'var(--text)',
                   border: 'none',
                   cursor: 'pointer',
                   textAlign: 'left',
@@ -458,60 +507,85 @@ export default function ProductGridStep({
                 }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '6px' }}>{cat}</span>
-                <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.15)', padding: '2px 6px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '11px', background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: '10px' }}>
                   {count}
                 </span>
               </button>
             );
           })}
 
-          {/* No Category */}
-          {categoryCounts.none > 0 && (
-            <button
-              onClick={() => setSelectedCategory('none')}
-              className={`pg-category-item ${selectedCategory === 'none' ? 'active' : ''}`}
-              style={{
-                padding: '12px 14px',
-                borderRadius: '10px',
-                background: selectedCategory === 'none' ? '#2563eb' : '#242b3d',
-                color: '#ffffff',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontWeight: '600',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                fontSize: '13px',
-                transition: 'all 0.2s',
-              }}
-            >
-              <span>No Category</span>
-              <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.15)', padding: '2px 6px', borderRadius: '10px' }}>
-                {categoryCounts.none}
-              </span>
-            </button>
+          {/* Item Lists */}
+          {itemLists.length > 0 && (
+            <div style={{ marginTop: '8px', marginBottom: '4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', paddingLeft: '4px' }}>
+              Item Lists
+            </div>
           )}
+          {itemLists.map(list => {
+            const isActive = selectedCategory === `list_${list._id}`;
+            const count = itemListCounts[list._id] || 0;
+            return (
+              <button
+                key={list._id}
+                onClick={() => setSelectedCategory(`list_${list._id}`)}
+                className={`pg-category-item ${isActive ? 'active' : ''}`}
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: isActive ? 'var(--primary)' : 'var(--bg-hover)',
+                  color: isActive ? '#ffffff' : 'var(--text)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontWeight: '600',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '13px',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '6px' }}>{list.name}</span>
+                <span style={{ fontSize: '11px', background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: '10px' }}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Unmarked Items */}
+          <button
+            onClick={() => setSelectedCategory('unmarked')}
+            className={`pg-category-item ${selectedCategory === 'unmarked' ? 'active' : ''}`}
+            style={{
+              padding: '12px 14px',
+              borderRadius: '10px',
+              background: selectedCategory === 'unmarked' ? 'var(--primary)' : 'var(--bg-hover)',
+              color: selectedCategory === 'unmarked' ? '#ffffff' : 'var(--text)',
+              border: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontWeight: '600',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '13px',
+              transition: 'all 0.2s',
+              marginTop: itemLists.length > 0 ? '0' : '8px'
+            }}
+          >
+            <span>{t('Unmarked', 'अनमार्क')}</span>
+            <span style={{ fontSize: '11px', background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: '10px' }}>
+              {itemListCounts.unmarked}
+            </span>
+          </button>
         </div>
 
         {/* Right Main Grid - Products */}
-        <div 
-          className="pg-product-grid" 
-          style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
-            gridAutoRows: 'max-content',
-            gap: '16px',
-            alignContent: 'start',
-            paddingRight: '4px',
-          }}
-        >
+        <div className="pg-product-grid">
           {filteredProducts.length === 0 ? (
-            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
               <Package size={48} style={{ strokeWidth: '1.5', marginBottom: '12px', opacity: 0.5 }} />
-              <h3 style={{ margin: 0, color: '#ffffff' }}>No items found</h3>
+              <h3 style={{ margin: 0, color: 'var(--text)' }}>No items found</h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px' }}>Try selecting another category or add a new custom item.</p>
             </div>
           ) : (
@@ -526,17 +600,15 @@ export default function ProductGridStep({
                   key={product._id}
                   className={`pg-product-card ${isSelected ? 'selected' : ''}`}
                   onClick={() => {
-                    if (qty === 0) {
-                      handleAddQty(product);
-                    }
+                    handleAddQty(product);
                   }}
                   style={{
-                    background: '#242b3d',
+                    background: 'var(--bg-card)',
                     borderRadius: '16px',
-                    border: isSelected ? '2px solid #c5a059' : '2px solid transparent',
+                    border: isSelected ? '2px solid #c5a059' : '1px solid var(--border)',
                     padding: '16px',
                     position: 'relative',
-                    cursor: qty > 0 ? 'default' : 'pointer',
+                    cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
@@ -562,7 +634,7 @@ export default function ProductGridStep({
                       background: 'rgba(0,0,0,0.1)',
                     }}
                   >
-                    Stock: {product.stock}
+                    {t('Stock:', 'स्टॉक:')} {product.stock}
                   </div>
 
                   {/* Quantity Indicator in center if selected */}
@@ -573,7 +645,7 @@ export default function ProductGridStep({
                         top: '10px',
                         right: '10px',
                         background: '#c5a059',
-                        color: '#1a1f2e',
+                        color: 'var(--bg-card)',
                         width: '24px',
                         height: '24px',
                         borderRadius: '50%',
@@ -591,19 +663,22 @@ export default function ProductGridStep({
 
                   {/* Center: Product Title & Unit */}
                   <div style={{ marginTop: '24px', textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                       {product.name}
                     </h3>
-                    <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Per {product.unit || 'bag'}
-                    </span>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      {product.unit} {product.weight_per_unit > 0 ? `(${product.weight_per_unit}kg)` : ''}
+                    </div>
                   </div>
 
                   {/* Bottom: Stepper or Price */}
                   <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                     {qty > 0 ? (
                       /* Stepper controller */
-                      <div style={{ display: 'flex', alignItems: 'center', background: '#1a1f2e', borderRadius: '10px', width: '100%', overflow: 'hidden', border: '1.5px solid #334155' }}>
+                      <div 
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-card)', borderRadius: '10px', width: '100%', overflow: 'hidden', border: '1.5px solid #334155' }}
+                      >
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -612,7 +687,7 @@ export default function ProductGridStep({
                           style={{
                             background: 'transparent',
                             border: 'none',
-                            color: '#ffffff',
+                            color: 'var(--text)',
                             padding: '6px 8px',
                             cursor: 'pointer',
                             flex: 1,
@@ -621,7 +696,7 @@ export default function ProductGridStep({
                             justifyContent: 'center',
                             transition: 'background 0.2s',
                           }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           <Minus size={13} />
@@ -635,7 +710,7 @@ export default function ProductGridStep({
                             width: '40px',
                             background: 'transparent',
                             border: 'none',
-                            color: '#ffffff',
+                            color: 'var(--text)',
                             textAlign: 'center',
                             fontWeight: '700',
                             fontSize: '13px',
@@ -651,7 +726,7 @@ export default function ProductGridStep({
                           style={{
                             background: 'transparent',
                             border: 'none',
-                            color: '#ffffff',
+                            color: 'var(--text)',
                             padding: '6px 8px',
                             cursor: 'pointer',
                             flex: 1,
@@ -660,7 +735,7 @@ export default function ProductGridStep({
                             justifyContent: 'center',
                             transition: 'background 0.2s',
                           }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           <Plus size={13} />
@@ -696,26 +771,10 @@ export default function ProductGridStep({
       </div>
 
       {/* Sticky Bottom Bar */}
-      <div 
-        className="pg-bottom-bar" 
-        style={{ 
-          position: 'fixed', 
-          bottom: 0, 
-          left: 0, 
-          right: 0, 
-          background: '#111827', 
-          borderTop: '2px solid #242b3d', 
-          padding: '16px 28px', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          zIndex: 100,
-          boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.3)',
-        }}
-      >
+      <div className="pg-bottom-bar">
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Selected Items ({totalItemsCount})</span>
-          <strong style={{ fontSize: '20px', color: '#ffffff', fontFamily: 'monospace' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Selected Items ({totalItemsCount})</span>
+          <strong style={{ fontSize: '20px', color: 'var(--text)', fontFamily: 'monospace' }}>
             {formatCurrency(totalCost)}
           </strong>
         </div>
@@ -724,10 +783,10 @@ export default function ProductGridStep({
           onClick={handleNextClick}
           className="btn btn-primary"
           style={{
-            background: 'linear-gradient(135deg, #c5a059, #b48c41)',
+            background: 'var(--bg-card)',
             borderColor: 'transparent',
             boxShadow: '0 4px 14px rgba(197, 160, 89, 0.25)',
-            color: '#1a1f2e',
+            color: 'var(--text)',
             fontWeight: '800',
             fontSize: '15px',
             borderRadius: '12px',
@@ -749,7 +808,7 @@ export default function ProductGridStep({
           style={{
             position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.8)',
+            backgroundcolor: 'var(--text)',
             backdropFilter: 'blur(4px)',
             display: 'flex',
             alignItems: 'center',
@@ -764,7 +823,7 @@ export default function ProductGridStep({
             style={{
               width: '100%',
               maxWidth: '460px',
-              background: '#242b3d',
+              background: 'var(--bg-hover)',
               border: '1px solid #334155',
               borderRadius: '20px',
               overflow: 'hidden',
@@ -772,10 +831,10 @@ export default function ProductGridStep({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="card-header" style={{ padding: '16px 24px', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="card-title" style={{ fontSize: '18px', fontWeight: '700', color: '#ffffff' }}>Add New Custom Product</span>
+              <span className="card-title" style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)' }}>Add New Custom Product</span>
               <button
                 onClick={() => setShowAddProductModal(false)}
-                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={20} />
               </button>
@@ -785,21 +844,21 @@ export default function ProductGridStep({
               
               {/* Product Name */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '600' }}>Product Name *</label>
+                <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Product Name *</label>
                 <input
                   type="text"
                   placeholder="Enter custom product name..."
                   value={newProductName}
                   onChange={(e) => setNewProductName(e.target.value)}
                   required
-                  style={{ height: '42px', borderRadius: '8px', background: '#1a1f2e', border: '1.5px solid #334155', color: '#ffffff', padding: '0 12px' }}
+                  style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
                 />
               </div>
 
               {/* Price & Unit side-by-side */}
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '600' }}>Price (₹) *</label>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Price (₹) *</label>
                   <input
                     type="number"
                     step="0.01"
@@ -807,16 +866,16 @@ export default function ProductGridStep({
                     value={newProductPrice}
                     onChange={(e) => setNewProductPrice(e.target.value)}
                     required
-                    style={{ height: '42px', borderRadius: '8px', background: '#1a1f2e', border: '1.5px solid #334155', color: '#ffffff', padding: '0 12px' }}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
                   />
                 </div>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '600' }}>Unit</label>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Unit</label>
                   <select
                     value={newProductUnit}
                     onChange={(e) => setNewProductUnit(e.target.value)}
-                    style={{ height: '42px', borderRadius: '8px', background: '#1a1f2e', border: '1.5px solid #334155', color: '#ffffff', padding: '0 12px' }}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
                   >
                     <option value="bag">bag (बोरी)</option>
                     <option value="kg">kg (किलोग्राम)</option>
@@ -838,22 +897,22 @@ export default function ProductGridStep({
               {/* Category & GST side-by-side */}
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '600' }}>Category</label>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Category</label>
                   <input
                     type="text"
                     placeholder="Category name..."
                     value={newProductCategory}
                     onChange={(e) => setNewProductCategory(e.target.value)}
-                    style={{ height: '42px', borderRadius: '8px', background: '#1a1f2e', border: '1.5px solid #334155', color: '#ffffff', padding: '0 12px' }}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
                   />
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '600' }}>GST %</label>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>GST %</label>
                   <select
                     value={newProductGst}
                     onChange={(e) => setNewProductGst(e.target.value)}
-                    style={{ height: '42px', borderRadius: '8px', background: '#1a1f2e', border: '1.5px solid #334155', color: '#ffffff', padding: '0 12px' }}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
                   >
                     <option value="0">0%</option>
                     <option value="5">5%</option>
@@ -864,20 +923,34 @@ export default function ProductGridStep({
                 </div>
               </div>
 
+              {/* Weight per Unit */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Weight / Unit (kg)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g., 50 for a 50kg bag"
+                  value={newProductWeight}
+                  onChange={(e) => setNewProductWeight(e.target.value)}
+                  style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
+                />
+              </div>
+
               {/* Action Buttons */}
               <div style={{ display: 'flex', gap: '12px', marginTop: '12px', justifyContent: 'flex-end' }}>
                 <button
                   type="button"
                   onClick={() => setShowAddProductModal(false)}
                   className="btn btn-outline"
-                  style={{ height: '40px', borderRadius: '8px', borderColor: '#334155', background: 'transparent', color: '#94a3b8' }}
+                  style={{ height: '40px', borderRadius: '8px', borderColor: 'var(--border)', background: 'transparent', color: 'var(--text-muted)' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  style={{ height: '40px', borderRadius: '8px', background: '#059669', color: '#ffffff', border: 'none' }}
+                  style={{ height: '40px', borderRadius: '8px', background: '#059669', color: 'var(--bg-card)', border: 'none' }}
                 >
                   Add Item
                 </button>

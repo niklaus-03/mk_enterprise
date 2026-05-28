@@ -25,11 +25,12 @@ import Orders from './pages/Orders';
 import NewOrder from './pages/NewOrder';
 import AdminPanel from './pages/AdminPanel';
 import WalkInDelivery from './pages/WalkInDelivery';
+import DailyReport from './pages/DailyReport';
 import DriverDashboard from './pages/DriverDashboard';
 import NotificationDropdown from './components/NotificationDropdown';
 import MobileGlobalSearch from './components/MobileGlobalSearch';
 import { ThemeProvider } from './context/ThemeContext';
-import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List } from 'lucide-react';
+import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon } from 'lucide-react';
 import { tripApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────
@@ -68,18 +69,19 @@ function Sidebar({ open, onClose, onLock }) {
 
   const navItems = [
     { to: '/', label: lang ? hi.dashboard : 'Dashboard', icon: <BarChart3 size={16} />, exact: true },
-    { to: '/invoices/new', label: lang ? hi.newBill : 'New Bill', icon: <FileText size={16} />, highlight: true },
+    { to: '/invoices/new', label: lang ? hi.newBill : 'New Bill', icon: <FileText size={16} />, highlight: true, hideOnMobile: !isAdmin },
     { to: '/invoices', label: lang ? hi.invoices : 'Invoice History', icon: <ClipboardList size={16} />, exact: true },
-    { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
-    { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} /> },
-    { to: '/settings', label: lang ? hi.settings : 'Settings', icon: <SettingsIcon size={16} /> },
+    { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} />, hideOnMobile: !isAdmin },
+    { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} />, hideOnMobile: !isAdmin },
+    { to: '/suppliers', label: lang ? 'आपूर्तिकर्ता' : 'Suppliers', icon: <Building2 size={16} /> },
+    { to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} />, hideOnMobile: !isAdmin },
+    { to: '/daily-report', label: lang ? 'दैनिक रिपोर्ट' : 'Daily Report', icon: <Moon size={16} /> },
     ...(isAdmin ? [
-      { to: '/vehicle-incoming', label: 'Vehicles', icon: <Truck size={16} /> },
-      { to: '/walkin-delivery', label: 'Walk-in Delivery', icon: <UserCheck size={16} /> },
-      { to: '/suppliers', label: 'Suppliers', icon: <Building2 size={16} /> },
+      { to: '/vehicle-incoming', label: lang ? 'वाहन' : 'Vehicles', icon: <Truck size={16} /> },
       { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
-      { to: '/admin', label: 'Admin Panel', icon: <Shield size={16} /> },
+      { to: '/admin', label: lang ? 'एडमिन पैनल' : 'Admin Panel', icon: <Shield size={16} /> },
     ] : []),
+    { to: '/settings', label: lang ? hi.settings : 'Settings', icon: <SettingsIcon size={16} />, hideOnMobile: !isAdmin },
   ];
 
   return (
@@ -105,10 +107,10 @@ function Sidebar({ open, onClose, onLock }) {
               <LogOut size={32} strokeWidth={2.5} />
             </div>
             
-            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10, color: '#0f172a', letterSpacing: '-0.5px' }}>
+            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 10, color: 'var(--sidebar-bg)', letterSpacing: '-0.5px' }}>
               Confirm Logout
             </h3>
-            <p style={{ fontSize: 14.5, color: '#64748b', marginBottom: 0, lineHeight: 1.6, padding: '0 10px' }}>
+            <p style={{ fontSize: 14.5, color: 'var(--text-muted)', marginBottom: 0, lineHeight: 1.6, padding: '0 10px' }}>
               Are you sure you want to sign out? You'll need to login again to access your dashboard.
             </p>
             
@@ -126,7 +128,7 @@ function Sidebar({ open, onClose, onLock }) {
 
       <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
         <div className="sidebar-brand" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10, padding: '16px 16px 12px' }}>
-          {/* Profile image */}
+          {/* Profile image & Notifications */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
               <div style={{
@@ -137,16 +139,16 @@ function Sidebar({ open, onClose, onLock }) {
                 border: '1.5px solid #C5A059'
               }}>
                 <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="60" cy="60" r="48" stroke="#C5A059" stroke-width="3.5" />
-                  <circle cx="60" cy="60" r="41" stroke="#C5A059" stroke-width="1" />
+                  <circle cx="60" cy="60" r="48" stroke="#C5A059" strokeWidth="3.5" />
+                  <circle cx="60" cy="60" r="41" stroke="#C5A059" strokeWidth="1" />
                   
-                  <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" stroke-width="1" />
-                  <path d="M19 60 H101" stroke="#C5A059" stroke-width="1" />
-                  <path d="M60 19 V101" stroke="#C5A059" stroke-width="1" />
+                  <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" strokeWidth="1" />
+                  <path d="M19 60 H101" stroke="#C5A059" strokeWidth="1" />
+                  <path d="M60 19 V101" stroke="#C5A059" strokeWidth="1" />
                   
                   <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
-                  <circle cx="60" cy="60" r="26" stroke="#C5A059" stroke-width="2" />
-                  <text x="60" y="75" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="bold" text-anchor="middle" fill="#0B132B" letter-spacing="-2">MK</text>
+                  <circle cx="60" cy="60" r="26" stroke="#C5A059" strokeWidth="2" />
+                  <text x="60" y="75" fontFamily="Georgia, 'Times New Roman', serif" fontSize="42" fontWeight="bold" textAnchor="middle" fill="#0B132B" letterSpacing="-2">MK</text>
                 </svg>
               </div>
               <div style={{ overflow: 'hidden' }}>
@@ -158,6 +160,33 @@ function Sidebar({ open, onClose, onLock }) {
                 </div>
               </div>
             </div>
+            
+            {/* FB-Style Notification Bell */}
+            {user && (
+              <NotificationDropdown
+                user={user}
+                customButton={({ open, unreadCount }) => (
+                  <div style={{
+                    width: 38, height: 38, borderRadius: '50%',
+                    background: open ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', transition: 'all 0.2s', position: 'relative'
+                  }}>
+                    <Bell size={20} color="#ffffff" strokeWidth={2} />
+                    {unreadCount > 0 && (
+                      <span style={{
+                        position: 'absolute', top: -2, right: -4,
+                        background: '#e41e3f', color: 'var(--bg-card)', fontSize: 10.5, fontWeight: 800,
+                        borderRadius: 20, padding: '1px 5px', lineHeight: 1.2,
+                        boxShadow: '0 0 0 2px var(--sidebar-bg, #0f172a)'
+                      }}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </div>
+                )}
+              />
+            )}
           </div>
         </div>
         <nav className="sidebar-nav">
@@ -168,7 +197,7 @@ function Sidebar({ open, onClose, onLock }) {
               end={item.exact}
               onClick={onClose}
               className={({ isActive }) =>
-                `nav-item ${isActive ? 'active' : ''} ${item.highlight ? 'new-bill' : ''}`
+                `nav-item ${isActive ? 'active' : ''} ${item.highlight ? 'new-bill' : ''} ${item.hideOnMobile ? 'hide-on-mobile' : ''}`
               }
             >
               <span className="nav-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{item.icon}</span>
@@ -189,10 +218,10 @@ function Sidebar({ open, onClose, onLock }) {
                 display: 'flex', alignItems: 'center', gap: 8,
                 transition: 'all 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'var(--bg-card)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }}
             >
-              <Lock size={14} /> <span>Lock Screen</span>
+              <Lock size={14} /> <span>{lang ? 'स्क्रीन लॉक करें' : 'Lock Screen'}</span>
             </button>
           )}
           {/* Fullscreen toggle button */}
@@ -209,10 +238,10 @@ function Sidebar({ open, onClose, onLock }) {
               display: 'flex', alignItems: 'center', gap: 8,
               transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--bg-card)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
           >
-            <Maximize2 size={14} /> <span>{isCurrentlyFullscreen() ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+            <Maximize2 size={14} /> <span>{isCurrentlyFullscreen() ? (lang ? 'पूर्ण स्क्रीन से बाहर' : 'Exit Fullscreen') : (lang ? 'पूर्ण स्क्रीन' : 'Fullscreen')}</span>
           </button>
           <div className="sidebar-user">
             <div className="sidebar-username" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
@@ -436,27 +465,33 @@ function AppLayout() {
           )}
         </div>
 
-        <div className="app-content">
-          <Outlet />
-        </div>
-
-        {/* Facebook Style Bottom Nav — Manager only, mobile only */}
+        {/* Facebook Style Top Nav — Manager only, mobile only */}
         {!isAdmin && (
-          <div className="fb-bottom-nav">
-            <NavLink to="/invoices/new" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <FileText size={26} strokeWidth={isActive ? 2.5 : 2} />}
+          <div className={`fb-top-nav ${isFullscreen ? 'is-fullscreen' : ''}`}>
+            <NavLink to="/" end className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <BarChart3 size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
-            <NavLink to="/invoices" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <ClipboardList size={26} strokeWidth={isActive ? 2.5 : 2} />}
+            <NavLink to="/invoices/new" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <FileText size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
-            <NavLink to="/customers" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <Users size={26} strokeWidth={isActive ? 2.5 : 2} />}
+            <NavLink to="/products" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <Package size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
-            <NavLink to="/products" className={({isActive}) => `fb-bottom-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <Package size={26} strokeWidth={isActive ? 2.5 : 2} />}
+            <NavLink to="/customers" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <Users size={24} strokeWidth={isActive ? 2.5 : 2} />}
+            </NavLink>
+            <NavLink to="/walkin-delivery" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <UserCheck size={24} strokeWidth={isActive ? 2.5 : 2} />}
+            </NavLink>
+            <NavLink to="/settings" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <SettingsIcon size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
           </div>
         )}
+
+        <div className="app-content">
+          <Outlet />
+        </div>
       </div>
     </>
   );
@@ -481,7 +516,7 @@ function DriverLayout() {
 
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100vh', paddingBottom: 80 }}>
-      <div style={{ background: 'var(--sidebar-bg)', padding: '16px 20px', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: 'var(--sidebar-bg)', padding: '16px 20px', color: 'var(--bg-card)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ textAlign: 'left', overflow: 'hidden' }}>
           <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
             <User size={16} className="text-light" /> {user?.display_name || user?.username}
@@ -546,6 +581,7 @@ function InnerApp() {
         <Route path="/vehicle/:id" element={<VehicleRoute><VehicleDetail /></VehicleRoute>} />
         <Route path="/trip/:id" element={<TripView />} />
         <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/daily-report" element={<DailyReport />} />
         <Route path="settings" element={<Settings />} />
         <Route path="orders" element={<Orders />} />
         <Route path="orders/new" element={<NewOrder />} />
@@ -565,7 +601,30 @@ export default function App() {
     <ThemeProvider>
       <BrowserRouter>
         <AuthProvider>
-          <Toaster position="top-right" toastOptions={{ duration: 3500, style: { fontSize: 13.5 } }} />
+          <Toaster 
+            position="top-right" 
+            containerStyle={{ zIndex: 99999 }}
+            toastOptions={{ 
+              duration: 3500, 
+              style: { 
+                fontSize: 13.5,
+                background: 'var(--text)',
+                color: 'var(--bg)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.3)',
+                padding: '12px 16px',
+                fontWeight: 500,
+                letterSpacing: '-0.2px'
+              },
+              success: {
+                iconTheme: { primary: '#22c55e', secondary: 'var(--bg-card)' },
+              },
+              error: {
+                iconTheme: { primary: '#ef4444', secondary: 'var(--bg-card)' },
+              }
+            }} 
+          />
           <InnerApp />
         </AuthProvider>
       </BrowserRouter>

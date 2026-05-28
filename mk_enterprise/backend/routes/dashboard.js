@@ -110,7 +110,7 @@ router.get('/', async (req, res) => {
       // 5. Product count
       Product.countDocuments({ is_active: true, ...(await getProductOwnerFilter(req)) }),
       // 6. All active products — used for both allProducts dropdown AND low stock filtering
-      Product.find({ is_active: true, ...(await getProductOwnerFilter(req)) }).select('name price stock unit gst is_active custom_low_stock weight_per_unit').sort({ name: 1 }),
+      Product.find({ is_active: true, ...(await getProductOwnerFilter(req)) }).populate('created_by', 'username display_name role').select('name price stock unit gst is_active custom_low_stock weight_per_unit created_by').sort({ name: 1 }),
       // 7. Recent invoices (sidebar widget)
       Invoice.find(notCancelled).sort({ date: -1 }).limit(5),
       // 9. All invoices on selected date (Today's Sale drill-down)
@@ -267,6 +267,7 @@ router.get('/', async (req, res) => {
         is_active: p.is_active,
         custom_low_stock: p.custom_low_stock != null ? p.custom_low_stock : null,
         weight_per_unit: p.weight_per_unit || 0,
+        created_by: p.created_by,
       })),
       // lowStockProducts — filtered using per-product or global threshold
       lowStockProducts: lowStockProducts.map(p => ({
@@ -329,6 +330,14 @@ router.post('/record-payment', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found and no customer specified' });
     }
 
+    // Capture previous balance before mutating anything
+    let previousBalance = 0;
+    if (customer) {
+      previousBalance = customer.balance || 0;
+    } else {
+      previousBalance = invoicesToPay.reduce((s, inv) => s + (inv.balance_due || 0), 0);
+    }
+
     // 3. Cascade payment across invoices
     let advance = 0;
     let originalPaid = paid;
@@ -388,12 +397,14 @@ router.post('/record-payment', async (req, res) => {
     const entityType = invoicesToPay.length === 1 && !customer_id ? 'invoice' : 'customer';
     const entityId = invoicesToPay.length === 1 && !customer_id ? invoicesToPay[0]._id : (customer ? customer._id : null);
     
+    const remainingBalance = customer ? customer.balance : 0;
+    
     await logActivity(req, {
       action: 'payment',
       entity_type: entityType,
       entity_id: entityId,
       entity_name: partyName,
-      description: `Collected ₹${originalPaid.toFixed(2)} via ${mode || 'cash'}. ${advance > 0 ? `₹${advance.toFixed(2)} stored as advance.` : 'Applied to due.'}`
+      description: `Collected ₹${originalPaid.toFixed(2)} via ${mode || 'cash'}. Prev Due: ₹${previousBalance.toFixed(2)} | Remaining: ₹${remainingBalance.toFixed(2)}`
     });
 
     res.json({
