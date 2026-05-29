@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supplierApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
-import { Building2, Search, Phone, MapPin, Trash2, Plus, X, Edit, CreditCard, FileText, ArrowRight } from 'lucide-react';
+import { Building2, Search, Phone, MapPin, Trash2, Plus, X, Edit, CreditCard, FileText, ArrowRight, Calendar, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const EMPTY = { name: '', phone: '', contact_numbers: [], address: '', notes: '', balance: '' };
@@ -19,10 +19,13 @@ export default function Suppliers() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [historyModal, setHistoryModal] = useState(null); // supplier for history
-  const [history, setHistory] = useState({ history: [], totalPaid: 0 });
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const navigate = useNavigate();
   const fc = formatCurrency;
+  
+  const phoneRef = React.useRef();
+  const addressRef = React.useRef();
+  const balanceRef = React.useRef();
+  const submitBtnRef = React.useRef();
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -52,6 +55,7 @@ export default function Suppliers() {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error('Supplier name required');
+    if (form.phone && form.phone.trim().length !== 10) return toast.error('Phone number must be exactly 10 digits');
     setSaving(true);
     try {
       if (form._id) {
@@ -76,20 +80,15 @@ export default function Suppliers() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const openHistory = async (s) => {
-    setHistoryModal(s);
-    setHistoryLoading(true);
-    try {
-      const res = await supplierApi.getHistory(s._id, { all: 'true' });
-      setHistory({ history: res.history || [], totalPaid: res.totalPaid || 0 });
-    } catch (e) { toast.error(e.message); }
-    finally { setHistoryLoading(false); }
+  const openHistory = (s) => {
+    navigate(`/suppliers/${s._id}/history`, { state: { supplier: s } });
   };
 
   const filtered = suppliers.filter(s =>
     s.name?.toLowerCase().includes(search.toLowerCase()) ||
     s.phone?.includes(search)
   );
+
 
   return (
     <div>
@@ -299,7 +298,11 @@ export default function Suppliers() {
               <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Supplier Name *</label>
-                  <input className="form-control" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Ramesh Traders" autoFocus style={{ borderRadius: 8 }} />
+                  <input className="form-control" value={form.name} onChange={e => {
+                    const val = e.target.value;
+                    const capitalized = val.replace(/\b[a-zA-Z]/g, c => c.toUpperCase());
+                    setForm({ ...form, name: capitalized });
+                  }} placeholder="e.g. Ramesh Traders" autoFocus style={{ borderRadius: 8 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); phoneRef.current?.focus(); } }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
                   <div className="form-group" style={{ gridColumn: isMobile ? '1' : '1 / span 2' }}>
@@ -308,7 +311,7 @@ export default function Suppliers() {
                       <button type="button" onClick={() => setForm({ ...form, contact_numbers: [...(form.contact_numbers || []), { note: '', number: '' }] })} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>+ Add Number</button>
                     </label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <input className="form-control" type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="Primary Mobile number (legacy)" style={{ borderRadius: 8 }} />
+                      <input className="form-control" type="tel" ref={phoneRef} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="Primary Mobile number (legacy)" style={{ borderRadius: 8 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addressRef.current?.focus(); } }} />
                       {(form.contact_numbers || []).map((cn, idx) => (
                         <div key={idx} style={{ display: 'flex', gap: 8 }}>
                           <input className="form-control" value={cn.note} onChange={e => {
@@ -331,7 +334,11 @@ export default function Suppliers() {
                   </div>
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>{t('Address', 'पता')}</label>
-                    <input className="form-control" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="City / Location" style={{ borderRadius: 8 }} />
+                    <input className="form-control" ref={addressRef} value={form.address} onChange={e => {
+                      const val = e.target.value;
+                      const capitalized = val.replace(/\b[a-zA-Z]/g, c => c.toUpperCase());
+                      setForm({ ...form, address: capitalized });
+                    }} placeholder="City / Location" style={{ borderRadius: 8 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); balanceRef.current?.focus(); } }} />
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
@@ -341,12 +348,12 @@ export default function Suppliers() {
                   </div>
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Opening Balance ₹</label>
-                    <input className="form-control" type="number" step="0.01" value={form.balance} onChange={e => setForm({ ...form, balance: e.target.value })} placeholder="Positive = Due, Negative = Advance" style={{ borderRadius: 8 }} />
+                    <input className="form-control" type="number" ref={balanceRef} step="0.01" value={form.balance} onChange={e => setForm({ ...form, balance: e.target.value })} placeholder="Positive = Due, Negative = Advance" style={{ borderRadius: 8 }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitBtnRef.current?.click(); } }} />
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
                   <button type="button" className="btn btn-outline" onClick={closeModal} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>{t('Cancel', 'रद्द करें')}</button>
-                  <button type="submit" className="btn btn-primary" disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>
+                  <button type="submit" ref={submitBtnRef} className="btn btn-primary" disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>
                     {saving ? 'Saving...' : form._id ? 'Save Changes' : 'Add Supplier'}
                   </button>
                 </div>
@@ -356,68 +363,7 @@ export default function Suppliers() {
         </div>
       )}
 
-      {/* ── PAYMENT HISTORY MODAL ── */}
-      {historyModal && (
-        <div className="modal-overlay" onClick={() => setHistoryModal(null)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.60)', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e2e8f0', margin: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'var(--sidebar-bg)', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '16px', color: 'var(--text)' }}>
-                  <CreditCard size={18} className="text-primary" />
-                  {historyModal.name} — Payment History
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Total paid: <strong style={{ color: '#16a34a' }}>{fc(history.totalPaid)}</strong>
-                </div>
-              </div>
-              <button onClick={() => setHistoryModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                <X size={18} />
-              </button>
-            </div>
-            <div style={{ overflowY: 'auto', flex: 1 }}>
-              {historyLoading ? (
-                <div className="loading"><span className="spinner"></span></div>
-              ) : history.history.length === 0 ? (
-                <div className="empty-state" style={{ padding: 40 }}>
-                  <div className="empty-icon">💸</div>
-                  <div className="empty-text">No payment records yet</div>
-                </div>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-                  <thead style={{ position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>
-                    <tr>
-                      {['Date', 'Time', 'Mode', 'Notes', 'Amount'].map((h, i) => (
-                        <th key={h} style={{ padding: '12px 16px', textAlign: i === 4 ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid #e2e8f0', letterSpacing: '0.5px' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.history.map((h, idx) => (
-                      <tr key={h._id} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)' }}>
-                        <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap' }}>
-                          {h.ist_date ? new Date(h.ist_date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                        </td>
-                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
-                          {h.ist_formatted ? h.ist_formatted.split(' ').slice(1).join(' ') : '—'}
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', background: h.mode === 'cash' ? 'var(--success-light)' : h.mode === 'upi' ? 'var(--primary-light)' : 'var(--bg-hover)', color: h.mode === 'cash' ? '#16a34a' : h.mode === 'upi' ? '#2563eb' : 'var(--text-muted)' }}>
-                            {h.mode === 'cash' ? '💵' : h.mode === 'upi' ? '📱' : '🏦'} {h.mode}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: 12 }}>{h.notes || '—'}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: '#16a34a', fontFamily: 'monospace' }}>
-                          +{fc(h.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

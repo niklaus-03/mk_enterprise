@@ -251,6 +251,8 @@ router.get('/', async (req, res) => {
         invoice_number: inv.invoice_number || '',
         customer_name: inv.customer_name || 'Walk-in Customer',
         customer_phone: inv.customer_phone || '',
+        driver_name: inv.driver_name || '',
+        vehicle_number: inv.vehicle_number || '',
         total: inv.total || 0,
         amount_received: inv.amount_received || 0,
         balance_due: inv.balance_due || 0,
@@ -404,7 +406,8 @@ router.post('/record-payment', async (req, res) => {
       entity_type: entityType,
       entity_id: entityId,
       entity_name: partyName,
-      description: `Collected ₹${originalPaid.toFixed(2)} via ${mode || 'cash'}. Prev Due: ₹${previousBalance.toFixed(2)} | Remaining: ₹${remainingBalance.toFixed(2)}`
+      description: `Collected ₹${originalPaid.toFixed(2)} via ${mode || 'cash'}. Prev Due: ₹${previousBalance.toFixed(2)} | Remaining: ₹${remainingBalance.toFixed(2)}`,
+      changes: { mode, amount: originalPaid, previousBalance, remainingBalance }
     });
 
     res.json({

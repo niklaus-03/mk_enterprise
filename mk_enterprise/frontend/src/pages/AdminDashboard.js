@@ -11,7 +11,7 @@ import PaymentModal from '../components/PaymentModal';
 import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
 
 
-const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'others'];
+const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'goods_exchange', 'others'];
 
 // Must be defined OUTSIDE the component so it is available everywhere in the file
 function getTodayIST() {
@@ -429,9 +429,9 @@ export default function AdminDashboard() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const handleMarkWalkinPaid = async (id, mode) => {
+  const handleMarkWalkinPaid = async (id, mode, notes) => {
     try {
-      await deliveryApi.updatePayment(id, 'paid', mode || 'cash');
+      await deliveryApi.updatePayment(id, 'paid', mode || 'cash', notes);
       toast.success('Walk-in delivery marked as paid');
       setPaymentDelivery(null);
       loadDeliveries(deliveryDateFilter || getTodayIST());
@@ -818,7 +818,7 @@ export default function AdminDashboard() {
         <PaymentModal 
           isOpen={true} 
           onClose={() => setPaymentDelivery(null)}
-          onConfirm={(mode) => handleMarkWalkinPaid(paymentDelivery._id, mode)}
+          onConfirm={(mode, notes) => handleMarkWalkinPaid(paymentDelivery._id, mode, notes)}
           amount={paymentDelivery?.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0}
         />
       )}
@@ -1550,13 +1550,7 @@ export default function AdminDashboard() {
               >
                 {showDeliveryForm && !editDeliveryId ? '✕ Cancel' : '+ Add Vehicle'}
               </button>
-              {/* Walk-in Delivery button */}
-              <button
-                className="btn btn-warning btn-sm"
-                onClick={() => setShowWalkinModal(true)}
-              >
-                <UserCheck size={13} style={{ marginRight: 4 }} /> Walk-in Delivery
-              </button>
+
               <SortDropdown
                 options={[
                   { key: 'time_asc', label: '↑ Expected Time' },
@@ -2450,10 +2444,18 @@ export default function AdminDashboard() {
                 if (time < acc[managerName].earliestDate) acc[managerName].earliestDate = time;
 
                 const m = (s.mode || 'cash').toUpperCase();
-                if (!acc[managerName].byMode[m]) acc[managerName].byMode[m] = { total: 0, notes: [] };
+                if (!acc[managerName].byMode[m]) acc[managerName].byMode[m] = { total: 0, entries: [] };
                 acc[managerName].byMode[m].total += s.amount;
-                if (s.notes && !s.notes.startsWith('Auto-recorded')) acc[managerName].byMode[m].notes.push(s.notes);
-                else if (s.notes) acc[managerName].byMode[m].notes.push(s.notes.replace('Auto-recorded from invoice ', 'Invoice '));
+                
+                let processedNotes = s.notes;
+                if (s.notes && s.notes.startsWith('Auto-recorded from invoice ')) processedNotes = s.notes.replace('Auto-recorded from invoice ', 'Invoice ');
+                
+                acc[managerName].byMode[m].entries.push({
+                  party: s.party_name,
+                  amount: s.amount,
+                  notes: processedNotes,
+                  type: s.type
+                });
                 return acc;
               }, JSON.parse(JSON.stringify(initialGrouped)));
 
@@ -2467,10 +2469,18 @@ export default function AdminDashboard() {
                 if (time > acc[managerName].latestDate) acc[managerName].latestDate = time;
                 if (time < acc[managerName].earliestDate) acc[managerName].earliestDate = time;
                 const m = (s.mode || 'cash').toUpperCase();
-                if (!acc[managerName].byMode[m]) acc[managerName].byMode[m] = { total: 0, notes: [] };
+                if (!acc[managerName].byMode[m]) acc[managerName].byMode[m] = { total: 0, entries: [] };
                 acc[managerName].byMode[m].total += s.amount;
-                if (s.notes && !s.notes.startsWith('Auto-recorded')) acc[managerName].byMode[m].notes.push(s.notes);
-                else if (s.notes) acc[managerName].byMode[m].notes.push(s.notes.replace('Auto-recorded from invoice ', 'Invoice '));
+                
+                let processedNotes = s.notes;
+                if (s.notes && s.notes.startsWith('Auto-recorded from invoice ')) processedNotes = s.notes.replace('Auto-recorded from invoice ', 'Invoice ');
+                
+                acc[managerName].byMode[m].entries.push({
+                  party: s.party_name,
+                  amount: s.amount,
+                  notes: processedNotes,
+                  type: s.type
+                });
                 return acc;
               }, JSON.parse(JSON.stringify(initialGrouped)));
 
@@ -2553,9 +2563,21 @@ export default function AdminDashboard() {
                                 <div style={{ fontWeight: 600, color: 'var(--text)' }}>{mode}</div>
                                 <div style={{ fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>−{fc(data.total)}</div>
                               </div>
-                              {data.notes.length > 0 && (
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, paddingLeft: 4 }}>
-                                  {data.notes.map((n, idx) => <div key={idx}>• {n}</div>)}
+                              {data.entries.length > 0 && (
+                                <div style={{ marginTop: 6, paddingLeft: 6 }}>
+                                  {data.entries.map((entry, idx) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+                                      <span style={{ color: 'var(--text-muted)' }}>
+                                        {entry.type === 'other_expense' ? (
+                                          <span style={{ background: '#fef08a', color: '#854d0e', padding: '1px 4px', borderRadius: 4, fontWeight: 700, marginRight: 6, fontSize: 9 }}>EXPENSE</span>
+                                        ) : (
+                                          <span style={{ background: '#fecaca', color: '#b91c1c', padding: '1px 4px', borderRadius: 4, fontWeight: 700, marginRight: 6, fontSize: 9 }}>PAYMENT</span>
+                                        )}
+                                        {entry.party || 'Expense'} {entry.notes ? `— ${entry.notes}` : ''}
+                                      </span>
+                                      <span style={{ fontWeight: 600, color: 'var(--danger)', opacity: 0.8 }}>₹{fc(entry.amount)}</span>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -2583,9 +2605,17 @@ export default function AdminDashboard() {
                                 <div style={{ fontWeight: 600, color: 'var(--text)' }}>{mode}</div>
                                 <div style={{ fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>+{fc(data.total)}</div>
                               </div>
-                              {data.notes.length > 0 && (
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, paddingLeft: 4 }}>
-                                  {data.notes.map((n, idx) => <div key={idx}>• {n}</div>)}
+                              {data.entries.length > 0 && (
+                                <div style={{ marginTop: 6, paddingLeft: 6 }}>
+                                  {data.entries.map((entry, idx) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+                                      <span style={{ color: 'var(--text-muted)' }}>
+                                        <span style={{ background: '#bbf7d0', color: '#166534', padding: '1px 4px', borderRadius: 4, fontWeight: 700, marginRight: 6, fontSize: 9 }}>RECEIVED</span>
+                                        {entry.party} {entry.notes ? `— ${entry.notes}` : ''}
+                                      </span>
+                                      <span style={{ fontWeight: 600, color: 'var(--success)', opacity: 0.8 }}>₹{fc(entry.amount)}</span>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -3002,7 +3032,9 @@ export default function AdminDashboard() {
                 ? allInvoices.filter(inv =>
                   (inv.invoice_number || '').toLowerCase().includes(q) ||
                   (inv.customer_name || '').toLowerCase().includes(q) ||
-                  (inv.customer_phone || '').toLowerCase().includes(q)
+                  (inv.customer_phone || '').toLowerCase().includes(q) ||
+                  (inv.driver_name || '').toLowerCase().includes(q) ||
+                  (inv.vehicle_number || '').toLowerCase().includes(q)
                 )
                 : [...allInvoices];
 
@@ -3015,22 +3047,48 @@ export default function AdminDashboard() {
                 return new Date(b.date || 0) - new Date(a.date || 0); // time_desc default
               });
 
-              // Auto-suggestions: top 6 matches across all three fields
+              // Auto-suggestions: top 8 matches across invoice fields + suppliers
               const buildSuggestions = (query) => {
                 if (!query) return [];
                 const seen = new Set();
                 const suggestions = [];
+                // 1. Search invoice fields
                 for (const inv of allInvoices) {
-                  if (suggestions.length >= 6) break;
+                  if (suggestions.length >= 8) break;
                   const fields = [
                     { type: 'Invoice', value: inv.invoice_number },
                     { type: 'Customer', value: inv.customer_name },
                     { type: 'Phone', value: inv.customer_phone },
+                    { type: 'Driver', value: inv.driver_name },
+                    { type: 'Vehicle', value: inv.vehicle_number },
                   ];
                   for (const f of fields) {
-                    if (f.value && f.value.toLowerCase().includes(query) && !seen.has(f.value)) {
-                      seen.add(f.value);
+                    if (f.value && f.value.toLowerCase().includes(query) && !seen.has(f.type + ':' + f.value)) {
+                      seen.add(f.type + ':' + f.value);
                       suggestions.push({ label: f.value, type: f.type, inv });
+                    }
+                  }
+                }
+                // 2. Search suppliers (name + phone/contact numbers)
+                if (suggestions.length < 8 && suppliers && suppliers.length > 0) {
+                  for (const sup of suppliers) {
+                    if (suggestions.length >= 8) break;
+                    const supName = sup.name || '';
+                    const supPhone = sup.phone || '';
+                    if (supName.toLowerCase().includes(query) && !seen.has('Supplier:' + supName)) {
+                      seen.add('Supplier:' + supName);
+                      suggestions.push({ label: supName, type: 'Supplier', inv: null, supplierId: sup._id });
+                    }
+                    if (supPhone && supPhone.includes(query) && !seen.has('Supplier Ph:' + supPhone)) {
+                      seen.add('Supplier Ph:' + supPhone);
+                      suggestions.push({ label: supPhone, type: 'Supplier Ph', inv: null, supplierId: sup._id, extra: supName });
+                    }
+                    for (const cn of (sup.contact_numbers || [])) {
+                      if (suggestions.length >= 8) break;
+                      if (cn.number && cn.number.includes(query) && !seen.has('Supplier Ph:' + cn.number)) {
+                        seen.add('Supplier Ph:' + cn.number);
+                        suggestions.push({ label: cn.number, type: 'Supplier Ph', inv: null, supplierId: sup._id, extra: supName + (cn.note ? ` (${cn.note})` : '') });
+                      }
                     }
                   }
                 }
@@ -3046,7 +3104,7 @@ export default function AdminDashboard() {
                       <Search size={14} className="text-muted" />
                       <input
                         type="text"
-                        placeholder="Search by invoice number, customer name, or phone..."
+                        placeholder="Search invoice, customer, phone, driver, vehicle, supplier..."
                         value={salesSearch}
                         style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13.5, flex: 1, fontFamily: 'inherit' }}
                         onFocus={() => {
@@ -3111,10 +3169,13 @@ export default function AdminDashboard() {
                                 })()}
                               </span>
                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                {s.inv.customer_name !== s.label ? `· ${s.inv.customer_name}` : ''}
+                                {s.inv ? (s.inv.customer_name !== s.label ? `· ${s.inv.customer_name}` : '') : (s.extra ? `· ${s.extra}` : '')}
                               </span>
                             </div>
-                            <span style={{ fontSize: 10, background: '#f3f4f6', padding: '2px 7px', borderRadius: 20, color: 'var(--text-muted)', fontWeight: 600 }}>
+                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, fontWeight: 600,
+                              background: s.type === 'Driver' ? '#dbeafe' : s.type === 'Vehicle' ? '#fef3c7' : s.type === 'Supplier' || s.type === 'Supplier Ph' ? '#f0fdf4' : '#f3f4f6',
+                              color: s.type === 'Driver' ? '#1d4ed8' : s.type === 'Vehicle' ? '#b45309' : s.type === 'Supplier' || s.type === 'Supplier Ph' ? '#166534' : 'var(--text-muted)'
+                            }}>
                               {s.type}
                             </span>
                           </div>
@@ -3137,6 +3198,7 @@ export default function AdminDashboard() {
                           <tr style={{ background: '#f8fafc' }}>
                             <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Invoice #</th>
                             <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Customer</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Driver / Vehicle</th>
                             <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Time</th>
                             <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Total</th>
                             <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Status</th>
@@ -3175,6 +3237,14 @@ export default function AdminDashboard() {
                                       {highlight(inv.customer_phone)}
                                     </div>
                                   )}
+                                </td>
+                                <td style={{ padding: '10px 14px' }}>
+                                  {(inv.driver_name || inv.vehicle_number) ? (
+                                    <>
+                                      {inv.driver_name && <div style={{ fontWeight: 500, fontSize: 12.5 }}>{highlight(inv.driver_name)}</div>}
+                                      {inv.vehicle_number && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{highlight(inv.vehicle_number)}</div>}
+                                    </>
+                                  ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                                 </td>
                                 <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>
                                   {inv.ist_formatted ? inv.ist_formatted.split(' ').slice(1).join(' ') : '—'}

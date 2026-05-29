@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken');
+const Admin = require('../models/Admin');
 
 // ── Main auth middleware ────────────────────────────────────────────────────────
 // Attaches req.user = { id, username, role } from JWT
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No token provided. Please log in.' });
@@ -11,6 +12,12 @@ function authMiddleware(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Check if user is disabled
+    const user = await Admin.findById(decoded.id);
+    if (!user || user.is_active === false) {
+      return res.status(401).json({ error: 'Your account is disabled. Contact admin.' });
+    }
+
     // Support both old tokens (req.admin.id) and new tokens (req.user)
     req.user = decoded;
     req.admin = decoded; // backward-compat alias

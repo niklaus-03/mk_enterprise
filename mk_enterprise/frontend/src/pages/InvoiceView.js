@@ -430,7 +430,7 @@ Thank you! 🙏`
 
     } catch (err) {
       console.error("FINAL ERROR:", err);
-      alert(err?.message || "Unknown error");
+      toast.error(err?.message || "Unknown error");
       toast.error("Failed to generate/share PDF");
     }
   };
@@ -542,6 +542,27 @@ Thank you! 🙏`
           tr {
             page-break-inside: avoid !important;
           }
+          .inv-table-wrapper {
+            overflow: visible !important;
+            width: 100% !important;
+          }
+          .inv-table {
+            width: 100% !important;
+            min-width: 100% !important;
+          }
+          .inv-totals-box {
+            min-width: 280px !important;
+            width: 280px !important;
+            margin-left: auto !important;
+          }
+          .inv-total-row.grand {
+            font-size: 16px !important;
+            padding-top: 6px !important;
+          }
+          .inv-total-row {
+            font-size: 12px !important;
+            padding: 3px 0 !important;
+          }
           .inv-table td {
             padding: 5px 8px !important;
             font-size: 11px !important;
@@ -553,6 +574,7 @@ Thank you! 🙏`
           .gst-summary-table td, .gst-summary-table th {
             padding: 3px 5px !important;
             font-size: 9.5px !important;
+          }
         }
       `}</style>
       {/* Action bar */}
@@ -594,7 +616,7 @@ Thank you! 🙏`
 
       {/* Helper banner for tap-to-zoom on mobile */}
       {isMobile && (
-        <div style={{ 
+        <div className="no-print" style={{ 
           textAlign: 'center', 
           marginBottom: 12, 
           fontSize: 12, 
@@ -678,22 +700,22 @@ Thank you! 🙏`
                 background: 'var(--danger-light)', 
                 border: '1.5px solid #fca5a5', 
                 borderRadius: 10, 
-                padding: isMobile ? '6px 12px' : '12px 18px', 
+                padding: '12px 18px', 
                 textAlign: 'right' 
               }}>
-                <div style={{ fontSize: isMobile ? 8 : 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase' }}>{t('Balance Due', 'शेष बकाया')}</div>
-                <div style={{ fontSize: isMobile ? 18 : 26, fontWeight: 800, color: 'var(--danger)' }}>{fc(overallBalanceDue)}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase' }}>{t('Balance Due', 'शेष बकाया')}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--danger)' }}>{fc(overallBalanceDue)}</div>
               </div>
             ) : (
               <div style={{ 
                 background: 'var(--success-light)', 
                 border: '1.5px solid #86efac', 
                 borderRadius: 10, 
-                padding: isMobile ? '6px 12px' : '12px 18px', 
+                padding: '12px 18px', 
                 textAlign: 'center' 
               }}>
-                <div style={{ fontSize: isMobile ? 8 : 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>Status</div>
-                <div style={{ fontSize: isMobile ? 14 : 20, fontWeight: 800, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><CheckCircle size={isMobile ? 12 : 16} /> PAID</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>Status</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><CheckCircle size={16} /> PAID</div>
               </div>
             )}
           </div>
@@ -707,21 +729,21 @@ Thank you! 🙏`
         )}
 
         {/* Items Table */}
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', marginBottom: 16 }}>
-          <table className="inv-table" style={{ marginBottom: 0, minWidth: isMobile ? 650 : 'auto' }}>
+        <div className="inv-table-wrapper" style={{ width: '100%', marginBottom: 16 }}>
+          <table className="inv-table" style={{ marginBottom: 0, tableLayout: 'fixed', width: '100%' }}>
             <thead>
               <tr>
-                <th style={{ width: 28 }}>#</th>
-                <th style={{ textAlign: 'left' }}>{t('Item Description', 'आइटम विवरण')}</th>
-                <th style={{ textAlign: 'center' }}>{t('Qty', 'मात्रा')}</th>
-                <th style={{ textAlign: 'right' }}>{t('Rate', 'दर')}</th>
-                <th style={{ textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th>
+                <th style={{ width: invoice.gst_enabled ? '3%' : '4%' }}>#</th>
+                <th style={{ width: invoice.gst_enabled ? '40%' : '40%', textAlign: 'left' }}>{t('Item Description', 'आइटम विवरण')}</th>
+                <th style={{ width: invoice.gst_enabled ? '5%' : '8%', textAlign: 'center' }}>{t('Qty', 'मात्रा')}</th>
+                <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Rate', 'दर')}</th>
+                <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th>
                 {invoice.gst_enabled && <>
-                  <th style={{ textAlign: 'center' }}>{t('GST %', 'जीएसटी %')}</th>
-                  <th style={{ textAlign: 'right' }}>{t('CGST', 'सीजीएसटी')}</th>
-                  <th style={{ textAlign: 'right' }}>{t('SGST', 'एसजीएसटी')}</th>
+                  <th style={{ width: '5%', textAlign: 'center' }}>{t('GST %', 'जीएसटी %')}</th>
+                  <th style={{ width: '8%', textAlign: 'right' }}>{t('CGST', 'सीजीएसटी')}</th>
+                  <th style={{ width: '8%', textAlign: 'right' }}>{t('SGST', 'एसजीएसटी')}</th>
                 </>}
-                <th style={{ textAlign: 'right' }}>{t('Total', 'कुल')}</th>
+                <th style={{ width: invoice.gst_enabled ? '15%' : '16%', textAlign: 'right' }}>{t('Total', 'कुल')}</th>
               </tr>
             </thead>
             <tbody>
@@ -749,24 +771,25 @@ Thank you! 🙏`
         </div>
 
         {/* GST Summary + Totals */}
-        <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', gap: 24, alignItems: 'flex-start', marginBottom: 14 }}>
+        <div className="gst-totals-container" style={{ display: 'flex', flexDirection: 'row', justifyContent: invoice.gst_enabled && Object.keys(gstSummary).length > 0 ? 'space-between' : 'flex-end', gap: 24, alignItems: 'flex-start', marginBottom: 14, width: '100%' }}>
           {invoice.gst_enabled && Object.keys(gstSummary).length > 0 && (
-            <div style={{ flex: 1 }}>
+            <div style={{ width: '55%' }}>
               <div className="inv-section-title">{t('GST Summary', 'जीएसटी सारांश')}</div>
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <table className="gst-summary-table" style={{ minWidth: isMobile ? 400 : 'auto' }}>
-                  <thead><tr><th>{t('GST Rate', 'जीएसटी दर')}</th><th>{t('Taxable', 'कर योग्य')}</th><th>{t('CGST', 'सीजीएसटी')}</th><th>{t('SGST', 'एसजीएसटी')}</th></tr></thead>
+              <div className="inv-table-wrapper" style={{ width: '100%' }}>
+                <table className="gst-summary-table" style={{ width: '100%', tableLayout: 'fixed' }}>
+                  <thead><tr><th style={{ textAlign: 'left' }}>{t('GST Rate', 'जीएसटी दर')}</th><th style={{ textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th><th style={{ textAlign: 'right' }}>{t('CGST', 'सीजीएसटी')}</th><th style={{ textAlign: 'right' }}>{t('SGST', 'एसजीएसटी')}</th></tr></thead>
                   <tbody>
                     {Object.entries(gstSummary).map(([rate, g]) => (
-                      <tr key={rate}><td>{rate}%</td><td style={{ fontFamily: 'monospace' }}>{fc(g.taxable)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.cgst)}</td><td style={{ fontFamily: 'monospace' }}>{fc(g.sgst)}</td></tr>
+                      <tr key={rate}><td>{rate}%</td><td style={{ fontFamily: 'monospace', textAlign: 'right' }}>{fc(g.taxable)}</td><td style={{ fontFamily: 'monospace', textAlign: 'right' }}>{fc(g.cgst)}</td><td style={{ fontFamily: 'monospace', textAlign: 'right' }}>{fc(g.sgst)}</td></tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
-          <div className="inv-totals-box" style={{ minWidth: 280, flex: 'none' }}>
-            <div className="inv-total-row"><span className="text-muted">{t('Subtotal', 'उप-कुल')}</span><span className="mono">{fc(invoice.subtotal)}</span></div>
+          <div className="inv-totals-box" style={{ width: invoice.gst_enabled && Object.keys(gstSummary).length > 0 ? '40%' : '100%', minWidth: 280, marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <div style={{ width: '100%', maxWidth: 320 }}>
+              <div className="inv-total-row"><span className="text-muted">{t('Subtotal', 'उप-कुल')}</span><span className="mono">{fc(invoice.subtotal)}</span></div>
             {invoice.gst_enabled && <>
               <div className="inv-total-row"><span className="text-muted">{t('CGST', 'सीजीएसटी')}</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
               <div className="inv-total-row"><span className="text-muted">{t('SGST', 'एसजीएसटी')}</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
@@ -790,6 +813,7 @@ Thank you! 🙏`
             {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ fontWeight: 800 }}><span>{t('Net Payable', 'कुल देय')}</span><span className="mono">{fc(invoice.total_with_prev_balance)}</span></div>}
             <div className="inv-total-row rcvd"><span>{t('Amount Received', 'प्राप्त राशि')}</span><span className="mono">{fc(invoice.amount_received)}</span></div>
             {((invoice.total_with_prev_balance || invoice.total) - invoice.amount_received) > 0.01 && <div className="inv-total-row due"><span>{t('Balance Due', 'शेष बकाया')}</span><span className="mono">{fc((invoice.total_with_prev_balance || invoice.total) - invoice.amount_received)}</span></div>}
+            </div>
           </div>
         </div>
 

@@ -66,9 +66,14 @@ router.get('/', async (req, res) => {
     if (search) query.$or = [
       { customer_name: { $regex: search, $options: 'i' } },
       { invoice_number: { $regex: search, $options: 'i' } },
+      { driver_name: { $regex: search, $options: 'i' } },
+      { vehicle_number: { $regex: search, $options: 'i' } },
     ];
     const [invoices, total] = await Promise.all([
-      Invoice.find(query).sort({ date: -1 }).skip(skip).limit(parseInt(limit)),
+      Invoice.find(query)
+        .populate('created_by', 'display_name username')
+        .populate('customer_id', 'balance manager_balances')
+        .sort({ date: -1 }).skip(skip).limit(parseInt(limit)),
       Invoice.countDocuments(query),
     ]);
     res.json({ invoices, total, pages: Math.ceil(total / parseInt(limit)) });
@@ -744,6 +749,7 @@ router.delete('/:id', async (req, res) => {
       entity_id: invoice._id,
       entity_name: invoice.invoice_number,
       description: `Invoice cancelled. Original total: ₹${invoice.total}`,
+      changes: invoice.toObject()
     });
 
     res.json({ success: true });

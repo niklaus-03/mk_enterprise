@@ -136,6 +136,7 @@ router.get('/', async (req, res) => {
         Product.find(query)
           .populate('created_by', 'username display_name role')
           .populate('last_updated_by', 'username display_name role')
+          .collation({ locale: 'hi', strength: 2 })
           .sort(sortObj)
           .skip(skip)
           .limit(limitNum)
@@ -155,6 +156,7 @@ router.get('/', async (req, res) => {
     let products = await Product.find(query)
       .populate('created_by', 'username display_name role')
       .populate('last_updated_by', 'username display_name role')
+      .collation({ locale: 'hi', strength: 2 })
       .sort(sortObj)
       .limit(list_id ? 1000 : parseInt(limit))
       .lean();
@@ -248,6 +250,20 @@ router.post('/', checkProductEditPermission, async (req, res) => {
     }
     const product = await Product.create(productData);
 
+    await StockMovement.create({
+      product_id: product._id,
+      product_name: product.name,
+      type: 'incoming',
+      qty: stock,
+      qty_unit: product.unit || 'pcs',
+      stock_before: 0,
+      stock_after: stock,
+      source: 'manual',
+      notes: `Product Created`,
+      ist_formatted: formatIST(new Date()),
+      created_by: req.user.id,
+    });
+
     // Log activity
     logActivity(req, {
       action: 'create',
@@ -255,6 +271,7 @@ router.post('/', checkProductEditPermission, async (req, res) => {
       entity_id: product._id,
       entity_name: product.name,
       description: `Product created. Price: ₹${product.price}, Stock: ${product.stock} ${product.unit}`,
+      changes: product.toObject()
     });
 
     res.status(201).json(product);
@@ -280,6 +297,25 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
     Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
 
+    if (updateData.stock !== undefined && updateData.stock !== checkProduct.stock) {
+      const diff = updateData.stock - checkProduct.stock;
+      if (diff !== 0) {
+        await StockMovement.create({
+          product_id: product._id,
+          product_name: product.name,
+          type: diff > 0 ? 'incoming' : 'outgoing',
+          qty: Math.abs(diff),
+          qty_unit: product.unit || 'pcs',
+          stock_before: checkProduct.stock,
+          stock_after: product.stock,
+          source: 'manual',
+          notes: `Stock updated via Edit Product`,
+          ist_formatted: formatIST(new Date()),
+          created_by: req.user.id,
+        });
+      }
+    }
+
     // Log activity
     logActivity(req, {
       action: 'update',
@@ -287,6 +323,7 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
       entity_id: product._id,
       entity_name: product.name,
       description: `Product updated`,
+      changes: product.toObject()
     });
 
     res.json(product);
@@ -381,6 +418,7 @@ router.delete('/:id', checkProductEditPermission, async (req, res) => {
       entity_id: checkProduct._id,
       entity_name: checkProduct.name,
       description: `Product soft-deleted`,
+      changes: checkProduct.toObject()
     });
 
     res.json({ success: true });
@@ -389,3 +427,4 @@ router.delete('/:id', checkProductEditPermission, async (req, res) => {
 
 
 module.exports = router;
+// trigger nodemon

@@ -11,7 +11,7 @@ import PaymentModal from '../components/PaymentModal';
 import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
 
 
-const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'others'];
+const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'goods_exchange', 'others'];
 
 // Must be defined OUTSIDE the component so it is available everywhere in the file
 function getTodayIST() {
@@ -412,13 +412,13 @@ export default function ManagerDashboard() {
       const refreshDate = deliveryDateFilter || getTodayIST();
       loadDeliveries(refreshDate);
       // Refresh dashboard data so stock/price shows updated values immediately
-      dashboardApi.get(selectedDate).then(res => setData(res.data)).catch(() => { });
+      dashboardApi.get(selectedDate).then(res => setData(res)).catch(() => { });
     } catch (err) { toast.error(err.message); }
   };
 
-  const handleMarkWalkinPaid = async (id, mode) => {
+  const handleMarkWalkinPaid = async (id, mode, notes) => {
     try {
-      await deliveryApi.updatePayment(id, 'paid', mode || 'cash');
+      await deliveryApi.updatePayment(id, 'paid', mode || 'cash', notes);
       toast.success('Walk-in delivery marked as paid');
       setPaymentDelivery(null);
       loadDeliveries(deliveryDateFilter || getTodayIST());
@@ -780,7 +780,7 @@ export default function ManagerDashboard() {
           onSuccess={() => {
             loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, settlementSortDate, settlementSortAmount);
             loadDeliveries(deliveryDateFilter || getTodayIST());
-            dashboardApi.get(selectedDate).then(res => setData(res.data)).catch(() => {});
+            dashboardApi.get(selectedDate).then(res => setData(res)).catch(() => {});
             loadSuppliers('');
           }}
           suppliers={suppliers}
@@ -799,7 +799,7 @@ export default function ManagerDashboard() {
         <PaymentModal 
           isOpen={true} 
           onClose={() => setPaymentDelivery(null)}
-          onConfirm={(mode) => handleMarkWalkinPaid(paymentDelivery._id, mode)}
+          onConfirm={(mode, notes) => handleMarkWalkinPaid(paymentDelivery._id, mode, notes)}
           amount={paymentDelivery?.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0}
         />
       )}

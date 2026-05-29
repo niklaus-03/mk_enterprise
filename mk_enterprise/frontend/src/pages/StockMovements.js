@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { stockApi, productApi } from '../utils/api';
 import { formatIST } from '../utils/helpers';
-import { Package, Plus, Filter, ArrowDownRight, ArrowUpRight, FileText, Settings2, RefreshCcw, Truck, User, AlignLeft, Calendar, Info, Layers, CheckCircle2 } from 'lucide-react';
+import { Package, Plus, Filter, ArrowDownRight, ArrowUpRight, FileText, Settings2, RefreshCcw, Truck, User, AlignLeft, Calendar, Info, Layers, CheckCircle2, X } from 'lucide-react';
 
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
@@ -13,7 +14,8 @@ export default function StockMovements() {
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ type: '', source: '' });
+  const location = useLocation();
+  const [filter, setFilter] = useState({ type: '', source: '', product_id: location.state?.filterProductId || '' });
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ product_id: '', type: 'incoming', qty: '', qty_unit: 'pcs', vehicle_number: '', driver_name: '', supplier: '', notes: '' });
   const [saving, setSaving] = useState(false);
@@ -107,7 +109,15 @@ export default function StockMovements() {
             </select>
           </div>
 
-          <div style={{ marginLeft: 'auto', background: 'var(--bg-card)', padding: '6px 12px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
+          <div style={{ marginLeft: 'auto', background: 'var(--bg-card)', padding: '6px 12px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {filter.product_id && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 10, borderRight: '1px solid #e2e8f0', color: 'var(--text)' }}>
+                Product Filter Active 
+                <button onClick={() => setFilter(f => ({ ...f, product_id: '' }))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                  <X size={14} />
+                </button>
+              </span>
+            )}
             {total} Records Found
           </div>
         </div>
@@ -130,7 +140,7 @@ export default function StockMovements() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--bg)', borderBottom: '2px solid #e2e8f0' }}>
                 <tr>
-                  {['Date (IST)', 'Product', 'Type', 'Source', 'Qty', 'Unit', 'Before', 'After', 'Vehicle / Driver', 'Notes'].map((h, i) => (
+                  {['Date (IST)', 'Product', 'Type', 'Source', 'Qty', 'Unit', 'Before', 'Balance', 'Vehicle / Driver', 'Notes'].map((h, i) => (
                     <th key={h} style={{
                       padding: '16px 20px',
                       textAlign: (i === 4 || i === 6 || i === 7) ? 'right' : 'left',
@@ -192,7 +202,7 @@ export default function StockMovements() {
                       </td>
 
                       <td style={{ padding: '14px 20px', textAlign: 'right', fontFamily: 'monospace', fontSize: 13, color: '#94a3b8' }}>
-                        {m.stock_before}
+                        {m.stock_before ?? (isIncoming ? m.stock_after - m.qty : m.stock_after + m.qty)}
                       </td>
 
                       <td style={{ padding: '14px 20px', textAlign: 'right', fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>
@@ -213,10 +223,11 @@ export default function StockMovements() {
                       </td>
 
                       <td style={{ padding: '14px 20px' }}>
-                        {(m.notes || m.supplier) ? (
+                        {(m.notes || m.supplier || m.created_by) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 180 }}>
                             {m.supplier && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{m.supplier}</span>}
                             {m.notes && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'flex-start', gap: 4 }}><AlignLeft size={12} style={{ marginTop: 2, flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notes}</span></span>}
+                            {m.created_by && <span style={{ fontSize: 11, color: '#4f46e5', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> By: {m.created_by.display_name || m.created_by.username}</span>}
                           </div>
                         ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                       </td>

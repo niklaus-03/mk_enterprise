@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/helpers';
 import { Edit, Save, AlertTriangle, FileText, CreditCard, Coins, ArrowLeft } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
-const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'others'];
+const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'goods_exchange', 'others'];
 
 function ProductAutocomplete({ value, onSelect, onNameChange }) {
   const [query, setQuery] = useState(value || '');

@@ -12,6 +12,8 @@ const Customer = require('../models/Customer');
 const Supplier = require('../models/Supplier');
 const Product = require('../models/Product');
 const Settlement = require('../models/Settlement');
+const Notification = require('../models/Notification');
+const { logActivity } = require('./activityLogs');
 const { formatIST } = require('../utils/timeUtils');
 
 router.use(auth);
@@ -126,7 +128,8 @@ router.post('/daily', async (req, res) => {
   try {
     const {
       date, opening_balance, system_cash_reported, actual_cash_reported,
-      system_bills_reported, system_deliveries_reported,
+      system_bills_reported, system_deliveries_reported, system_expenses_reported,
+      system_sales_reported, system_money_received, system_debt_reported,
       discrepancy_notes, quick_entries,
     } = req.body;
 
@@ -166,13 +169,11 @@ router.post('/daily', async (req, res) => {
             }
           }
 
-          const invoice_number = `reportINV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
-
           const amount_received = paid ? total : 0;
           const balance_due = paid ? 0 : total;
 
           const newInvoice = new Invoice({
-            invoice_number,
+            is_report: true,
             customer_id: customer._id,
             customer_name: customer.name,
             customer_phone: customer.phone || '',
@@ -206,6 +207,7 @@ router.post('/daily', async (req, res) => {
               type: 'received_from_customer',
               amount: total,
               date: entryDate,
+              notes: entry.notes ? `Paid for bill: ${entry.notes}` : `Paid for bill`,
               created_by
             });
           }
@@ -221,6 +223,7 @@ router.post('/daily', async (req, res) => {
             type: 'received_from_customer',
             amount: amt,
             date: entryDate,
+            notes: entry.notes ? `Received: ${entry.notes}` : 'Received payment',
             created_by
           });
           
@@ -243,10 +246,21 @@ router.post('/daily', async (req, res) => {
             type: 'paid_to_supplier',
             amount: amt,
             date: entryDate,
+            notes: entry.notes ? `Paid to ${supplier.name}: ${entry.notes}` : `Paid to ${supplier.name}`,
             created_by
           });
           supplier.balance = (supplier.balance || 0) - amt;
           await supplier.save();
+        } else if (type === 'expense') {
+          const amt = Number(amount) || 0;
+          await Settlement.create({
+            party_name: entry.expense_for || 'Expense',
+            type: 'other_expense',
+            amount: amt,
+            date: entryDate,
+            notes: entry.notes ? `${entry.expense_for}: ${entry.notes}` : `${entry.expense_for}`,
+            created_by
+          });
         }
       }
     }
@@ -256,16 +270,61 @@ router.post('/daily', async (req, res) => {
       manager_name: req.user.username || req.user.display_name,
       date,
       opening_balance: opening_balance || 0,
+      system_sales_reported: system_sales_reported || 0,
+      system_money_received: system_money_received || 0,
+      system_debt_reported: system_debt_reported || 0,
       system_cash_reported,
       actual_cash_reported,
       system_bills_reported,
       system_deliveries_reported,
+      system_expenses_reported: system_expenses_reported || 0,
       discrepancy_notes,
       quick_entries: quick_entries || [],
       total_quick_entries: (quick_entries || []).length,
     });
 
     await report.save();
+
+      let extraText = '';
+      if (report.discrepancy_notes) {
+        extraText += `\nNote: ${report.discrepancy_notes}`;
+      }
+      if (report.quick_entries && report.quick_entries.length > 0) {
+        extraText += `\n\nExtra Items:`;
+        report.quick_entries.forEach(q => {
+          let label = '';
+          if (q.type === 'expense') label = q.expense_for;
+          else if (q.type === 'payment_out') label = q.supplier_name;
+          else label = q.customer_name;
+          
+          let typeStr = q.type ? q.type.replace('_', ' ').toUpperCase() : 'ENTRY';
+          extraText += `\n• [${typeStr}] ${label || 'N/A'} (₹${q.amount})`;
+          if (q.notes) {
+            extraText += ` - ${q.notes}`;
+          }
+        });
+      }
+
+      const description = `Report sent. Cash in drawer left: ₹${(actual_cash_reported || 0).toLocaleString('en-IN')} (Expected: ₹${(system_cash_reported || 0).toLocaleString('en-IN')}).${extraText}`;
+
+      await logActivity(req, {
+        action: 'report_submitted',
+        entity_type: 'daily_report',
+        entity_id: report._id,
+        entity_name: `Report for ${date}`,
+        description: description,
+      changes: {
+        opening_balance: report.opening_balance,
+        system_cash: report.system_cash_reported,
+        actual_cash: report.actual_cash_reported,
+        notes: report.discrepancy_notes,
+        quick_entries: report.quick_entries,
+        total_sales: report.system_sales_reported,
+        money_received: report.system_money_received,
+        debt_created: report.system_debt_reported
+      }
+    });
+
     res.status(201).json(report);
   } catch (err) {
     if (err.code === 11000) {
@@ -290,6 +349,26 @@ router.patch('/daily/:id/review', requireSupervisor, async (req, res) => {
 
     if (!report) return res.status(404).json({ error: 'Report not found' });
     res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/reports/daily/remind/:manager_id — Admin sends a manual reminder ──────
+router.post('/daily/remind/:manager_id', requireSupervisor, async (req, res) => {
+  try {
+    const { date } = req.body;
+    await Notification.create({
+      recipient_id: req.params.manager_id,
+      recipient_role: 'manager',
+      type: 'general',
+      title: 'Daily Report Reminder',
+      message: date ? `Please submit your daily end-of-day report for ${date}.` : 'Please submit your daily end-of-day report.',
+      priority: 'high',
+      sender_id: req.user.id,
+      sender_name: req.user.username || 'Admin'
+    });
+    res.json({ success: true, message: 'Reminder sent successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

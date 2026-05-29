@@ -58,4 +58,14 @@ const notificationSchema = new mongoose.Schema({
 notificationSchema.index({ recipient_role: 1, is_read: 1, timestamp: -1 });
 notificationSchema.index({ recipient_id: 1, is_read: 1, timestamp: -1 });
 
+notificationSchema.post('save', function(doc) {
+  if (global.io) {
+    if (doc.recipient_id) {
+      global.io.to(doc.recipient_id.toString()).emit('new_notification', doc);
+    } else {
+      global.io.to(`role:${doc.recipient_role}`).emit('new_notification', doc);
+    }
+  }
+});
+
 module.exports = mongoose.model('Notification', notificationSchema);

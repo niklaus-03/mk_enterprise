@@ -19,6 +19,7 @@ import VehicleIncoming from './pages/VehicleIncoming';
 import VehicleDetail from './pages/VehicleDetail';
 import TripView from './pages/TripView';
 import Suppliers from './pages/Suppliers';
+import SupplierPaymentHistory from './pages/SupplierPaymentHistory';
 import Settings from './pages/Settings';
 import './App.css';
 import Orders from './pages/Orders';
@@ -30,12 +31,12 @@ import DriverDashboard from './pages/DriverDashboard';
 import NotificationDropdown from './components/NotificationDropdown';
 import MobileGlobalSearch from './components/MobileGlobalSearch';
 import { ThemeProvider } from './context/ThemeContext';
-import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon } from 'lucide-react';
+import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search } from 'lucide-react';
 import { tripApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────
 function ProtectedRoute({ children }) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
       <div style={{ textAlign: 'center' }}>
@@ -44,6 +45,20 @@ function ProtectedRoute({ children }) {
       </div>
     </div>
   );
+  
+  if (isAuthenticated && user?.is_on_hold) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}>
+        <div style={{ textAlign: 'center', background: '#1e293b', padding: '40px', borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          <Shield size={64} color="#f59e0b" style={{ margin: '0 auto 24px' }} />
+          <h1 style={{ color: '#fff', margin: '0 0 16px', fontSize: 24, fontWeight: 800 }}>Account On Hold</h1>
+          <p style={{ color: '#94a3b8', margin: 0, fontSize: 16 }}>Your account is currently suspended.</p>
+          <p style={{ color: '#f8fafc', margin: '16px 0 0', fontSize: 18, fontWeight: 700 }}>Contact admin</p>
+        </div>
+      </div>
+    );
+  }
+
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 }
 
@@ -74,7 +89,7 @@ function Sidebar({ open, onClose, onLock }) {
     { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} />, hideOnMobile: !isAdmin },
     { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} />, hideOnMobile: !isAdmin },
     { to: '/suppliers', label: lang ? 'आपूर्तिकर्ता' : 'Suppliers', icon: <Building2 size={16} /> },
-    { to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} />, hideOnMobile: !isAdmin },
+    ...(!isAdmin ? [{ to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} />, hideOnMobile: true }] : []),
     { to: '/daily-report', label: lang ? 'दैनिक रिपोर्ट' : 'Daily Report', icon: <Moon size={16} /> },
     ...(isAdmin ? [
       { to: '/vehicle-incoming', label: lang ? 'वाहन' : 'Vehicles', icon: <Truck size={16} /> },
@@ -127,10 +142,8 @@ function Sidebar({ open, onClose, onLock }) {
       )}
 
       <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
-        <div className="sidebar-brand" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10, padding: '16px 16px 12px' }}>
-          {/* Profile image & Notifications */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+        <div className="sidebar-brand" style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
               <div style={{
                 width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -160,35 +173,20 @@ function Sidebar({ open, onClose, onLock }) {
                 </div>
               </div>
             </div>
-            
-            {/* FB-Style Notification Bell */}
+
+            {/* Laptop/Desktop Golden Notification Bell - Hidden on Mobile */}
             {user && (
-              <NotificationDropdown
-                user={user}
-                customButton={({ open, unreadCount }) => (
-                  <div style={{
-                    width: 38, height: 38, borderRadius: '50%',
-                    background: open ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', transition: 'all 0.2s', position: 'relative'
-                  }}>
-                    <Bell size={20} color="#ffffff" strokeWidth={2} />
-                    {unreadCount > 0 && (
-                      <span style={{
-                        position: 'absolute', top: -2, right: -4,
-                        background: '#e41e3f', color: 'var(--bg-card)', fontSize: 10.5, fontWeight: 800,
-                        borderRadius: 20, padding: '1px 5px', lineHeight: 1.2,
-                        boxShadow: '0 0 0 2px var(--sidebar-bg, #0f172a)'
-                      }}>
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    )}
-                  </div>
-                )}
-              />
+              <div className="hide-on-mobile">
+                <NotificationDropdown 
+                  user={user} 
+                  style={{ marginLeft: '8px', flexShrink: 0 }} 
+                  iconColor="#C5A059" 
+                  bellSize={18} 
+                  dropdownAlign="left"
+                />
+              </div>
             )}
           </div>
-        </div>
         <nav className="sidebar-nav">
           {navItems.map(item => (
             <NavLink
@@ -218,7 +216,7 @@ function Sidebar({ open, onClose, onLock }) {
                 display: 'flex', alignItems: 'center', gap: 8,
                 transition: 'all 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'var(--bg-card)'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }}
             >
               <Lock size={14} /> <span>{lang ? 'स्क्रीन लॉक करें' : 'Lock Screen'}</span>
@@ -238,7 +236,7 @@ function Sidebar({ open, onClose, onLock }) {
               display: 'flex', alignItems: 'center', gap: 8,
               transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--bg-card)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
           >
             <Maximize2 size={14} /> <span>{isCurrentlyFullscreen() ? (lang ? 'पूर्ण स्क्रीन से बाहर' : 'Exit Fullscreen') : (lang ? 'पूर्ण स्क्रीन' : 'Fullscreen')}</span>
@@ -581,6 +579,7 @@ function InnerApp() {
         <Route path="/vehicle/:id" element={<VehicleRoute><VehicleDetail /></VehicleRoute>} />
         <Route path="/trip/:id" element={<TripView />} />
         <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/suppliers/:id/history" element={<SupplierPaymentHistory />} />
         <Route path="/daily-report" element={<DailyReport />} />
         <Route path="settings" element={<Settings />} />
         <Route path="orders" element={<Orders />} />

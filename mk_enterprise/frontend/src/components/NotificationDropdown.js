@@ -38,8 +38,10 @@ function groupNotifications(notifs) {
   
   return Object.entries(groups).filter(([k, v]) => v.length > 0);
 }
+import { useAuth } from '../context/AuthContext';
 
 export default function NotificationDropdown({ user, className, style, bellSize = 22, iconColor = 'inherit', customButton }) {
+  const { socket } = useAuth();
     const { t, settings } = useApp();
   const lang = settings?.language === 'hi';
   
@@ -98,10 +100,22 @@ export default function NotificationDropdown({ user, className, style, bellSize 
   useEffect(() => {
     if (user) {
       fetchNotifications();
-      const interval = setInterval(fetchNotifications, 5000); // 5s for real-time feel
-      return () => clearInterval(interval);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (open) {
+      fetchNotifications();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (socket) {
+      const handleNewNotification = () => fetchNotifications();
+      socket.on('new_notification', handleNewNotification);
+      return () => socket.off('new_notification', handleNewNotification);
+    }
+  }, [socket]);
 
   useEffect(() => {
     if (open && btnRef.current) {

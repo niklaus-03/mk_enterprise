@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { productListApi, productApi, managerApi } from '../utils/api';
 import toast from 'react-hot-toast';
-import { List, Plus, Trash2, Edit, Share2, Search, X, Package, CheckSquare, Square, AlertTriangle, Eye } from 'lucide-react';
+import { List, Plus, Trash2, Edit, Share2, Search, X, Package, CheckSquare, Square, AlertTriangle, Eye, User } from 'lucide-react';
 
 export default function ProductLists() {
   const { t } = useApp();
@@ -21,6 +21,7 @@ export default function ProductLists() {
 
   const [allProducts, setAllProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
+  const [listSearch, setListSearch] = useState('');
 
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
@@ -150,6 +151,10 @@ export default function ProductLists() {
     p.name.toLowerCase().includes(productSearch.toLowerCase())
   );
 
+  const filteredLists = lists.filter(l => 
+    l.name.toLowerCase().includes(listSearch.toLowerCase())
+  );
+
   return (
     <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -220,9 +225,24 @@ export default function ProductLists() {
       )}
 
       <div className="card">
-        <div className="card-header">
-          <div className="card-title">All Item Lists</div>
-          <span className="badge badge-primary">{lists.length}</span>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="card-title" style={{ margin: 0 }}>All Item Lists</div>
+            <span className="badge badge-primary">{filteredLists.length}</span>
+          </div>
+          <div style={{ position: 'relative', minWidth: 200 }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+              <Search size={14} />
+            </span>
+            <input 
+              type="text" 
+              className="form-control" 
+              placeholder="Search lists..." 
+              value={listSearch}
+              onChange={e => setListSearch(e.target.value)}
+              style={{ paddingLeft: 30, fontSize: 13, borderRadius: 6, height: 32 }}
+            />
+          </div>
         </div>
         <div className="card-body no-pad">
           {loading ? (
@@ -244,7 +264,7 @@ export default function ProductLists() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lists.map((list) => {
+                  {filteredLists.map((list) => {
                     const isOwner = list.created_by?._id === user._id || list.created_by === user._id;
                     const canEdit = isAdmin || isOwner;
                     
@@ -262,9 +282,13 @@ export default function ProductLists() {
 
                     return (
                       <tr key={list._id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--sidebar-bg)' }}>
-                          {list.name}
-                          {!isOwner && <span style={{ fontSize: 10, background: 'var(--primary-light)', color: '#0369a1', padding: '2px 6px', borderRadius: 4, marginLeft: 8 }}>{isAdmin ? 'Created by' : 'Shared by'} {list.created_by?.display_name || list.created_by?.username}</span>}
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--sidebar-bg)' }}>{list.name}</div>
+                          {!isOwner && (
+                            <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, marginTop: 2 }}>
+                              <User size={12} /> {isAdmin ? 'By:' : 'Shared by:'} {list.created_by?.display_name || list.created_by?.username}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>

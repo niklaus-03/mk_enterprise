@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { managerApi, driverApi, activityLogApi, authApi } from '../utils/api';
-import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock } from 'lucide-react';
+import { managerApi, driverApi, activityLogApi, authApi, deliveryApi, supplierApi } from '../utils/api';
+import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock, PauseCircle, PlayCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user, socket } = useAuth();
   const { t, settings } = useApp();
   const [managers, setManagers] = useState([]);
   const [mgrLoading, setMgrLoading] = useState(false);
@@ -20,7 +20,9 @@ export default function AdminPanel() {
   const [mgrResetPw, setMgrResetPw] = useState('');
 
   // Tabs State
-  const [activeTab, setActiveTab] = useState('managers'); // 'managers', 'drivers', 'activity'
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'managers';
+  const setActiveTab = (tab) => setSearchParams({ tab });
 
   // Driver State
   const [drivers, setDrivers] = useState([]);
@@ -32,9 +34,18 @@ export default function AdminPanel() {
   const [driverResetModal, setDriverResetModal] = useState(null);
   const [driverResetPw, setDriverResetPw] = useState('');
 
+  const [confirmHoldModal, setConfirmHoldModal] = useState(null);
+  
+  const [confirmDeleteModal, setConfirmDeleteModal] = useState(null);
+  const [deleteSecretKey, setDeleteSecretKey] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const [confirmDisableModal, setConfirmDisableModal] = useState(null);
+
   // Activity Log State
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [logDetailModal, setLogDetailModal] = useState(null);
   
   // Recovery Requests State
   const [requests, setRequests] = useState([]);
@@ -47,43 +58,43 @@ export default function AdminPanel() {
   const tzOffset = today.getTimezoneOffset() * 60000; // offset in milliseconds
   const localISOTime = (new Date(today - tzOffset)).toISOString().split('T')[0];
   
-  const [logFilters, setLogFilters] = useState({ date: localISOTime, user_role: '', action: '' });
+  const [logFilters, setLogFilters] = useState({ date: localISOTime, user_role: '', action: '', user_id: '', username: '' });
 
-  const loadManagers = useCallback(async () => {
+  const loadManagers = useCallback(async (isPolling = false) => {
     if (!isAdmin) return;
-    setMgrLoading(true);
+    if (!isPolling) setMgrLoading(true);
     try {
       const res = await managerApi.getAll();
       setManagers(res.managers || []);
     } catch (err) { 
       toast.error(err.message || 'Failed to load managers'); 
     } finally { 
-      setMgrLoading(false); 
+      if (!isPolling) setMgrLoading(false); 
     }
   }, [isAdmin]);
 
-
-  const loadDrivers = useCallback(async () => {
+  const loadDrivers = useCallback(async (isPolling = false) => {
     if (!isAdmin) return;
-    setDriverLoading(true);
+    if (!isPolling) setDriverLoading(true);
     try {
       const res = await driverApi.getAll();
       setDrivers(res.drivers || []);
-    } catch (err) {
-      toast.error(err.message || 'Failed to load drivers');
-    } finally {
-      setDriverLoading(false);
+    } catch (err) { 
+      toast.error(err.message || 'Failed to load drivers'); 
+    } finally { 
+      if (!isPolling) setDriverLoading(false); 
     }
   }, [isAdmin]);
 
-  const loadActivityLogs = useCallback(async () => {
+  const loadActivityLogs = useCallback(async (hideLoading = false) => {
     if (!isAdmin) return;
-    setLogsLoading(true);
+    if (!hideLoading) setLogsLoading(true);
     try {
       const params = { limit: 50 };
       if (logFilters.date) params.date = logFilters.date;
       if (logFilters.user_role) params.user_role = logFilters.user_role;
       if (logFilters.action) params.action = logFilters.action;
+      if (logFilters.user_id) params.user_id = logFilters.user_id;
       
       const res = await activityLogApi.getAll(params);
       setLogs(res.logs || []);
@@ -94,25 +105,44 @@ export default function AdminPanel() {
     }
   }, [isAdmin, logFilters]);
   
-  const loadRequests = useCallback(async () => {
+  const loadRequests = useCallback(async (isPolling = false) => {
     if (!isAdmin) return;
-    setRequestsLoading(true);
+    if (!isPolling) setRequestsLoading(true);
     try {
       const res = await authApi.getRecoveryRequests();
       setRequests(res.requests || []);
     } catch (err) {
-      toast.error('Failed to load recovery requests');
+      toast.error(err.message || 'Failed to load requests');
     } finally {
-      setRequestsLoading(false);
+      if (!isPolling) setRequestsLoading(false);
     }
   }, [isAdmin]);
 
   useEffect(() => {
-    if (activeTab === 'managers') loadManagers();
-    else if (activeTab === 'drivers') loadDrivers();
-    else if (activeTab === 'activity') loadActivityLogs();
-    else if (activeTab === 'requests') loadRequests();
-  }, [activeTab, loadManagers, loadDrivers, loadActivityLogs, loadRequests]);
+    if (activeTab === 'managers') loadManagers(false);
+    else if (activeTab === 'drivers') loadDrivers(false);
+    else if (activeTab === 'activity') loadActivityLogs(false);
+    else if (activeTab === 'requests') loadRequests(false);
+
+    if (socket) {
+      const handleStatusUpdate = () => {
+        if (activeTab === 'managers') loadManagers(true);
+        if (activeTab === 'drivers') loadDrivers(true);
+      };
+      
+      const handleNewActivity = () => {
+        if (activeTab === 'activity') loadActivityLogs(true);
+      };
+
+      socket.on('status_update', handleStatusUpdate);
+      socket.on('new_activity_log', handleNewActivity);
+
+      return () => {
+        socket.off('status_update', handleStatusUpdate);
+        socket.off('new_activity_log', handleNewActivity);
+      };
+    }
+  }, [activeTab, loadManagers, loadDrivers, loadActivityLogs, loadRequests, socket]);
 
 
 
@@ -120,6 +150,7 @@ export default function AdminPanel() {
     e.preventDefault();
     if (!mgrForm.username || !mgrForm.password) return toast.error('Username and password are required');
     if (mgrForm.password.length < 6) return toast.error('Password must be at least 6 characters');
+    if (mgrForm.phone && mgrForm.phone.length !== 10) return toast.error('Phone number must be exactly 10 digits');
     setMgrCreating(true);
     try {
       await managerApi.create(mgrForm);
@@ -133,6 +164,7 @@ export default function AdminPanel() {
 
   const handleUpdateManager = async (e) => {
     e.preventDefault();
+    if (mgrForm.phone && mgrForm.phone.length !== 10) return toast.error('Phone number must be exactly 10 digits');
     setMgrCreating(true);
     try {
       await managerApi.update(showEditManager._id, mgrForm);
@@ -144,19 +176,13 @@ export default function AdminPanel() {
     finally { setMgrCreating(false); }
   };
 
-  const handleDeleteManager = async (mgr) => {
-    if (!window.confirm(`Delete manager "${mgr.display_name || mgr.username}"?\n\nNote: All records created by this manager will be preserved.`)) return;
-    try {
-      await managerApi.delete(mgr._id);
-      toast.success(`Manager "${mgr.username}" removed`);
-      loadManagers();
-    } catch (err) { toast.error(err.message); }
-  };
+
 
   const handleToggleManager = async (mgr) => {
     try {
       await managerApi.update(mgr._id, { is_active: !mgr.is_active });
       toast.success(`${mgr.display_name || mgr.username} ${mgr.is_active ? 'disabled' : 'enabled'}`);
+      setConfirmDisableModal(null);
       loadManagers();
     } catch (err) { toast.error(err.message); }
   };
@@ -177,6 +203,7 @@ export default function AdminPanel() {
     e.preventDefault();
     if (!driverForm.username || !driverForm.password) return toast.error('Username and password are required');
     if (driverForm.password.length < 6) return toast.error('Password must be at least 6 characters');
+    if (driverForm.phone && driverForm.phone.length !== 10) return toast.error('Phone number must be exactly 10 digits');
     setDriverCreating(true);
     try {
       await driverApi.create(driverForm);
@@ -190,6 +217,7 @@ export default function AdminPanel() {
 
   const handleUpdateDriver = async (e) => {
     e.preventDefault();
+    if (driverForm.phone && driverForm.phone.length !== 10) return toast.error('Phone number must be exactly 10 digits');
     setDriverCreating(true);
     try {
       await driverApi.update(showEditDriver._id, driverForm);
@@ -201,19 +229,13 @@ export default function AdminPanel() {
     finally { setDriverCreating(false); }
   };
 
-  const handleDeleteDriver = async (dr) => {
-    if (!window.confirm(`Delete driver "${dr.display_name || dr.username}"?\n\nNote: All records created by this driver will be preserved.`)) return;
-    try {
-      await driverApi.delete(dr._id);
-      toast.success(`Driver "${dr.username}" removed`);
-      loadDrivers();
-    } catch (err) { toast.error(err.message); }
-  };
+
 
   const handleToggleDriver = async (dr) => {
     try {
       await driverApi.update(dr._id, { is_active: !dr.is_active });
       toast.success(`${dr.display_name || dr.username} ${dr.is_active ? 'disabled' : 'enabled'}`);
+      setConfirmDisableModal(null);
       loadDrivers();
     } catch (err) { toast.error(err.message); }
   };
@@ -250,7 +272,12 @@ export default function AdminPanel() {
   const fld = (key, label, placeholder, type = 'text') => (
     <div className="form-group">
       <label className="form-label">{label}</label>
-      <input className="form-control" type={type} value={mgrForm[key]} placeholder={placeholder} onChange={e => setMgrForm({ ...mgrForm, [key]: e.target.value })} />
+      <input className="form-control" type={type} value={mgrForm[key]} placeholder={placeholder} onChange={e => {
+        let val = e.target.value;
+        if (key === 'display_name') val = val.replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+        if (key === 'phone') val = val.replace(/\D/g, '').slice(0, 10);
+        setMgrForm({ ...mgrForm, [key]: val });
+      }} />
     </div>
   );
 
@@ -293,115 +320,121 @@ export default function AdminPanel() {
     return s;
   };
 
-  const handleRowClick = (log) => {
+  const handleRowClick = async (log) => {
+    if (log.action === 'report_submitted' && log.entity_id) {
+      navigate('/daily-report', { state: { openReportId: log.entity_id } });
+      return;
+    }
+    if (log.action === 'payment') {
+      if (log.entity_type === 'delivery' || log.entity_type === 'settlement') {
+        try {
+          let supplierName = log.entity_name;
+          if (log.entity_type === 'delivery') {
+            const res = await deliveryApi.getById(log.entity_id);
+            supplierName = res.data?.supplier;
+          }
+          if (supplierName && supplierName.toLowerCase() !== 'customer' && !supplierName.toLowerCase().includes('walk-in')) {
+            const suppliers = await supplierApi.getAll();
+            const matched = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase());
+            if (matched) {
+              navigate(`/suppliers/${matched._id}/history`, { state: { supplier: matched } });
+            } else {
+              const virtualId = 'virtual_' + supplierName.toLowerCase().replace(/\s+/g, '_');
+              navigate(`/suppliers/${virtualId}/history`, { state: { supplier: { _id: virtualId, name: supplierName, is_virtual: true } } });
+            }
+            return;
+          }
+        } catch (err) {
+          console.error('Failed to route payment log:', err);
+        }
+      }
+      setLogDetailModal(log);
+      return;
+    }
+    if (log.action === 'delete' || log.changes) {
+      setLogDetailModal(log);
+      return;
+    }
     if (!log.entity_id) return;
     if (log.entity_type === 'invoice') navigate(`/invoices/${log.entity_id}`);
     else if (log.entity_type === 'trip') navigate(`/trip/${log.entity_id}`);
-    else if (log.entity_type === 'vehicle') navigate(`/vehicle/${log.entity_id}`);
+    else if (log.entity_type === 'vehicle') navigate(`/vehicles`);
     else if (log.entity_type === 'customer') navigate(`/customers`);
-    // Ignore products as per user request
+    else if (log.entity_type === 'delivery') navigate(`/walkin-delivery`);
   };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 120px)', paddingBottom: 40 }}>
-      {/* Premium Header */}
-      <div style={{ 
-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 20, 
-        marginBottom: 24, padding: '24px', background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
-        borderRadius: 16, color: '#fff', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.3)' 
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4)' }}>
-              <Shield size={24} style={{ color: '#fff' }} />
-            </div>
-            <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>{t('Admin Panel', 'एडमिन पैनल')}</h1>
-              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 2 }}>{t('Manage users, drivers, and system activity logs.', 'उपयोगकर्ता, ड्राइवर और सिस्टम गतिविधि लॉग प्रबंधित करें।')}</div>
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
-            <button 
-              onClick={() => setActiveTab('managers')}
-              style={{ 
-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                border: 'none', transition: 'all 0.2s',
-                background: activeTab === 'managers' ? '#fff' : 'rgba(255,255,255,0.06)', 
-                color: activeTab === 'managers' ? '#0f172a' : '#cbd5e1'
-              }}
-            >
-              <Users size={16} /> {t('Managers', 'मैनेजर')}
-            </button>
-            <button 
-              onClick={() => setActiveTab('drivers')}
-              style={{ 
-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                border: 'none', transition: 'all 0.2s',
-                background: activeTab === 'drivers' ? '#fff' : 'rgba(255,255,255,0.06)', 
-                color: activeTab === 'drivers' ? '#0f172a' : '#cbd5e1'
-              }}
-            >
-              <Truck size={16} /> {t('Drivers', 'ड्राइवर')}
-            </button>
-            <button 
-              onClick={() => setActiveTab('activity')}
-              style={{ 
-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                border: 'none', transition: 'all 0.2s',
-                background: activeTab === 'activity' ? '#fff' : 'rgba(255,255,255,0.06)', 
-                color: activeTab === 'activity' ? '#0f172a' : '#cbd5e1'
-              }}
-            >
-              <Activity size={16} /> {t('Activity Logs', 'गतिविधि लॉग')}
-            </button>
-            <button 
-              onClick={() => setActiveTab('requests')}
-              style={{ 
-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                border: 'none', transition: 'all 0.2s',
-                background: activeTab === 'requests' ? '#fff' : 'rgba(255,255,255,0.06)', 
-                color: activeTab === 'requests' ? '#0f172a' : '#cbd5e1'
-              }}
-            >
-              <Unlock size={16} /> Recovery Requests
-            </button>
-          </div>
-        </div>
-        
-        <div style={{ display: 'flex', gap: 10, alignSelf: 'flex-end' }}>
-          {activeTab === 'managers' && (
-            <button 
-              style={{ 
-                background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: '#fff', 
-                padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 14, 
-                display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' 
-              }} 
-              onClick={() => { setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false }); setShowAddManager(true); }}
-            >
-              <Plus size={18} /> Add Manager
-            </button>
-          )}
-          {activeTab === 'drivers' && (
-            <button 
-              style={{ 
-                background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: '#fff', 
-                padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 14, 
-                display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' 
-              }} 
-              onClick={() => { setDriverForm({ username: '', phone: '', password: '', display_name: '' }); setShowAddDriver(true); }}
-            >
-              <Plus size={18} /> Add Driver
-            </button>
-          )}
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Shield size={24} style={{ color: 'var(--primary)' }} />
+          {t('Admin Panel', 'एडमिन पैनल')}
+        </h2>
+      </div>
+
+      {/* Standard Tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, overflowX: 'auto' }}>
+        <button 
+          onClick={() => setActiveTab('managers')}
+          style={{ 
+            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
+            background: activeTab === 'managers' ? 'var(--primary-light)' : 'transparent', 
+            color: activeTab === 'managers' ? 'var(--primary)' : 'var(--text-muted)'
+          }}
+        >
+          <Users size={16} /> {t('Managers', 'मैनेजर')}
+        </button>
+        <button 
+          onClick={() => setActiveTab('drivers')}
+          style={{ 
+            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
+            background: activeTab === 'drivers' ? 'var(--primary-light)' : 'transparent', 
+            color: activeTab === 'drivers' ? 'var(--primary)' : 'var(--text-muted)'
+          }}
+        >
+          <Truck size={16} /> {t('Drivers', 'ड्राइवर')}
+        </button>
+        <button 
+          onClick={() => setActiveTab('activity')}
+          style={{ 
+            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
+            background: activeTab === 'activity' ? 'var(--primary-light)' : 'transparent', 
+            color: activeTab === 'activity' ? 'var(--primary)' : 'var(--text-muted)'
+          }}
+        >
+          <Activity size={16} /> {t('Activity Logs', 'गतिविधि लॉग')}
+        </button>
+        <button 
+          onClick={() => setActiveTab('requests')}
+          style={{ 
+            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
+            background: activeTab === 'requests' ? 'var(--primary-light)' : 'transparent', 
+            color: activeTab === 'requests' ? 'var(--primary)' : 'var(--text-muted)'
+          }}
+        >
+          <Unlock size={16} /> Recovery Requests
+        </button>
       </div>
 
       {activeTab === 'managers' && (
       <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9' }}><Users size={18} /></div>
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Managers', 'मैनेजर')} List</span>
+        <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9' }}><Users size={18} /></div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Managers', 'मैनेजर')} List</span>
+          </div>
+          <button 
+            className="btn-primary"
+            onClick={() => { setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false }); setShowAddManager(true); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 4, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            <Plus size={16} /> Add Manager
+          </button>
         </div>
         
         <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 180px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -419,8 +452,17 @@ export default function AdminPanel() {
             <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No managers found</div>
           ) : (
             managers.map((mgr, idx) => (
-              <div key={mgr._id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 180px 100px', gap: 16, padding: '16px 24px', alignItems: 'center', borderBottom: idx < managers.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div key={mgr._id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 180px 100px', gap: 16, padding: '16px 24px', alignItems: 'center', borderBottom: idx < managers.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.2s', background: mgr.is_on_hold ? '#fefce8' : '#fff' }} onMouseEnter={e => e.currentTarget.style.background = mgr.is_on_hold ? '#fef9c3' : '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = mgr.is_on_hold ? '#fefce8' : '#fff'}>
+                <div 
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '4px', borderRadius: '8px', transition: 'background 0.2s' }}
+                  onClick={() => {
+                    setLogFilters(f => ({ ...f, user_id: mgr._id, username: mgr.display_name || mgr.username, user_role: '' }));
+                    setActiveTab('activity');
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.1)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  title={`View Activity Logs for ${mgr.display_name || mgr.username}`}
+                >
                   <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #e0e7ff, #c7d2fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4338ca', fontWeight: 700, fontSize: 16 }}>
                     {(mgr.display_name || mgr.username).charAt(0).toUpperCase()}
                   </div>
@@ -432,11 +474,15 @@ export default function AdminPanel() {
                 <div style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>{mgr.phone || '-'}</div>
                 <div>
                   <button 
-                    onClick={() => handleToggleManager(mgr)}
-                    style={{ background: mgr.is_active ? '#dcfce7' : '#fee2e2', color: mgr.is_active ? '#166534' : '#991b1b', border: 'none', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'opacity 0.2s' }}
+                    onClick={() => {
+                      if (mgr.is_active) setConfirmDisableModal({ user: mgr, type: 'manager' });
+                      else handleToggleManager(mgr);
+                    }}
+                    style={{ background: mgr.is_on_hold ? '#fef08a' : !mgr.is_active ? '#fee2e2' : mgr.is_online ? '#dcfce7' : '#f1f5f9', color: mgr.is_on_hold ? '#a16207' : !mgr.is_active ? '#991b1b' : mgr.is_online ? '#166534' : '#475569', border: 'none', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'opacity 0.2s' }}
                     onMouseEnter={e => e.currentTarget.style.opacity = 0.8} onMouseLeave={e => e.currentTarget.style.opacity = 1}
+                    title={mgr.is_active ? "Click to Disable" : "Click to Enable"}
                   >
-                    {mgr.is_active ? 'Active' : 'Disabled'}
+                    {mgr.is_on_hold ? 'On Hold' : !mgr.is_active ? 'Disabled' : mgr.is_online ? 'Active' : 'Offline'}
                   </button>
                 </div>
                 <div>
@@ -446,13 +492,16 @@ export default function AdminPanel() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                  <button onClick={() => setConfirmHoldModal({ user: mgr, type: 'manager' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: mgr.is_on_hold ? '#fef08a' : '#f1f5f9', color: mgr.is_on_hold ? '#a16207' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} title={mgr.is_on_hold ? "Lift Hold" : "Put on Hold"}>
+                      {mgr.is_on_hold ? <PlayCircle size={14} /> : <PauseCircle size={14} />}
+                    </button>
                   <button onClick={() => openEditModal(mgr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#334155'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}>
                     <Edit2 size={14} />
                   </button>
                   <button onClick={() => setMgrResetModal(mgr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fde68a'; e.currentTarget.style.color = '#92400e'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.color = '#b45309'; }}>
                     <Key size={14} />
                   </button>
-                  <button onClick={() => handleDeleteManager(mgr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
+                  <button onClick={() => setConfirmDeleteModal({ user: mgr, type: 'manager' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -465,9 +514,18 @@ export default function AdminPanel() {
 
       {activeTab === 'drivers' && (
         <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}><Truck size={18} /></div>
-            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Drivers', 'ड्राइवर')} List</span>
+          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}><Truck size={18} /></div>
+              <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Drivers', 'ड्राइवर')} List</span>
+            </div>
+            <button 
+              className="btn-primary"
+              onClick={() => { setDriverForm({ username: '', phone: '', password: '', display_name: '' }); setShowAddDriver(true); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 4, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
+            >
+              <Plus size={16} /> Add Driver
+            </button>
           </div>
           
           <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -484,8 +542,17 @@ export default function AdminPanel() {
               <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No drivers found</div>
             ) : (
               drivers.map((dr, idx) => (
-                <div key={dr._id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 100px', gap: 16, padding: '16px 24px', alignItems: 'center', borderBottom: idx < drivers.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div key={dr._id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 100px', gap: 16, padding: '16px 24px', alignItems: 'center', borderBottom: idx < drivers.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.2s', background: dr.is_on_hold ? '#fefce8' : '#fff' }} onMouseEnter={e => e.currentTarget.style.background = dr.is_on_hold ? '#fef9c3' : '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = dr.is_on_hold ? '#fefce8' : '#fff'}>
+                  <div 
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '4px', borderRadius: '8px', transition: 'background 0.2s' }}
+                    onClick={() => {
+                      setLogFilters(f => ({ ...f, user_id: dr._id, username: dr.display_name || dr.username, user_role: '' }));
+                      setActiveTab('activity');
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.1)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    title={`View Activity Logs for ${dr.display_name || dr.username}`}
+                  >
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #fef2f2, #fecaca)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b91c1c', fontWeight: 700, fontSize: 16 }}>
                       {(dr.display_name || dr.username).charAt(0).toUpperCase()}
                     </div>
@@ -497,21 +564,28 @@ export default function AdminPanel() {
                   <div style={{ fontSize: 13, color: '#475569', fontWeight: 500 }}>{dr.phone || '-'}</div>
                   <div>
                     <button 
-                      onClick={() => handleToggleDriver(dr)}
-                      style={{ background: dr.is_active ? '#dcfce7' : '#fee2e2', color: dr.is_active ? '#166534' : '#991b1b', border: 'none', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'opacity 0.2s' }}
+                      onClick={() => {
+                        if (dr.is_active) setConfirmDisableModal({ user: dr, type: 'driver' });
+                        else handleToggleDriver(dr);
+                      }}
+                      style={{ background: dr.is_on_hold ? '#fef08a' : !dr.is_active ? '#fee2e2' : dr.is_online ? '#dcfce7' : '#f1f5f9', color: dr.is_on_hold ? '#a16207' : !dr.is_active ? '#991b1b' : dr.is_online ? '#166534' : '#475569', border: 'none', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'opacity 0.2s' }}
                       onMouseEnter={e => e.currentTarget.style.opacity = 0.8} onMouseLeave={e => e.currentTarget.style.opacity = 1}
+                      title={dr.is_active ? "Click to Disable" : "Click to Enable"}
                     >
-                      {dr.is_active ? 'Active' : 'Disabled'}
+                      {dr.is_on_hold ? 'On Hold' : !dr.is_active ? 'Disabled' : dr.is_online ? 'Active' : 'Offline'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                      <button onClick={() => setConfirmHoldModal({ user: dr, type: 'driver' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: dr.is_on_hold ? '#fef08a' : '#f1f5f9', color: dr.is_on_hold ? '#a16207' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} title={dr.is_on_hold ? "Lift Hold" : "Put on Hold"}>
+                        {dr.is_on_hold ? <PlayCircle size={14} /> : <PauseCircle size={14} />}
+                      </button>
                     <button onClick={() => openEditDriverModal(dr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#334155'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}>
                       <Edit2 size={14} />
                     </button>
                     <button onClick={() => setDriverResetModal(dr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fde68a'; e.currentTarget.style.color = '#92400e'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.color = '#b45309'; }}>
                       <Key size={14} />
                     </button>
-                    <button onClick={() => handleDeleteDriver(dr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
+                    <button onClick={() => setConfirmDeleteModal({ user: dr, type: 'driver' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -562,6 +636,18 @@ export default function AdminPanel() {
                 <option value="payment">Payment</option>
                 <option value="logout">Logout</option>
               </select>
+              {logFilters.user_id && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#e0e7ff', color: '#3730a3', padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+                  <Users size={14} /> {logFilters.username}
+                  <button 
+                    onClick={() => setLogFilters(f => ({ ...f, user_id: '', username: '' }))} 
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#3730a3', padding: 0, display: 'flex', marginLeft: 4 }} 
+                    title="Clear User Filter"
+                  >
+                    <XCircle size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           
@@ -579,7 +665,7 @@ export default function AdminPanel() {
               <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No activity found</div>
             ) : (
               logs.map((log, idx) => {
-                const isClickable = ['invoice', 'trip', 'vehicle', 'customer'].includes(log.entity_type) && log.entity_id;
+                const isClickable = (['invoice', 'trip', 'vehicle', 'customer', 'delivery'].includes(log.entity_type) && log.entity_id) || log.action === 'report_submitted';
                 return (
                   <div 
                     key={log._id} 
@@ -609,11 +695,12 @@ export default function AdminPanel() {
                       {log.action === 'escalate' && <span style={{ background: '#f3f4f6', color: '#1f2937', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{translateAction(log.action)}</span>}
                       {log.action === 'security_alert' && <span style={{ background: '#fecaca', color: '#7f1d1d', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>{translateAction(log.action)}</span>}
                       {log.action === 'failed_login' && <span style={{ background: '#fecaca', color: '#7f1d1d', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>{translateAction(log.action)}</span>}
-                      {!['create', 'update', 'edit', 'delete', 'login', 'payment', 'escalate', 'security_alert', 'failed_login'].includes(log.action) && (
+                      {log.action === 'report_submitted' && <span style={{ background: '#dbeafe', color: '#1e40af', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>{translateAction(log.action)}</span>}
+                      {!['create', 'update', 'edit', 'delete', 'login', 'payment', 'escalate', 'security_alert', 'failed_login', 'report_submitted'].includes(log.action) && (
                         <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{translateAction(log.action)}</span>
                       )}
                     </div>
-                    <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4 }}>
+                    <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
                       {translateDetails(log.description) || '-'}
                     </div>
                   </div>
@@ -769,7 +856,7 @@ export default function AdminPanel() {
                 </div>
                 <div className="form-group mb-0">
                   <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>Display Name</label>
-                  <input className="form-control" type="text" placeholder="e.g. Ramesh Singh" value={driverForm.display_name} onChange={e => setDriverForm({ ...driverForm, display_name: e.target.value })} style={{ borderRadius: 8, border: '1px solid #cbd5e1' }} />
+                  <input className="form-control" type="text" placeholder="e.g. Ramesh Singh" value={driverForm.display_name} onChange={e => setDriverForm({ ...driverForm, display_name: e.target.value.replace(/(?:^|\s)\S/g, c => c.toUpperCase()) })} style={{ borderRadius: 8, border: '1px solid #cbd5e1' }} />
                 </div>
                 <div className="form-group mb-0">
                   <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>Phone Number</label>
@@ -838,6 +925,225 @@ export default function AdminPanel() {
                 <button type="button" onClick={() => setResolveModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>{t('Cancel', 'रद्द करें')}</button>
                 <button onClick={handleResolveRequest} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: 8, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(59,130,246,0.3)' }}>Resolve & Reset</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Log Detail Modal */}
+      {logDetailModal && (
+        <div className="modal-overlay" onClick={() => setLogDetailModal(null)} style={{ padding: '16px', backdropFilter: 'blur(5px)' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, padding: 0, borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Activity size={20} />
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>Activity Details</div>
+            </div>
+            <div style={{ padding: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
+              <div style={{ marginBottom: 16 }}>
+                <strong>Action:</strong> {translateAction(logDetailModal.action)}<br />
+                <strong>Entity:</strong> {logDetailModal.entity_name} ({logDetailModal.entity_type})<br />
+                <strong>User:</strong> {logDetailModal.username} ({logDetailModal.user_role})<br />
+                <strong>Time:</strong> {new Date(logDetailModal.timestamp).toLocaleString('en-IN')}
+              </div>
+              
+              <div style={{ padding: '12px', background: '#f8fafc', borderRadius: 8, fontSize: 13, color: '#334155', marginBottom: 16, border: '1px solid #e2e8f0' }}>
+                {translateDetails(logDetailModal.description)}
+              </div>
+
+              {logDetailModal.changes && (
+                <div style={{ marginTop: 16 }}>
+                  <strong style={{ fontSize: 14, color: '#1e293b', marginBottom: 8, display: 'block' }}>Changes / Details:</strong>
+                  <pre style={{ background: '#f1f5f9', padding: 12, borderRadius: 8, fontSize: 12, color: '#475569', overflowX: 'auto', border: '1px solid #e2e8f0' }}>
+                    {JSON.stringify(logDetailModal.changes, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                <button type="button" onClick={() => setLogDetailModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>Close</button>
+                {logDetailModal.action !== 'delete' && logDetailModal.entity_type && ['invoice', 'trip', 'vehicle', 'customer'].includes(logDetailModal.entity_type) && logDetailModal.entity_id && (
+                  <button 
+                    onClick={() => {
+                      setLogDetailModal(null);
+                      if (logDetailModal.entity_type === 'invoice') navigate(`/invoices/${logDetailModal.entity_id}`);
+                      else if (logDetailModal.entity_type === 'trip') navigate(`/trip/${logDetailModal.entity_id}`);
+                      else if (logDetailModal.entity_type === 'vehicle') navigate(`/vehicles`);
+                      else if (logDetailModal.entity_type === 'customer') navigate(`/customers`);
+                    }} 
+                    style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: 8, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(59,130,246,0.3)' }}
+                  >
+                    View Record
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Hold Modal */}
+      {confirmHoldModal && (
+        <div className="modal-overlay" onClick={() => setConfirmHoldModal(null)} style={{ padding: '16px', backdropFilter: 'blur(5px)' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 0, borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ padding: '20px 24px', background: confirmHoldModal.user.is_on_hold ? 'linear-gradient(135deg, #1e293b, #0f172a)' : 'linear-gradient(135deg, #b45309, #78350f)', color: '#fff' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                {confirmHoldModal.user.is_on_hold ? <PlayCircle size={20} /> : <PauseCircle size={20} />}
+                Confirm Action
+              </h3>
+            </div>
+            <div style={{ padding: '24px', color: '#334155', fontSize: 15, lineHeight: 1.5 }}>
+              Are you sure you want to <strong>{confirmHoldModal.user.is_on_hold ? 'lift the hold on' : 'put on hold'}</strong> the account for <strong>{confirmHoldModal.user.display_name || confirmHoldModal.user.username}</strong>?
+              {!confirmHoldModal.user.is_on_hold && (
+                <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, color: '#64748b' }}>
+                  If they are currently logged in, their very next action will result in them being logged out instantly.
+                </p>
+              )}
+            </div>
+            <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn-secondary" onClick={() => setConfirmHoldModal(null)} style={{ padding: '8px 16px', borderRadius: 8 }}>Cancel</button>
+              <button className="btn-primary" onClick={() => {
+                const newHold = !confirmHoldModal.user.is_on_hold;
+                const api = confirmHoldModal.type === 'manager' ? managerApi : driverApi;
+                api.update(confirmHoldModal.user._id, { is_on_hold: newHold })
+                  .then(() => { 
+                    toast.success(`${confirmHoldModal.type === 'manager' ? 'Manager' : 'Driver'} ${newHold ? 'put on hold' : 'hold lifted'}`); 
+                    if (confirmHoldModal.type === 'manager') loadManagers();
+                    else loadDrivers();
+                    setConfirmHoldModal(null);
+                  })
+                  .catch(err => toast.error(err.message));
+              }} style={{ padding: '8px 16px', borderRadius: 8, background: confirmHoldModal.user.is_on_hold ? '#10b981' : '#f59e0b', color: '#fff', border: 'none', fontWeight: 600 }}>
+                {confirmHoldModal.user.is_on_hold ? 'Lift Hold' : 'Put on Hold'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Modal */}
+      {confirmDeleteModal && (
+        <div className="modal-overlay" onClick={() => { if(!isDeleting) { setConfirmDeleteModal(null); setDeleteSecretKey(''); } }} style={{ padding: '16px', backdropFilter: 'blur(5px)' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450, padding: 0, borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #7f1d1d, #991b1b)', color: '#fff' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Trash2 size={20} />
+                Delete {confirmDeleteModal.type === 'manager' ? 'Manager' : 'Driver'}
+              </h3>
+            </div>
+            <div style={{ padding: '24px', color: '#334155', fontSize: 15, lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete the account for <strong>{confirmDeleteModal.user.display_name || confirmDeleteModal.user.username}</strong>?
+              
+              <div style={{ marginTop: 16, padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, color: '#166534' }}>
+                <strong>Data Preservation:</strong> The user's account will be permanently removed, but all invoices, deliveries, dues, and records they created will be preserved in the system exactly as they are.
+              </div>
+
+              <div style={{ marginTop: 24 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}>Supervisor Secret Code Required</label>
+                <input 
+                  type="password"
+                  autoFocus
+                  placeholder="Enter your secret code..."
+                  value={deleteSecretKey}
+                  onChange={e => setDeleteSecretKey(e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (isDeleting || !deleteSecretKey) return;
+                      setIsDeleting(true);
+                      try {
+                        const token = localStorage.getItem('shopbill_token');
+                        const verifyRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/verify-secret`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                          body: JSON.stringify({ username: user?.username || 'admin', secret_key: deleteSecretKey })
+                        });
+                        if (!verifyRes.ok) {
+                          const errorData = await verifyRes.json();
+                          throw new Error(errorData.error || 'Incorrect supervisor secret code.');
+                        }
+                        const api = confirmDeleteModal.type === 'manager' ? managerApi : driverApi;
+                        await api.delete(confirmDeleteModal.user._id, deleteSecretKey);
+                        toast.success(`${confirmDeleteModal.type === 'manager' ? 'Manager' : 'Driver'} deleted successfully`);
+                        if (confirmDeleteModal.type === 'manager') loadManagers();
+                        else loadDrivers();
+                        setConfirmDeleteModal(null);
+                        setDeleteSecretKey('');
+                      } catch (err) {
+                        toast.error(err.message || 'Invalid secret code or failed to delete');
+                      } finally {
+                        setIsDeleting(false);
+                      }
+                    }
+                  }}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}
+                />
+              </div>
+            </div>
+            <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn-secondary" disabled={isDeleting} onClick={() => { setConfirmDeleteModal(null); setDeleteSecretKey(''); }} style={{ padding: '8px 16px', borderRadius: 8 }}>Cancel</button>
+              <button id="confirm-delete-btn" className="btn-primary" disabled={isDeleting || !deleteSecretKey} onClick={async () => {
+                setIsDeleting(true);
+                try {
+                  const token = localStorage.getItem('shopbill_token');
+                  const verifyRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/verify-secret`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ username: user?.username || 'admin', secret_key: deleteSecretKey })
+                  });
+                  
+                  if (!verifyRes.ok) {
+                    const errorData = await verifyRes.json();
+                    throw new Error(errorData.error || 'Incorrect supervisor secret code.');
+                  }
+                  
+                  const api = confirmDeleteModal.type === 'manager' ? managerApi : driverApi;
+                  await api.delete(confirmDeleteModal.user._id, deleteSecretKey);
+                  
+                  toast.success(`${confirmDeleteModal.type === 'manager' ? 'Manager' : 'Driver'} deleted successfully`);
+                  if (confirmDeleteModal.type === 'manager') loadManagers();
+                  else loadDrivers();
+                  
+                  setConfirmDeleteModal(null);
+                  setDeleteSecretKey('');
+                } catch (err) {
+                  toast.error(err.message || 'Invalid secret code or failed to delete');
+                } finally {
+                  setIsDeleting(false);
+                }
+              }} style={{ padding: '8px 16px', borderRadius: 8, background: '#ef4444', color: '#fff', border: 'none', fontWeight: 600 }}>
+                {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDisableModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div className="card" style={{ maxWidth: 400, width: '100%', borderRadius: 16, overflow: 'hidden', border: 'none', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}>
+            <div style={{ background: '#b91c1c', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <PauseCircle size={24} color="#fff" />
+              <h2 style={{ margin: 0, color: '#fff', fontSize: 20, fontWeight: 700 }}>Confirm Action</h2>
+            </div>
+            <div style={{ padding: 24, background: '#fff' }}>
+              <p style={{ margin: '0 0 16px 0', fontSize: 15, color: '#334155', lineHeight: 1.5 }}>
+                Are you sure you want to <strong>disable</strong> the account for <strong>{confirmDisableModal.user.display_name || confirmDisableModal.user.username}</strong>?
+              </p>
+              <p style={{ margin: '0', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+                If they are currently logged in, their very next action will result in them being logged out instantly.
+              </p>
+            </div>
+            <div style={{ padding: '16px 24px', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: 12, borderTop: '1px solid #e2e8f0' }}>
+              <button onClick={() => setConfirmDisableModal(null)} className="btn-secondary" style={{ padding: '8px 16px', borderRadius: 8, fontWeight: 600 }}>Cancel</button>
+              <button 
+                onClick={() => confirmDisableModal.type === 'manager' ? handleToggleManager(confirmDisableModal.user) : handleToggleDriver(confirmDisableModal.user)} 
+                className="btn-primary" 
+                style={{ padding: '8px 16px', borderRadius: 8, fontWeight: 600, background: '#dc2626', borderColor: '#dc2626' }}
+              >
+                Disable
+              </button>
             </div>
           </div>
         </div>

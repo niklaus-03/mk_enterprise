@@ -18,7 +18,7 @@ const invoiceItemSchema = new mongoose.Schema({
 });
 
 const paymentSchema = new mongoose.Schema({
-  mode: { type: String, enum: ['cash', 'upi', 'bank_transfer', 'cheque', 'advance_credit', 'online', 'others'], required: true },
+  mode: { type: String, enum: ['cash', 'upi', 'bank_transfer', 'cheque', 'advance_credit', 'online', 'others', 'goods_exchange'], required: true },
   amount: { type: Number, required: true, min: 0 },
   reference: { type: String, default: '' },
 }, { _id: false });
@@ -50,6 +50,7 @@ const invoiceSchema = new mongoose.Schema({
   // Enhancement 3: manual bill entry
   is_manual_bill: { type: Boolean, default: false },
   manual_bill_ref: { type: String, default: '' },
+  is_report: { type: Boolean, default: false },
   status: { type: String, enum: ['active', 'edited', 'partially_returned', 'cancelled'], default: 'active' },
   gst_enabled: { type: Boolean, default: true },
   discount_enabled: { type: Boolean, default: false },
@@ -74,10 +75,14 @@ invoiceSchema.pre('save', async function (next) {
             prefix = 'INV-';
           } else if (creator.role === 'manager') {
             const nameToUse = creator.display_name || creator.username || 'M';
-            const firstLetter = nameToUse.charAt(0).toUpperCase();
-            prefix = `${firstLetter}INV-`;
+            const initials = nameToUse.split(' ').filter(n => n).map(n => n.charAt(0).toUpperCase()).join('');
+            prefix = `${initials}INV-`;
           }
         }
+      }
+
+      if (this.is_report) {
+        prefix = `REPORT${prefix}`;
       }
 
       // Count existing invoices with the same prefix

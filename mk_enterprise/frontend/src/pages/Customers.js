@@ -5,7 +5,7 @@ import { customerApi, managerApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Share2, Plus, Phone, Wallet, X, AlertTriangle, Users, Search, MapPin, ArrowRight } from 'lucide-react';
+import { FileText, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Share2, Plus, Phone, Wallet, X, AlertTriangle, Users, User, Search, MapPin, ArrowRight } from 'lucide-react';
 import { parseCustomerName, formatCustomerName, isHindi, titleCase, getPrefixOptions, applyAutoSuffix } from '../utils/nameFormatter';
 
 const EMPTY = { prefix: 'Shree', name: '', phone: '', alternate_phones: [], address: '', balance: '', gstin: '' };
@@ -191,8 +191,11 @@ export default function Customers() {
 
   const load = () => customerApi.getAll({ search }).then(setCustomers).catch(e => toast.error(e.message)).finally(() => setLoading(false));
   useEffect(() => {
-    load();
-  }, []);
+    const t = setTimeout(() => {
+      load();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // Auto-open add form when navigated from dashboard with ?action=add
   useEffect(() => {
@@ -309,7 +312,21 @@ export default function Customers() {
         </span>
       );
     }
-    return <span style={{ color: '#94a3b8', fontWeight: 500 }}>—</span>;
+    return (
+      <span style={{ 
+        display: 'inline-flex', 
+        alignItems: 'center', 
+        padding: '4px 10px', 
+        borderRadius: 20, 
+        fontSize: 12, 
+        fontWeight: 700, 
+        background: '#f1f5f9', 
+        color: '#64748b', 
+        border: '1px solid #e2e8f0' 
+      }}>
+        Balance Clear
+      </span>
+    );
   };
 
   const selectedData = customers.filter(c => selectedCustomers.includes(c._id));
@@ -405,12 +422,14 @@ export default function Customers() {
                     )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{c.name}</div>
-                          {c.created_by && c.created_by._id !== user._id && (
-                            <span style={{ color: '#0369a1', background: 'var(--primary-light)', padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              {isAdmin ? 'BY' : 'SHARED BY'}: {c.created_by.display_name || c.created_by.username}
-                            </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{c.name}</div>
+                          </div>
+                          {c.created_by && c.created_by.role !== 'supervisor' && (
+                            <div style={{ fontSize: 12, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                              <User size={13} /> By: {c.created_by.display_name || c.created_by.username}
+                            </div>
                           )}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
@@ -438,7 +457,7 @@ export default function Customers() {
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 10, flexWrap: 'wrap', gap: 10 }}>
                       <Link to={`/invoices?customer_id=${c._id}`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                        <FileText size={13} /> View Bills <ArrowRight size={12} />
+                        <FileText size={13} /> See History <ArrowRight size={12} />
                       </Link>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="btn btn-outline btn-sm" onClick={() => setShareModal(c)} title="Share" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, padding: 0, borderRadius: 6, color: '#3b82f6', borderColor: '#bfdbfe' }}>
@@ -496,12 +515,14 @@ export default function Customers() {
                           </td>
                         )}
                         <td style={{ padding: '12px 16px' }}>
-                          <div style={{ fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {c.name}
-                            {c.created_by && c.created_by._id !== user._id && (
-                              <span style={{ color: '#0369a1', background: 'var(--primary-light)', padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                {isAdmin ? 'BY' : 'SHARED BY'}: {c.created_by.display_name || c.created_by.username}
-                              </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text)' }}>
+                              {c.name}
+                            </div>
+                            {c.created_by && c.created_by.role !== 'supervisor' && (
+                              <div style={{ fontSize: 12, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                                <User size={13} /> By: {c.created_by.display_name || c.created_by.username}
+                              </div>
                             )}
                           </div>
                         </td>
@@ -593,7 +614,8 @@ export default function Customers() {
                         className="form-control" 
                         value={form.name} 
                         onChange={e => {
-                          const newName = e.target.value;
+                          const val = e.target.value;
+                          const newName = val.replace(/\b[a-zA-Z]/g, c => c.toUpperCase());
                           const wasH = isHindi(form.name);
                           const isH = isHindi(newName);
                           let newPrefix = form.prefix || 'Shree';
@@ -707,7 +729,11 @@ export default function Customers() {
                       className="form-control" 
                       rows={2} 
                       value={form.address} 
-                      onChange={e => setForm({ ...form, address: e.target.value })} 
+                      onChange={e => {
+                        const val = e.target.value;
+                        const capitalized = val.replace(/\b[a-zA-Z]/g, c => c.toUpperCase());
+                        setForm({ ...form, address: capitalized });
+                      }} 
                       onKeyDown={e => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
@@ -725,7 +751,7 @@ export default function Customers() {
                     <input 
                       className="form-control" 
                       value={form.gstin} 
-                      onChange={e => setForm({ ...form, gstin: e.target.value })} 
+                      onChange={e => setForm({ ...form, gstin: e.target.value.toUpperCase() })} 
                       placeholder="Customer's GSTIN" 
                       style={{ borderRadius: 8 }} 
                     />

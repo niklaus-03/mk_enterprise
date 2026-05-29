@@ -16,14 +16,13 @@ const failedLogins = new Map(); // Track failed logins in memory
 async function findUser(identifier) {
   const clean = (identifier || '').trim();
   // Try username first
-  let user = await Admin.findOne({ username: clean, is_active: true });
+  let user = await Admin.findOne({ username: clean });
   if (!user) {
     // Try phone / mobile
     const digits = clean.replace(/\D/g, '');
     if (digits.length >= 10) {
       user = await Admin.findOne({
-        $or: [{ phone: digits }, { mobile: digits }],
-        is_active: true,
+        $or: [{ phone: digits }, { mobile: digits }]
       });
     }
   }
@@ -56,6 +55,10 @@ router.post('/login', async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'Account not found.' });
     }
+    
+    if (user.is_active === false) {
+      return res.status(401).json({ error: 'Your account is disabled. Contact admin.' });
+    }
 
     // Check password
     const isMatch = await user.comparePassword(password);
@@ -71,15 +74,17 @@ router.post('/login', async (req, res) => {
         desc = `SECURITY ALERT: Failed login attempt ${currentFails} times for user ${user.username}`;
       }
       
-      await ActivityLog.create({
-        user_id: user._id,
-        username: user.username,
-        user_role: user.role,
-        action: actionType,
-        entity_type: 'Admin',
-        description: desc,
-        ip_address: req.ip || req.connection?.remoteAddress || '',
-      });
+      if (user.role !== 'supervisor') {
+        await ActivityLog.create({
+          user_id: user._id,
+          username: user.username,
+          user_role: user.role,
+          action: actionType,
+          entity_type: 'Admin',
+          description: desc,
+          ip_address: req.ip || req.connection?.remoteAddress || '',
+        });
+      }
       return res.status(401).json({ error: 'Incorrect password.' });
     }
 
@@ -94,7 +99,7 @@ router.post('/login', async (req, res) => {
 
     // Non-supervisor (manager/driver) — issue token immediately
     failedLogins.delete(user.username); // Clear failed attempts on success
-    await Admin.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date() } });
+    await Admin.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date(), is_online: true } });
 
     await ActivityLog.create({
       user_id: user._id,
@@ -141,20 +146,22 @@ router.post('/verify-secret', async (req, res) => {
 
     const keyMatch = await user.compareSecretKey(secret_key);
     if (!keyMatch) {
-      await ActivityLog.create({
-        user_id: user._id,
-        username: user.username,
-        user_role: user.role,
-        action: 'failed_login',
-        entity_type: 'Admin',
-        description: 'Failed verify-secret attempt (incorrect secret key)',
-        ip_address: req.ip || req.connection?.remoteAddress || '',
-      });
+      if (user.role !== 'supervisor') {
+        await ActivityLog.create({
+          user_id: user._id,
+          username: user.username,
+          user_role: user.role,
+          action: 'failed_login',
+          entity_type: 'Admin',
+          description: 'Failed verify-secret attempt (incorrect secret key)',
+          ip_address: req.ip || req.connection?.remoteAddress || '',
+        });
+      }
       return res.status(401).json({ error: 'Incorrect secret key.' });
     }
 
     // Success — issue token
-    await Admin.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date() } });
+    await Admin.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date(), is_online: true } });
 
     await ActivityLog.create({
       user_id: user._id,
@@ -337,10 +344,29 @@ router.put('/managers/:id', auth, requireSupervisor, async (req, res) => {
     if (display_name !== undefined) manager.display_name = display_name;
     if (phone !== undefined) manager.phone = (phone || '').replace(/\D/g, '');
     if (is_active !== undefined) manager.is_active = is_active;
+    if (req.body.is_on_hold !== undefined) manager.is_on_hold = req.body.is_on_hold;
     if (can_edit_products !== undefined) {
       manager.can_edit_products = can_edit_products === true || can_edit_products === 'true';
     }
     await manager.save();
+
+    // If manager is disabled, instantly log them out via socket
+    if (manager.is_active === false) {
+      if (global.io) {
+        global.io.to(manager._id.toString()).emit('force_logout');
+      }
+    }
+    
+    // If hold status changed, emit appropriate socket event
+    if (req.body.is_on_hold !== undefined) {
+      if (global.io) {
+        if (req.body.is_on_hold === true) {
+          global.io.to(manager._id.toString()).emit('force_hold');
+        } else {
+          global.io.to(manager._id.toString()).emit('lift_hold');
+        }
+      }
+    }
 
     const result = manager.toObject();
     delete result.password;
@@ -494,7 +520,26 @@ router.put('/drivers/:id', auth, requireSupervisor, async (req, res) => {
     if (display_name !== undefined) driver.display_name = display_name;
     if (phone !== undefined) driver.phone = (phone || '').replace(/\D/g, '');
     if (is_active !== undefined) driver.is_active = is_active;
+    if (req.body.is_on_hold !== undefined) driver.is_on_hold = req.body.is_on_hold;
     await driver.save();
+
+    // If driver is disabled, instantly log them out via socket
+    if (driver.is_active === false) {
+      if (global.io) {
+        global.io.to(driver._id.toString()).emit('force_logout');
+      }
+    }
+    
+    // If hold status changed, emit appropriate socket event
+    if (req.body.is_on_hold !== undefined) {
+      if (global.io) {
+        if (req.body.is_on_hold === true) {
+          global.io.to(driver._id.toString()).emit('force_hold');
+        } else {
+          global.io.to(driver._id.toString()).emit('lift_hold');
+        }
+      }
+    }
 
     const result = driver.toObject();
     delete result.password;
@@ -539,4 +584,17 @@ router.delete('/drivers/:id', auth, requireSupervisor, async (req, res) => {
 });
 
 module.exports = router;
+
+
+// --- POST /api/auth/logout ------------------------------------------------------
+router.post('/logout', auth, async (req, res) => {
+  try {
+    if (req.user && req.user.id) {
+      await Admin.findByIdAndUpdate(req.user.id, { $set: { is_online: false } });
+    }
+    res.json({ success: true, message: 'Logged out successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 

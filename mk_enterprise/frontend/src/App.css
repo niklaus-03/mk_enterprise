@@ -472,6 +472,12 @@ a {
   flex-direction: column;
   gap: 1px;
   overflow-y: auto;
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-item {
@@ -4140,5 +4146,12 @@ input[type="search"]::-webkit-search-cancel-button {
   [data-theme="dark"] .table th, 
   [data-theme="dark"] .table td {
     border-bottom-color: #e2e8f0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .invoice-paper table {
+    display: table !important;
+    white-space: normal !important;
   }
 }

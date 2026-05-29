@@ -1,0 +1,60 @@
+.admin-panel-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.admin-panel-tabs::-webkit-scrollbar {
+  display: none;
+}
+.admin-panel-tabs button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.admin-table-header {
+  background: #f8fafc;
+  padding: 12px 24px;
+  display: grid;
+  gap: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.admin-table-row {
+  display: grid;
+  gap: 16px;
+  padding: 16px 24px;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.2s;
+}
+.admin-table-row:hover {
+  background: #f8fafc;
+}
+
+/* Managers Grid */
+.grid-managers { grid-template-columns: minmax(200px, 1fr) 150px 120px 180px 100px; }
+
+/* Drivers Grid */
+.grid-drivers { grid-template-columns: minmax(200px, 1fr) 150px 120px 100px; }
+
+/* Activity Grid */
+.grid-activity { grid-template-columns: 150px 180px 140px minmax(200px, 1fr); }
+
+/* Recovery Requests Grid */
+.grid-requests { grid-template-columns: 150px 150px 150px minmax(200px, 1fr) 100px; }
+
+/* Mobile view table styling */
+@media (max-width: 900px) {
+  .admin-table-body {
+    padding: 0;
+  }
+}

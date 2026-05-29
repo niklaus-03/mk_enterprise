@@ -37,7 +37,7 @@ function calcItem(item, gstEnabled) {
   return { ...item, qty, price, gst, taxable_amount, cgst, sgst, total };
 }
 
-const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'others'];
+const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'goods_exchange', 'others'];
 
 export default function NewInvoice() {
   const { user } = useAuth();

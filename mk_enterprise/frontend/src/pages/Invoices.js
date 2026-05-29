@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { invoiceApi, driverApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User } from 'lucide-react';
 
 export default function Invoices() {
   const { t } = useApp();
@@ -16,7 +16,7 @@ export default function Invoices() {
   const [page, setPage] = useState(1);
   const [searchParams] = useSearchParams();
   const customer_id = searchParams.get('customer_id');
-  const { isAdmin, token } = useAuth();
+  const { isAdmin, token, user } = useAuth();
   const LIMIT = 25;
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const location = useLocation();
@@ -274,36 +274,67 @@ export default function Invoices() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
                       <span>{inv.ist_formatted || formatIST(inv.date)}</span>
                       {isAdmin && (
-                        <span className="badge badge-gray" style={{ fontSize: 10 }}>
-                          {inv.created_by_name || 'MGR-1'}
-                        </span>
+                        <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                          <User size={12} /> By: {inv.created_by?.display_name || inv.created_by?.username || 'Admin'}
+                        </div>
                       )}
                     </div>
 
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: 8,
+                      gridTemplateColumns: 'repeat(4, 1fr)',
+                      gap: 4,
                       background: 'var(--bg)',
-                      padding: '10px 12px',
+                      padding: '10px 8px',
                       borderRadius: 10,
                       textAlign: 'center'
                     }}>
                       <div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>{t('Total', 'कुल')}</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, fontFamily: 'monospace' }}>{fc(inv.total)}</div>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>{t('Total', 'कुल')}</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, fontFamily: 'monospace' }}>{fc(inv.total)}</div>
                       </div>
                       <div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Received</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>{fc(inv.amount_received)}</div>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>Rec'd</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>{fc(inv.amount_received)}</div>
                       </div>
                       <div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Due</div>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: inv.balance_due > 0.01 ? 'var(--danger)' : 'var(--success)', fontFamily: 'monospace' }}>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>Due</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: inv.balance_due > 0.01 ? 'var(--danger)' : 'var(--success)', fontFamily: 'monospace' }}>
                           {inv.balance_due > 0.01 ? fc(inv.balance_due) : 'Paid'}
                         </div>
                       </div>
+                      <div>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>Cust Bal</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, fontFamily: 'monospace' }}>
+                          {(() => {
+                            if (!inv.customer_id) return '—';
+                            const cust = inv.customer_id;
+                            let bal = cust.balance || 0;
+                            if (user?.role === 'manager' && cust.manager_balances) {
+                               const mb = cust.manager_balances.find(m => m.manager_id === user._id || m.manager_id?._id === user._id);
+                               if (mb) bal = mb.balance;
+                            }
+                            return <span style={{ color: bal > 0.01 ? 'var(--danger)' : 'var(--success)' }}>{fc(bal)}</span>;
+                          })()}
+                        </div>
+                      </div>
                     </div>
+
+                    {inv.payments && inv.payments.length > 0 && (
+                      <div style={{ marginTop: 4, padding: '8px 12px', background: 'rgba(5, 150, 105, 0.04)', borderRadius: 8, border: '1px solid rgba(5, 150, 105, 0.1)' }}>
+                        <div style={{ fontSize: 10, color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Payment History</div>
+                        {inv.payments.map((p, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--text-dark)', marginBottom: i !== inv.payments.length - 1 ? 4 : 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <CheckCircle size={10} color="#059669" /> 
+                              <span style={{ textTransform: 'capitalize' }}>{p.mode}</span>
+                              {p.reference && <span style={{ color: 'var(--text-muted)' }}>({p.reference})</span>}
+                            </div>
+                            <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{fc(p.amount)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                       <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" onClick={e => e.stopPropagation()} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
@@ -335,10 +366,11 @@ export default function Invoices() {
                     <th>Date & Time (IST)</th>
                     <th>Customer</th>
                     {isAdmin && <th>Creator</th>}
-                    <th>Payment</th>
+                    <th style={{ width: 110 }} className="tr">Payment</th>
                     <th className="tr">{t('Total', 'कुल')}</th>
                     <th className="tr">Received</th>
                     <th className="tr">{t('Balance Due', 'शेष बकाया')}</th>
+                    <th className="tr">Cust. Due</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr></thead>
@@ -386,17 +418,44 @@ export default function Invoices() {
                           {inv.customer_phone && <small className="text-muted">{inv.customer_phone}</small>}
                         </td>
                         {isAdmin && <td>
-                          <span className="badge badge-gray" style={{ fontSize: 10 }}>
-                             {inv.created_by_name || 'MGR-1'}
-                          </span>
+                          <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                            <User size={12} /> By: {inv.created_by?.display_name || inv.created_by?.username || 'Admin'}
+                          </div>
                         </td>}
-                        <td><span className="badge badge-gray" style={{ fontSize: 11 }}>{paymentBadge(inv.payments) || '—'}</span></td>
+                        <td style={{ maxWidth: 110 }} className="tr">
+                          {inv.payments && inv.payments.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {inv.payments.map((p, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                  <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{p.mode}</span>
+                                  <span style={{ fontSize: 11.5, fontFamily: 'monospace', fontWeight: 600, color: 'var(--success)' }}>{fc(p.amount)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                          )}
+                        </td>
                         <td className="tr mono fw-700">{fc(inv.total)}</td>
                         <td className="tr mono text-success">{fc(inv.amount_received)}</td>
                         <td className="tr">
                           {inv.balance_due > 0.01
                              ? <span className="badge badge-danger">{fc(inv.balance_due)}</span>
                              : <span className="badge badge-success d-inline-flex align-items-center gap-1">Paid <CheckCircle size={11} /></span>}
+                        </td>
+                        <td className="tr mono">
+                          {(() => {
+                            if (!inv.customer_id) return '—';
+                            const cust = inv.customer_id;
+                            let bal = cust.balance || 0;
+                            if (user?.role === 'manager' && cust.manager_balances) {
+                               const mb = cust.manager_balances.find(m => m.manager_id === user._id || m.manager_id?._id === user._id);
+                               if (mb) bal = mb.balance;
+                            }
+                            return bal > 0.01 
+                              ? <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{fc(bal)}</span> 
+                              : <span style={{ color: 'var(--success)', fontWeight: 700 }}>{fc(bal)}</span>;
+                          })()}
                         </td>
                         <td>
                           {getInvoiceStatusBadge(inv)}

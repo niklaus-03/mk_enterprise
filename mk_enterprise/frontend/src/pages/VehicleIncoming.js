@@ -22,6 +22,7 @@ export default function VehicleIncoming() {
   const [deliveries, setDeliveries] = useState([]);
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [paymentConfirm, setPaymentConfirm] = useState(null);
   const [selectedDate, setSelectedDate] = useState(getTodayIST());
   const [viewAll, setViewAll] = useState(false);
   const [sortBy, setSortBy] = useState('time_desc');
@@ -119,6 +120,8 @@ export default function VehicleIncoming() {
     status: d.status,
     delivered_at_ist: d.delivered_at_ist || '',
     link: `/vehicle/${d._id}`,
+    payment_status: d.payment_status || 'unpaid',
+    created_by: d.created_by ? (d.created_by.display_name || d.created_by.username) : '',
   });
 
   const normalizeTrip = (t) => {
@@ -184,6 +187,18 @@ export default function VehicleIncoming() {
       case 'vehicle_desc': return (b.vehicle_number || '').localeCompare(a.vehicle_number || '');
       case 'status': return (a.status || '').localeCompare(b.status || '');
       case 'type': return (a.type || '').localeCompare(b.type || '');
+      case 'unpaid_first': {
+        const aUnpaid = a.payment_status === 'unpaid' ? 0 : 1;
+        const bUnpaid = b.payment_status === 'unpaid' ? 0 : 1;
+        if (aUnpaid !== bUnpaid) return aUnpaid - bUnpaid;
+        return new Date(b.expected_arrival) - new Date(a.expected_arrival);
+      }
+      case 'paid_first': {
+        const aPaid = a.payment_status === 'paid' ? 0 : 1;
+        const bPaid = b.payment_status === 'paid' ? 0 : 1;
+        if (aPaid !== bPaid) return aPaid - bPaid;
+        return new Date(b.expected_arrival) - new Date(a.expected_arrival);
+      }
       default: return 0;
     }
   });
@@ -221,20 +236,14 @@ export default function VehicleIncoming() {
             <option value="vehicle_desc">Vehicle Z-A</option>
             <option value="status">Status</option>
             <option value="type">Type</option>
+            <option value="unpaid_first">Unpaid First</option>
+            <option value="paid_first">Paid First</option>
           </select>
           {!viewAll && (
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <span style={{ position: 'absolute', left: 10, pointerEvents: 'none', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                <Calendar size={14} />
-              </span>
-              <input
-                type="date"
-                className="form-control"
-                value={selectedDate}
-                max={getTodayIST()}
-                style={{ width: 160, paddingLeft: 30, borderRadius: 8, fontSize: 13.5 }}
-                onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }}
-              />
+              <div style={{ padding: '6px 12px', background: 'var(--bg-hover)', color: 'var(--text-muted)', borderRadius: 8, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Calendar size={14} /> Today's Report
+              </div>
             </div>
           )}
           <button
@@ -247,10 +256,8 @@ export default function VehicleIncoming() {
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, fontSize: 13 }}
           >
             <Calendar size={14} />
-            {viewAll ? 'Date View' : 'All History'}
+            {viewAll ? "Today's Report" : 'All History'}
           </button>
-          <Link to="/" className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, fontSize: 13 }}>
-            <Home size={14} />{t('Dashboard', 'डैशबोर्ड')}</Link>
         </div>
       </div>
 
@@ -352,6 +359,9 @@ export default function VehicleIncoming() {
                                   {(d.vehicle_number || '').toUpperCase()}
                                 </span>
                                 {getTypeBadge(d.type)}
+                                {(d.type === 'walkin' || d.type === 'walkin_delivery') && (
+                                  <span style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px' }}>{d.payment_status}</span>
+                                )}
                               </div>
                               {d.driver_name && (
                                 <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontWeight: 500 }}>
@@ -444,10 +454,22 @@ export default function VehicleIncoming() {
                                     <User size={11} /> {d.driver_name}
                                   </div>
                                 )}
+                                {(d.type === 'walkin' || d.type === 'walkin_delivery') && d.created_by && (
+                                  <div style={{ fontSize: '11px', fontFamily: "'Inter', sans-serif", color: '#6366f1', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                                    <UserCheck size={11} /> Received by: {d.created_by}
+                                  </div>
+                                )}
                               </td>
                               {/* Type */}
                               <td style={{ padding: '12px 16px' }}>
-                                {getTypeBadge(d.type)}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                                  {getTypeBadge(d.type)}
+                                  {(d.type === 'walkin' || d.type === 'walkin_delivery') && (
+                                    <span style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.5px' }}>
+                                      {d.payment_status}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               {/* Route / Supplier */}
                               <td style={{ padding: '12px 16px', fontFamily: "'Inter', sans-serif" }}>
@@ -494,19 +516,37 @@ export default function VehicleIncoming() {
                                     </span>
                                   )}
                                   {d.items.length === 0 && <span style={{ fontSize: '12px', color: '#cbd5e1' }}>—</span>}
+                                  {(d.type === 'walkin' || d.type === 'walkin_delivery') && (
+                                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e2e8f0', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#334155' }}>Amount: ₹{((d.items || []).reduce((sum, item) => sum + ((parseFloat(item.base_price) || parseFloat(item.final_price) || 0) * (parseFloat(item.quantity) || 0)), 0)).toLocaleString('en-IN')}</div>
+                                      {d.payment_status === 'paid' && <div style={{ fontSize: '11px', color: '#64748b' }}>Mode: Cash</div>}
+                                    </div>
+                                  )}
                                 </div>
                               </td>
-                              {/* Status */}
                               <td style={{ padding: '12px 16px' }}>
                                 {getStatusBadge(d.status)}
                               </td>
-                              {/* Actions */}
                               <td style={{ padding: '12px 16px' }}>
-                                <Link to={d.link} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 6, fontSize: '12px', fontWeight: 600, fontFamily: "'Inter', sans-serif" }}
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <FileText size={12} /> Details
-                                </Link>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                  {(d.type === 'walkin' || d.type === 'walkin_delivery') && d.payment_status === 'unpaid' && (
+                                    <button
+                                      className="btn btn-outline btn-sm"
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 6, fontSize: '11px', fontWeight: 600, fontFamily: "'Inter', sans-serif", color: '#059669', borderColor: '#34d399' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setPaymentConfirm(d);
+                                      }}
+                                    >
+                                      <CheckCircle size={11} /> Mark Paid
+                                    </button>
+                                  )}
+                                  <Link to={d.link} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 6, fontSize: '12px', fontWeight: 600, fontFamily: "'Inter', sans-serif" }}
+                                    onClick={e => e.stopPropagation()}
+                                  >
+                                    <FileText size={12} /> Details
+                                  </Link>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -518,6 +558,58 @@ export default function VehicleIncoming() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Payment Confirmation Modal */}
+      {paymentConfirm && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setPaymentConfirm(null)}>
+          <div style={{ background: '#fff', padding: '30px 24px', borderRadius: 16, width: '90%', maxWidth: 400, textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: 60, height: 60, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <CheckCircle size={30} />
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>Confirm Payment</h3>
+            <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24, fontFamily: "'Inter', sans-serif" }}>
+              Are you sure you want to mark this walk-in delivery as PAID?
+            </p>
+            
+            <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, textAlign: 'left', marginBottom: 24, border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ color: '#64748b', fontWeight: 600, fontSize: 13, fontFamily: "'Inter', sans-serif" }}>Amount to Pay:</span>
+                <span style={{ fontWeight: 800, color: '#16a34a', fontSize: 15, fontFamily: "'Inter', sans-serif" }}>
+                  ₹{((paymentConfirm.items || []).reduce((sum, item) => sum + ((parseFloat(item.base_price) || parseFloat(item.final_price) || 0) * (parseFloat(item.quantity) || 0)), 0)).toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b', fontWeight: 600, fontSize: 13, fontFamily: "'Inter', sans-serif" }}>Payment Mode:</span>
+                <span style={{ fontWeight: 800, color: '#334155', fontSize: 14, fontFamily: "'Inter', sans-serif" }}>Cash</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button 
+                onClick={() => setPaymentConfirm(null)}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await deliveryApi.updatePayment(paymentConfirm._id, 'paid', 'cash');
+                    toast.success('Marked as paid!');
+                    setPaymentConfirm(null);
+                    loadAll(selectedDate, viewAll);
+                  } catch (e) {
+                    toast.error(e.message || 'Failed to mark paid');
+                  }
+                }}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}
+              >
+                Confirm Payment
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

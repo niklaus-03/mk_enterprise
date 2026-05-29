@@ -1,11 +1,24 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const connectDB = require('./config/db');
 const { cleanupInvoices } = require('./utils/cleanupInvoices');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    credentials: true
+  }
+});
+app.set('io', io); // Make io available in routes via req.app.get('io')
+global.io = io; // Global access for models
+
 connectDB();
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -86,11 +99,86 @@ app.use((err, req, res, next) => {
 });
 
 const User = require('./models/Admin');
+const cron = require('node-cron');
+const DailyReport = require('./models/DailyReport');
+const Notification = require('./models/Notification');
 
+// Schedule daily report reminder at 16:30 IST
+cron.schedule('30 16 * * *', async () => {
+  console.log("Running daily report reminder check...");
+  try {
+    const managers = await User.find({ role: 'manager' });
+    if (!managers.length) return;
 
+    // Get today's date in IST
+    const now = new Date();
+    const ist = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const todayIST = ist.toISOString().slice(0, 10);
+
+    const reportsToday = await DailyReport.find({ date: todayIST });
+    const submittedManagerIds = reportsToday.map(r => r.manager_id.toString());
+
+    for (const manager of managers) {
+      if (!submittedManagerIds.includes(manager._id.toString())) {
+        await Notification.create({
+          recipient_id: manager._id,
+          recipient_role: 'manager',
+          type: 'general',
+          title: 'Daily Report Reminder',
+          message: 'Please submit your daily end-of-day report. It is pending.',
+          priority: 'high'
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Error in daily report reminder cron:", err);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+  
+  socket.on('join', async (userData) => {
+    if (userData && userData._id) {
+      socket.join(userData._id);
+      socket.join(`role:${userData.role}`);
+      socket.userId = userData._id;
+      
+      // Update DB to online
+      try {
+        await User.findByIdAndUpdate(userData._id, { is_online: true });
+        io.emit('status_update'); // Tell everyone to refresh their manager/driver list
+      } catch (err) {
+        console.error("Socket join error:", err);
+      }
+    }
+  });
+
+  socket.on('disconnect', async () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+    if (socket.userId) {
+      // Small delay to prevent flickering on rapid reload
+      setTimeout(async () => {
+        const sockets = await io.in(socket.userId).fetchSockets();
+        if (sockets.length === 0) {
+          try {
+            await User.findByIdAndUpdate(socket.userId, { is_online: false });
+            io.emit('status_update');
+          } catch (err) {
+            console.error("Socket disconnect error:", err);
+          }
+        }
+      }, 5000);
+    }
+  });
+});
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log('\n╔══════════════════════════════════════════╗');
   console.log('║      MK Enterprise — Server Started     ║');
   console.log('╠══════════════════════════════════════════╣');

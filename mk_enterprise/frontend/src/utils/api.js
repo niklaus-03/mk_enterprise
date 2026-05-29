@@ -35,6 +35,7 @@ api.interceptors.response.use(
 // ── Auth ──────────────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (data) => api.post('/auth/login', data),
+  logout: () => api.post('/auth/logout'),
   verifySecret: (data) => api.post('/auth/verify-secret', data),
   me: () => api.get('/auth/me'),
   changePassword: (data) => api.put('/auth/change-password', data),
@@ -50,7 +51,7 @@ export const managerApi = {
   create: (data) => api.post('/auth/managers', data),
   update: (id, data) => api.put(`/auth/managers/${id}`, data),
   resetPassword: (id, new_password) => api.put(`/auth/managers/${id}/reset-password`, { new_password }),
-  delete: (id) => api.delete(`/auth/managers/${id}`),
+  delete: (id, secret_key) => api.delete(`/auth/managers/${id}`, { data: { secret_key } }),
 };
 
 // ── Driver Admin (Supervisor only) ───────────────────────────────────────────────────
@@ -59,7 +60,7 @@ export const driverApi = {
   create: (data) => api.post('/auth/drivers', data),
   update: (id, data) => api.put(`/auth/drivers/${id}`, data),
   resetPassword: (id, new_password) => api.put(`/auth/drivers/${id}/reset-password`, { new_password }),
-  delete: (id) => api.delete(`/auth/drivers/${id}`),
+  delete: (id, secret_key) => api.delete(`/auth/drivers/${id}`, { data: { secret_key } }),
 };
 
 // ── Recovery Requests (Supervisor only) ─────────────────────────────────────────────
@@ -155,7 +156,6 @@ export const invoiceApi = {
   share: (id, staffIds) => api.post(`/invoices/${id}/share`, { staffIds }),
   batchShare: (data) => api.post(`/invoices/batch-share`, data),
 };
-
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const dashboardApi = {
   get: (date) => api.get('/dashboard', { params: date ? { date } : {} }),
@@ -176,7 +176,7 @@ export const deliveryApi = {
   }),
   create: (data) => api.post('/deliveries', data),
   updateStatus: (id, status) => api.patch(`/deliveries/${id}/status`, { status }),
-  updatePayment: (id, payment_status, payment_mode) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode }),
+  updatePayment: (id, payment_status, payment_mode, notes) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode, notes }),
   update: (id, data) => api.put(`/deliveries/${id}`, data),
   delete: (id) => api.delete(`/deliveries/${id}`),
 };
@@ -237,6 +237,7 @@ export const dailyReportApi = {
   getAll: (params = {}) => api.get('/reports/daily', { params }),
   submit: (data) => api.post('/reports/daily', data),
   review: (id) => api.patch(`/reports/daily/${id}/review`),
+  remind: (manager_id, date) => api.post(`/reports/daily/remind/${manager_id}`, { date }),
 };
 
 export default api;

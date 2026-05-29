@@ -18,7 +18,9 @@ router.get('/', async (req, res) => {
     // Removed manager scoping: all managers can see all suppliers as requested
     // They will still only see their own payment history due to the limitation below
 
-    let suppliers = await Supplier.find(query).sort({ name: 1 });
+    let suppliers = await Supplier.find(query)
+      .collation({ locale: 'hi', strength: 2 })
+      .sort({ name: 1 });
 
     // If manager, compute amount paid by them
     if (req.user.role === 'manager') {
@@ -75,12 +77,18 @@ router.get('/', async (req, res) => {
 // GET single supplier + their payment history
 router.get('/:id/history', async (req, res) => {
   try {
-    const supplier = await Supplier.findById(req.params.id);
-    if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
+    let supplier;
+    if (req.params.id.startsWith('virtual_')) {
+      const name = req.params.id.replace('virtual_', '').replace(/_/g, ' ');
+      supplier = { _id: req.params.id, name, is_virtual: true };
+    } else {
+      supplier = await Supplier.findById(req.params.id);
+      if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
+    }
 
     // Get all settlement entries for this supplier name
     const { date, all } = req.query;
-    let query = { party_name: { $regex: supplier.name, $options: 'i' }, type: { $in: ['paid_to_supplier', 'other_expense'] } };
+    let query = { party_name: { $regex: new RegExp(`^${supplier.name}$`, 'i') }, type: { $in: ['paid_to_supplier', 'other_expense'] } };
 
     if (all !== 'true' && date) {
       const start = new Date(new Date(date + 'T00:00:00.000+05:30').getTime());
@@ -88,7 +96,7 @@ router.get('/:id/history', async (req, res) => {
       query.date = { $gte: start, $lt: end };
     }
 
-    const history = await Settlement.find(query).sort({ date: -1 }).limit(50);
+    const history = await Settlement.find(query).sort({ date: -1 }).limit(50).populate('created_by', 'username display_name role');
     const totalPaid = history.reduce((s, h) => s + h.amount, 0);
 
     res.json({ supplier, history, totalPaid });

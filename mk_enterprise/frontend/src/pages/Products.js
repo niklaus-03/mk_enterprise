@@ -5,7 +5,7 @@ import { productApi, settingsApi, managerApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Package, Plus, Trash2, Edit, Check, X, Scale, IndianRupee, AlertTriangle, Save, Sparkles, Info, Search, Share2, Clock, List, ArrowDownAZ, CheckSquare, Square, CheckCircle2 } from 'lucide-react';
+import { Package, Plus, Trash2, Edit, Check, X, Scale, IndianRupee, AlertTriangle, Save, Sparkles, Info, Search, Share2, Clock, List, ArrowDownAZ, CheckSquare, Square, CheckCircle2, User } from 'lucide-react';
 import ProductLists from './ProductLists';
 import { productListApi } from '../utils/api';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -411,21 +411,25 @@ export default function Products() {
             }}>
               {/* Name */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 4' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Product Name *</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>Product Name *</label>
                 <input className="form-control" value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const capitalized = val.replace(/\b[a-zA-Z]/g, c => c.toUpperCase());
+                    setForm(f => ({ ...f, name: capitalized }));
+                  }}
                   placeholder="e.g. Cement Bag, Rice" autoFocus style={{ borderRadius: 8 }} />
               </div>
 
               {/* Unit — dynamic */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Unit</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>Unit</label>
                 <UnitInput value={form.unit} onChange={v => setForm(f => ({ ...f, unit: v }))} />
               </div>
 
               {/* Weight per unit */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Weight per Unit (kg)</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>Weight per Unit (kg)</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.weight_per_unit}
                   onChange={e => { setForm(f => ({ ...f, weight_per_unit: e.target.value })); setPriceCalculated(false); }}
@@ -435,16 +439,18 @@ export default function Products() {
 
               {/* Base Price */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Base Price ₹ *</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>Base Price ₹ *</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.price}
                   onChange={e => { setForm(f => ({ ...f, price: e.target.value })); setPriceCalculated(false); }}
+                  onFocus={e => { if (form.price === '0') setForm(f => ({ ...f, price: '' })); }}
+                  onBlur={e => { if (form.price === '') setForm(f => ({ ...f, price: '0' })); }}
                   placeholder="0.00" style={{ borderRadius: 8 }} />
               </div>
 
               {/* GST */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 2' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>GST %</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>GST %</label>
                 <select className="form-control" value={form.gst}
                   onChange={e => { setForm(f => ({ ...f, gst: e.target.value })); setPriceCalculated(false); }}
                   style={{ borderRadius: 8 }}>
@@ -454,7 +460,7 @@ export default function Products() {
 
               {/* Suggested Final Price */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 5' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 700, color: 'var(--text-muted)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>
                   <span>Suggested Final Price ₹</span>
                   <button
                     type="button"
@@ -462,7 +468,7 @@ export default function Products() {
                     style={{ fontSize: 11, padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: 4, borderColor: '#6366f1', color: '#6366f1', background: '#f5f3ff', borderRadius: 6, fontWeight: 600 }}
                     onClick={calcSuggestedPrice}
                   >
-                    <Sparkles size={11} fill="#6366f1" /> Calculate Suggested
+                    <Sparkles size={11} fill="#6366f1" /> Calculate
                   </button>
                 </label>
                 <input className="form-control" type="number" min="0" step="0.01"
@@ -476,16 +482,25 @@ export default function Products() {
 
               {/* Stock */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 3' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Current Stock</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>Current Stock</label>
                 <input className="form-control" type="number" min="0"
                   value={form.stock}
-                  onChange={e => setForm(f => ({ ...f, stock: e.target.value }))}
+                  onChange={e => {
+                    let val = e.target.value;
+                    if (val.length > 1 && val.startsWith('0') && !val.startsWith('0.')) {
+                      val = val.replace(/^0+/, '');
+                    }
+                    if (val === '') val = '0';
+                    setForm(f => ({ ...f, stock: val }));
+                  }}
+                  onFocus={e => { if (form.stock === '0') setForm(f => ({ ...f, stock: '' })); }}
+                  onBlur={e => { if (form.stock === '') setForm(f => ({ ...f, stock: '0' })); }}
                   placeholder="0" style={{ borderRadius: 8 }} />
               </div>
 
               {/* Custom Low Stock Alert */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 6' : 'span 4' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)' }}>Custom Low Stock Alert</label>
+                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', fontSize: 11 }}>Custom Low Stock Alert</label>
                 <input className="form-control" type="number" min="0"
                   value={form.custom_low_stock}
                   onChange={e => setForm(f => ({ ...f, custom_low_stock: e.target.value }))}
@@ -614,14 +629,21 @@ export default function Products() {
                     return (
                       <tr id={`product-${p._id}`} key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: highlightId === p._id ? 'var(--warning-light)' : (!p.is_active ? 'var(--bg-hover)' : idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)'), transition: 'background-color 0.5s ease' }}>
                         <td style={{ padding: '10px 14px' }}>
-                          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {hl(p.name)}
-                            {isNewProduct(p.createdAt) && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 800, letterSpacing: 0.5 }}>NEW</span>}
-                            {!p.is_active && <span style={{ fontSize: 10, background: 'var(--border)', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
-                          </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span>{p.unit}</span>
-                            {/* Removed shared by label per request */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {hl(p.name)}
+                              {isNewProduct(p.createdAt) && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 800, letterSpacing: 0.5 }}>NEW</span>}
+                              {!p.is_active && <span style={{ fontSize: 10, background: 'var(--border)', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <span>{p.unit}</span>
+                              {/* Removed shared by label per request */}
+                            </div>
+                            {p.created_by && p.created_by.role !== 'supervisor' && (
+                              <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, marginTop: 2 }}>
+                                <User size={12} /> By: {p.created_by.display_name || p.created_by.username}
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace' }}>

@@ -63,9 +63,9 @@ export default function WalkInDelivery() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const handleMarkWalkinPaid = async (id, mode) => {
+  const handleMarkWalkinPaid = async (id, mode, notes) => {
     try {
-      await deliveryApi.updatePayment(id, 'paid', mode || 'cash');
+      await deliveryApi.updatePayment(id, 'paid', mode || 'cash', notes);
       toast.success('Walk-in delivery marked as paid');
       setPaymentDelivery(null);
       load();
@@ -262,7 +262,7 @@ export default function WalkInDelivery() {
         <PaymentModal 
           isOpen={true} 
           onClose={() => setPaymentDelivery(null)}
-          onConfirm={(mode) => handleMarkWalkinPaid(paymentDelivery._id, mode)}
+          onConfirm={(mode, notes) => handleMarkWalkinPaid(paymentDelivery._id, mode, notes)}
           amount={paymentDelivery?.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0}
         />
       )}

@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
     if (type) query.type = type;
     if (source) query.source = source;
     const [movements, total] = await Promise.all([
-      StockMovement.find(query).sort({ date: -1 }).skip(skip).limit(parseInt(limit)).populate('product_id', 'name unit'),
+      StockMovement.find(query).sort({ date: -1 }).skip(skip).limit(parseInt(limit)).populate('product_id', 'name unit').populate('created_by', 'username display_name role'),
       StockMovement.countDocuments(query),
     ]);
     res.json({ movements, total });
@@ -34,7 +34,7 @@ router.get('/today', async (req, res) => {
       query.created_by = req.user.id;
     }
     const movements = await StockMovement.find(query)
-      .sort({ date: -1 }).populate('product_id', 'name unit');
+      .sort({ date: -1 }).populate('product_id', 'name unit').populate('created_by', 'username display_name role');
     res.json(movements);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

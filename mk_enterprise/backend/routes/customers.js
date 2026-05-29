@@ -75,7 +75,11 @@ router.get('/', async (req, res) => {
         query.$or = searchOr;
       }
     }
-    let q = Customer.find(query).populate('created_by', 'username display_name role').sort({ name: 1 }).lean();
+    let q = Customer.find(query)
+      .collation({ locale: 'hi', strength: 2 })
+      .populate('created_by', 'username display_name role')
+      .sort({ name: 1 })
+      .lean();
     if (limit && !list_id) q = q.limit(parseInt(limit));
     else if (list_id) q = q.limit(1000); // get more to filter locally
 
@@ -170,7 +174,8 @@ router.post('/', async (req, res) => {
       entity_type: 'customer',
       entity_id: customer._id,
       entity_name: customer.name,
-      description: `Customer created. Phone: ${customer.phone || 'N/A'}`,
+      description: `Customer "${customer.name}" created. Phone: ${customer.phone || 'N/A'}`,
+      changes: customer.toObject()
     });
 
     const customerResponse = customer.toJSON();
@@ -198,6 +203,7 @@ router.put('/:id', async (req, res) => {
       entity_id: customer._id,
       entity_name: customer.name,
       description: `Customer updated`,
+      changes: customer.toObject()
     });
 
     res.json(customer);
@@ -218,6 +224,7 @@ router.delete('/:id', async (req, res) => {
       entity_id: checkCust._id,
       entity_name: checkCust.name,
       description: `Customer soft-deleted`,
+      changes: checkCust.toObject()
     });
 
     res.json({ success: true });

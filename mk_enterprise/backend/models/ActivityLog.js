@@ -9,14 +9,14 @@ const activityLogSchema = new mongoose.Schema({
   // What action was performed
   action: {
     type: String,
-    enum: ['create', 'update', 'delete', 'login', 'logout', 'failed_login', 'security_alert', 'payment', 'stock_adjust', 'status_change', 'other'],
+    enum: ['create', 'update', 'delete', 'login', 'logout', 'failed_login', 'security_alert', 'payment', 'stock_adjust', 'status_change', 'report_submitted', 'other'],
     required: true,
   },
 
   // On which entity
   entity_type: {
     type: String,
-    enum: ['invoice', 'product', 'customer', 'settlement', 'order', 'delivery', 'trip', 'manager', 'driver', 'Admin', 'setting', 'walkin', 'stock', 'other'],
+    enum: ['invoice', 'product', 'customer', 'settlement', 'order', 'delivery', 'trip', 'manager', 'driver', 'Admin', 'setting', 'walkin', 'stock', 'daily_report', 'other'],
     required: true,
   },
   entity_id: { type: mongoose.Schema.Types.ObjectId, default: null },
@@ -34,5 +34,11 @@ const activityLogSchema = new mongoose.Schema({
 activityLogSchema.index({ timestamp: -1 });
 activityLogSchema.index({ user_id: 1, timestamp: -1 });
 activityLogSchema.index({ entity_type: 1, timestamp: -1 });
+
+activityLogSchema.post('save', function(doc) {
+  if (global.io) {
+    global.io.to('role:supervisor').emit('new_activity_log', doc);
+  }
+});
 
 module.exports = mongoose.model('ActivityLog', activityLogSchema);

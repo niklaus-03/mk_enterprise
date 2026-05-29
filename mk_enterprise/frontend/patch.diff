@@ -1,0 +1,618 @@
+diff --git a/mk_enterprise/frontend/src/pages/AdminPanel.js b/mk_enterprise/frontend/src/pages/AdminPanel.js
+index 798a9cd..b2293ea 100644
+--- a/mk_enterprise/frontend/src/pages/AdminPanel.js
++++ b/mk_enterprise/frontend/src/pages/AdminPanel.js
+@@ -1,5 +1,5 @@
+ import React, { useState, useEffect, useCallback } from 'react';
+-import { useNavigate } from 'react-router-dom';
++import { useNavigate, useSearchParams } from 'react-router-dom';
+ import toast from 'react-hot-toast';
+ import { managerApi, driverApi, activityLogApi, authApi } from '../utils/api';
+ import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock } from 'lucide-react';
+@@ -20,7 +20,9 @@ export default function AdminPanel() {
+   const [mgrResetPw, setMgrResetPw] = useState('');
+ 
+   // Tabs State
+-  const [activeTab, setActiveTab] = useState('managers'); // 'managers', 'drivers', 'activity'
++  const [searchParams, setSearchParams] = useSearchParams();
++  const activeTab = searchParams.get('tab') || 'managers';
++  const setActiveTab = (tab) => setSearchParams({ tab });
+ 
+   // Driver State
+   const [drivers, setDrivers] = useState([]);
+@@ -35,6 +37,7 @@ export default function AdminPanel() {
+   // Activity Log State
+   const [logs, setLogs] = useState([]);
+   const [logsLoading, setLogsLoading] = useState(false);
++  const [logDetailModal, setLogDetailModal] = useState(null);
+   
+   // Recovery Requests State
+   const [requests, setRequests] = useState([]);
+@@ -47,7 +50,7 @@ export default function AdminPanel() {
+   const tzOffset = today.getTimezoneOffset() * 60000; // offset in milliseconds
+   const localISOTime = (new Date(today - tzOffset)).toISOString().split('T')[0];
+   
+-  const [logFilters, setLogFilters] = useState({ date: localISOTime, user_role: '', action: '' });
++  const [logFilters, setLogFilters] = useState({ date: localISOTime, user_role: '', action: '', user_id: '', username: '' });
+ 
+   const loadManagers = useCallback(async () => {
+     if (!isAdmin) return;
+@@ -76,14 +79,15 @@ export default function AdminPanel() {
+     }
+   }, [isAdmin]);
+ 
+-  const loadActivityLogs = useCallback(async () => {
++  const loadActivityLogs = useCallback(async (hideLoading = false) => {
+     if (!isAdmin) return;
+-    setLogsLoading(true);
++    if (!hideLoading) setLogsLoading(true);
+     try {
+       const params = { limit: 50 };
+       if (logFilters.date) params.date = logFilters.date;
+       if (logFilters.user_role) params.user_role = logFilters.user_role;
+       if (logFilters.action) params.action = logFilters.action;
++      if (logFilters.user_id) params.user_id = logFilters.user_id;
+       
+       const res = await activityLogApi.getAll(params);
+       setLogs(res.logs || []);
+@@ -108,10 +112,213 @@ export default function AdminPanel() {
+   }, [isAdmin]);
+ 
+   useEffect(() => {
++    let intervalId;
+     if (activeTab === 'managers') loadManagers();
+     else if (activeTab === 'drivers') loadDrivers();
+-    else if (activeTab === 'activity') loadActivityLogs();
++    else if (activeTab === 'activity') {
++      loadActivityLogs(false);
++      intervalId = setInterval(() => loadActivityLogs(true), 5000);
++    }
+     else if (activeTab === 'requests') loadRequests();
++
++    return () => {
++      if (intervalId) clearInterval(intervalId);
++    };
++  }, [activeTab, loadManagers, loadDrivers, loadActivityLogs, loadRequests]);
++
++
++
++  const handleCreateManager = async (e) => {
++    e.preventDefault();
++    if (!mgrForm.username || !mgrForm.password) return toast.error('Username and password are required');
++    if (mgrForm.password.length < 6) return toast.error('Password must be at least 6 characters');
++    setMgrCreating(true);
++    try {
++      await managerApi.create(mgrForm);
++      toast.success('Manager created successfully!');
++      setShowAddManager(false);
++      setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false });
++      loadManagers();
++    } catch (err) { toast.error(err.message); }
++    finally { setMgrCreating(false); }
++  };
++
++  const handleUpdateManager = async (e) => {
++    e.preventDefault();
++    setMgrCreating(true);
++    try {
++      await managerApi.update(showEditManager._id, mgrForm);
++      toast.success('Manager updated successfully!');
++      setShowEditManager(null);
++      setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false });
++      loadManagers();
++    } catch (err) { toast.error(err.message); }
++    finally { setMgrCreating(false); }
++  };
++
++  const handleDeleteManager = async (mgr) => {
++    if (!window.confirm(`Delete manager "${mgr.display_name || mgr.username}"?\n\nNote: All records created by this manager will be preserved.`)) return;
++    try {
++      await managerApi.delete(mgr._id);
++      toast.success(`Manager "${mgr.username}" removed`);
++      loadManagers();
++    } catch (err) { toast.error(err.message); }
++  };
++
++  const handleToggleManager = async (mgr) => {
++    try {
++      await managerApi.update(mgr._id, { is_active: !mgr.is_active });
++      toast.success(`${mgr.display_name || mgr.username} ${mgr.is_active ? 'disabled' : 'enabled'}`);
++      loadManagers();
++    } catch (err) { toast.error(err.message); }
++  };
++
++  const handleResetManagerPw = async () => {
++    if (!mgrResetPw || mgrResetPw.length < 6) return toast.error('Password must be at least 6 characters');
++    try {
++      await managerApi.resetPassword(mgrResetModal._id, mgrResetPw);
++      toast.success(`Password reset for "${mgrResetModal.username}"`);
++      setMgrResetModal(null);
++      setMgrResetPw('');
++    } catch (err) { toast.error(err.message); }
++  };
++
++
++  // --- Driver Handlers ---
++  const handleCreateDriver = async (e) => {
++    e.preventDefault();
++    if (!driverForm.username || !driverForm.password) return toast.error('Username and password are required');
++    if (driverForm.password.length < 6) return toast.error('Password must be at least 6 characters');
++    setDriverCreating(true);
++    try {
++      await driverApi.create(driverForm);
++      toast.success('Driver created successfully!');
++      setShowAddDriver(false);
++      setDriverForm({ username: '', phone: '', password: '', display_name: '' });
++      loadDrivers();
++    } catch (err) { toast.error(err.message); }
++    finally { setDriverCreating(false); }
++  };
++
++  const handleUpdateDriver = async (e) => {
++    e.preventDefault();
++    setDriverCreating(true);
++    try {
++      await driverApi.update(showEditDriver._id, driverForm);
++      toast.success('Driver updated successfully!');
++      setShowEditDriver(null);
++      setDriverForm({ username: '', phone: '', password: '', display_name: '' });
++      loadDrivers();
++    } catch (err) { toast.error(err.message); }
++    finally { setDriverCreating(false); }
++  };
++
++  const handleDeleteDriver = async (dr) => {
++    if (!window.confirm(`Delete driver "${dr.display_name || dr.username}"?\n\nNote: All records created by this driver will be preserved.`)) return;
++    try {
++      await driverApi.delete(dr._id);
++      toast.success(`Driver "${dr.username}" removed`);
++      loadDrivers();
++    } catch (err) { toast.error(err.message); }
++  };
++
++  const handleToggleDriver = async (dr) => {
++    try {
++      await driverApi.update(dr._id, { is_active: !dr.is_active });
++      toast.success(`${dr.display_name || dr.username} ${dr.is_active ? 'disabled' : 'enabled'}`);
++      loadDrivers();
++    } catch (err) { toast.error(err.message); }
++  };
++
++  const handleResetDriverPw = async () => {
++    if (!driverResetPw || driverResetPw.length < 6) return toast.error('Password must be at least 6 characters');
++    try {
++      await driverApi.resetPassword(driverResetModal._id, driverResetPw);
++      toast.success(`Password reset for "${driverResetModal.username}"`);
++      setDriverResetModal(null);
++      setDriverResetPw('');
++    } catch (err) { toast.error(err.message); }
++  };
++
++  const openEditDriverModal = (dr) => {
++    setDriverForm({
++      username: dr.username || '',
++      phone: dr.phone || '',
++      display_name: dr.display_name || ''
++    });
++    setShowEditDriver(dr);
++  };
++
++  const openEditModal = (mgr) => {
++    setMgrForm({
++      username: mgr.username || '',
++      phone: mgr.phone || '',
++      display_name: mgr.display_name || '',
++      can_edit_products: mgr.can_edit_products || false
++    });
++    setShowEditManager(mgr);
++  };
++
++  const fld = (key, label, placeholder, type = 'text') => (
++    <div className="form-group">
++      <label className="form-label">{label}</label>
++      <input className="form-control" type={type} value={mgrForm[key]} placeholder={placeholder} onChange={e => setMgrForm({ ...mgrForm, [key]: e.target.value })} />
++    </div>
++  );
++
++  
++  const handleResolveRequest = async () => {
++    if (!resolvePw || resolvePw.length < 6) return toast.error('Password must be at least 6 characters');
++    try {
++      await authApi.resolveRecoveryRequest(resolveModal._id, resolvePw);
++      toast.success(`Password reset for ${resolveModal.username}`);
++      setResolveModal(null);
++      setResolvePw('');
++      loadRequests();
++    } catch (err) { toast.error(err.message); }
++  };
++
++  const translateAction = (act) => {
++    if (!t) return act;
++    const map = {
++      'create': t('create', 'बनाया गया'),
++      'update': t('update', 'अपडेट किया गया'),
++      'delete': t('delete', 'हटाया गया'),
++      'login': t('login', 'लॉग इन किया'),
++      'logout': t('logout', 'लॉग आउट किया'),
++      'error': t('error', 'त्रुटि')
++    };
++    return map[act] || act.replace(/_/g, ' ');
++  };
++
++  
++  const translateDetails = (details) => {
++    if (!details) return details;
++    let s = details;
++    if (settings.language === 'hi') {
++      s = s.replace(/Invoice created for (.*)\. Total: ₹(.*)/, 'बिल बनाया गया $1 के लिए। कुल: ₹$2');
++      s = s.replace(/Invoice updated for (.*)/, 'बिल अपडेट किया गया $1 के लिए');
++      s = s.replace(/User (.*) deleted/, 'उपयोगकर्ता $1 को हटा दिया गया');
++      s = s.replace(/Logged in successfully/, 'सफलतापूर्वक लॉग इन किया');
++toast.error('Failed to load recovery requests');
++    } finally {
++      setRequestsLoading(false);
++    }
++  }, [isAdmin]);
++
++  useEffect(() => {
++    let intervalId;
++    if (activeTab === 'managers') loadManagers();
++    else if (activeTab === 'drivers') loadDrivers();
++    else if (activeTab === 'activity') {
++      loadActivityLogs(false);
++      intervalId = setInterval(() => loadActivityLogs(true), 5000);
++    }
++    else if (activeTab === 'requests') loadRequests();
++
++    return () => {
++      if (intervalId) clearInterval(intervalId);
++    };
+   }, [activeTab, loadManagers, loadDrivers, loadActivityLogs, loadRequests]);
+ 
+ 
+@@ -294,114 +501,85 @@ export default function AdminPanel() {
+   };
+ 
+   const handleRowClick = (log) => {
+-    if (!log.entity_id) return;
+-    if (log.entity_type === 'invoice') navigate(`/invoices/${log.entity_id}`);
+-    else if (log.entity_type === 'trip') navigate(`/trip/${log.entity_id}`);
+-    else if (log.entity_type === 'vehicle') navigate(`/vehicle/${log.entity_id}`);
+-    else if (log.entity_type === 'customer') navigate(`/customers`);
++    if (log.action === 'report_submitted' && log.entity_id) {
++      navigate('/daily-report', { state: { openReportId: log.entity_id } });
++      return;
++    }
++    else if (log.entity_type === 'delivery') navigate(`/walkin-delivery`);
+     // Ignore products as per user request
+   };
+ 
+   return (
+     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 120px)', paddingBottom: 40 }}>
+-      {/* Premium Header */}
+-      <div style={{ 
+-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 20, 
+-        marginBottom: 24, padding: '24px', background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
+-        borderRadius: 16, color: '#fff', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.3)' 
+-      }}>
+-        <div>
+-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4)' }}>
+-              <Shield size={24} style={{ color: '#fff' }} />
+-            </div>
+-            <div>
+-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>{t('Admin Panel', 'एडमिन पैनल')}</h1>
+-              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 2 }}>{t('Manage users, drivers, and system activity logs.', 'उपयोगकर्ता, ड्राइवर और सिस्टम गतिविधि लॉग प्रबंधित करें।')}</div>
+-            </div>
+-          </div>
+-          
+-          <div style={{ display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' }}>
+-            <button 
+-              onClick={() => setActiveTab('managers')}
+-              style={{ 
+-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+-                border: 'none', transition: 'all 0.2s',
+-                background: activeTab === 'managers' ? '#fff' : 'rgba(255,255,255,0.06)', 
+-                color: activeTab === 'managers' ? '#0f172a' : '#cbd5e1'
+-              }}
+-            >
+-              <Users size={16} /> {t('Managers', 'मैनेजर')}
+-            </button>
+-            <button 
+-              onClick={() => setActiveTab('drivers')}
+-              style={{ 
+-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+-                border: 'none', transition: 'all 0.2s',
+-                background: activeTab === 'drivers' ? '#fff' : 'rgba(255,255,255,0.06)', 
+-                color: activeTab === 'drivers' ? '#0f172a' : '#cbd5e1'
+-              }}
+-            >
+-              <Truck size={16} /> {t('Drivers', 'ड्राइवर')}
+-            </button>
+-            <button 
+-              onClick={() => setActiveTab('activity')}
+-              style={{ 
+-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+-                border: 'none', transition: 'all 0.2s',
+-                background: activeTab === 'activity' ? '#fff' : 'rgba(255,255,255,0.06)', 
+-                color: activeTab === 'activity' ? '#0f172a' : '#cbd5e1'
+-              }}
+-            >
+-              <Activity size={16} /> {t('Activity Logs', 'गतिविधि लॉग')}
+-            </button>
+-            <button 
+-              onClick={() => setActiveTab('requests')}
+-              style={{ 
+-                padding: '8px 16px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+-                border: 'none', transition: 'all 0.2s',
+-                background: activeTab === 'requests' ? '#fff' : 'rgba(255,255,255,0.06)', 
+-                color: activeTab === 'requests' ? '#0f172a' : '#cbd5e1'
+-              }}
+-            >
+-              <Unlock size={16} /> Recovery Requests
+-            </button>
+-          </div>
+-        </div>
+-        
+-        <div style={{ display: 'flex', gap: 10, alignSelf: 'flex-end' }}>
+-          {activeTab === 'managers' && (
+-            <button 
+-              style={{ 
+-                background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: '#fff', 
+-                padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 14, 
+-                display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' 
+-              }} 
+-              onClick={() => { setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false }); setShowAddManager(true); }}
+-            >
+-              <Plus size={18} /> Add Manager
+-            </button>
+-          )}
+-          {activeTab === 'drivers' && (
+-            <button 
+-              style={{ 
+-                background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: '#fff', 
+-                padding: '10px 20px', borderRadius: 10, fontWeight: 700, fontSize: 14, 
+-                display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(16,185,129,0.3)' 
+-              }} 
+-              onClick={() => { setDriverForm({ username: '', phone: '', password: '', display_name: '' }); setShowAddDriver(true); }}
+-            >
+-              <Plus size={18} /> Add Driver
+-            </button>
+-          )}
+-        </div>
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
++        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
++          <Shield size={24} style={{ color: 'var(--primary)' }} />
++          {t('Admin Panel', 'एडमिन पैनल')}
++        </h2>
++      </div>
++
++      {/* Standard Tabs */}
++      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, overflowX: 'auto' }}>
++        <button 
++          onClick={() => setActiveTab('managers')}
++          style={{ 
++            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
++            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
++            background: activeTab === 'managers' ? 'var(--primary-light)' : 'transparent', 
++            color: activeTab === 'managers' ? 'var(--primary)' : 'var(--text-muted)'
++          }}
++        >
++          <Users size={16} /> {t('Managers', 'मैनेजर')}
++        </button>
++        <button 
++          onClick={() => setActiveTab('drivers')}
++          style={{ 
++            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
++            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
++            background: activeTab === 'drivers' ? 'var(--primary-light)' : 'transparent', 
++            color: activeTab === 'drivers' ? 'var(--primary)' : 'var(--text-muted)'
++          }}
++        >
++          <Truck size={16} /> {t('Drivers', 'ड्राइवर')}
++        </button>
++        <button 
++          onClick={() => setActiveTab('activity')}
++          style={{ 
++            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
++            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
++            background: activeTab === 'activity' ? 'var(--primary-light)' : 'transparent', 
++            color: activeTab === 'activity' ? 'var(--primary)' : 'var(--text-muted)'
++          }}
++        >
++          <Activity size={16} /> {t('Activity Logs', 'गतिविधि लॉग')}
++        </button>
++        <button 
++          onClick={() => setActiveTab('requests')}
++          style={{ 
++            padding: '8px 16px', borderRadius: 8, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
++            border: 'none', transition: 'all 0.2s', whiteSpace: 'nowrap',
++            background: activeTab === 'requests' ? 'var(--primary-light)' : 'transparent', 
++            color: activeTab === 'requests' ? 'var(--primary)' : 'var(--text-muted)'
++          }}
++        >
++          <Unlock size={16} /> Recovery Requests
++        </button>
+       </div>
+ 
+       {activeTab === 'managers' && (
+       <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
+-        <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
+-          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9' }}><Users size={18} /></div>
+-          <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Managers', 'मैनेजर')} List</span>
++        <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
++          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
++            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9' }}><Users size={18} /></div>
++            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Managers', 'मैनेजर')} List</span>
++          </div>
++          <button 
++            className="btn-primary"
++            onClick={() => { setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false }); setShowAddManager(true); }}
++            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 4, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
++          >
++            <Plus size={16} /> Add Manager
++          </button>
+         </div>
+         
+         <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 180px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+@@ -420,7 +598,16 @@ export default function AdminPanel() {
+           ) : (
+             managers.map((mgr, idx) => (
+               <div key={mgr._id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 180px 100px', gap: 16, padding: '16px 24px', alignItems: 'center', borderBottom: idx < managers.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
++                <div 
++                  style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '4px', borderRadius: '8px', transition: 'background 0.2s' }}
++                  onClick={() => {
++                    setLogFilters(f => ({ ...f, user_id: mgr._id, username: mgr.display_name || mgr.username, user_role: '' }));
++                    setActiveTab('activity');
++                  }}
++                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.1)'}
++                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
++                  title={`View Activity Logs for ${mgr.display_name || mgr.username}`}
++                >
+                   <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #e0e7ff, #c7d2fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4338ca', fontWeight: 700, fontSize: 16 }}>
+                     {(mgr.display_name || mgr.username).charAt(0).toUpperCase()}
+                   </div>
+@@ -465,9 +652,18 @@ export default function AdminPanel() {
+ 
+       {activeTab === 'drivers' && (
+         <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
+-          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
+-            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}><Truck size={18} /></div>
+-            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Drivers', 'ड्राइवर')} List</span>
++          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
++            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
++              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}><Truck size={18} /></div>
++              <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Drivers', 'ड्राइवर')} List</span>
++            </div>
++            <button 
++              className="btn-primary"
++              onClick={() => { setDriverForm({ username: '', phone: '', password: '', display_name: '' }); setShowAddDriver(true); }}
++              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 4, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
++            >
++              <Plus size={16} /> Add Driver
++            </button>
+           </div>
+           
+           <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+@@ -485,7 +681,16 @@ export default function AdminPanel() {
+             ) : (
+               drivers.map((dr, idx) => (
+                 <div key={dr._id} style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 100px', gap: 16, padding: '16px 24px', alignItems: 'center', borderBottom: idx < drivers.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
++                  <div 
++                    style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', padding: '4px', borderRadius: '8px', transition: 'background 0.2s' }}
++                    onClick={() => {
++                      setLogFilters(f => ({ ...f, user_id: dr._id, username: dr.display_name || dr.username, user_role: '' }));
++                      setActiveTab('activity');
++                    }}
++                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.1)'}
++                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
++                    title={`View Activity Logs for ${dr.display_name || dr.username}`}
++                  >
+                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #fef2f2, #fecaca)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b91c1c', fontWeight: 700, fontSize: 16 }}>
+                       {(dr.display_name || dr.username).charAt(0).toUpperCase()}
+                     </div>
+@@ -562,6 +767,18 @@ export default function AdminPanel() {
+                 <option value="payment">Payment</option>
+                 <option value="logout">Logout</option>
+               </select>
++              {logFilters.user_id && (
++                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#e0e7ff', color: '#3730a3', padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
++                  <Users size={14} /> {logFilters.username}
++                  <button 
++                    onClick={() => setLogFilters(f => ({ ...f, user_id: '', username: '' }))} 
++                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#3730a3', padding: 0, display: 'flex', marginLeft: 4 }} 
++                    title="Clear User Filter"
++                  >
++                    <XCircle size={14} />
++                  </button>
++                </div>
++              )}
+             </div>
+           </div>
+           
+@@ -579,7 +796,7 @@ export default function AdminPanel() {
+               <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No activity found</div>
+             ) : (
+               logs.map((log, idx) => {
+-                const isClickable = ['invoice', 'trip', 'vehicle', 'customer'].includes(log.entity_type) && log.entity_id;
++                const isClickable = (['invoice', 'trip', 'vehicle', 'customer', 'delivery'].includes(log.entity_type) && log.entity_id) || log.action === 'report_submitted';
+                 return (
+                   <div 
+                     key={log._id} 
+@@ -609,11 +826,12 @@ export default function AdminPanel() {
+                       {log.action === 'escalate' && <span style={{ background: '#f3f4f6', color: '#1f2937', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{translateAction(log.action)}</span>}
+                       {log.action === 'security_alert' && <span style={{ background: '#fecaca', color: '#7f1d1d', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>{translateAction(log.action)}</span>}
+                       {log.action === 'failed_login' && <span style={{ background: '#fecaca', color: '#7f1d1d', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>{translateAction(log.action)}</span>}
+-                      {!['create', 'update', 'edit', 'delete', 'login', 'payment', 'escalate', 'security_alert', 'failed_login'].includes(log.action) && (
++                      {log.action === 'report_submitted' && <span style={{ background: '#dbeafe', color: '#1e40af', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>{translateAction(log.action)}</span>}
++                      {!['create', 'update', 'edit', 'delete', 'login', 'payment', 'escalate', 'security_alert', 'failed_login', 'report_submitted'].includes(log.action) && (
+                         <span style={{ background: '#f1f5f9', color: '#475569', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{translateAction(log.action)}</span>
+                       )}
+                     </div>
+-                    <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4 }}>
++                    <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
+                       {translateDetails(log.description) || '-'}
+                     </div>
+                   </div>
+@@ -843,6 +1061,59 @@ export default function AdminPanel() {
+         </div>
+       )}
+ 
++      {/* Log Detail Modal */}
++      {logDetailModal && (
++        <div className="modal-overlay" onClick={() => setLogDetailModal(null)} style={{ padding: '16px', backdropFilter: 'blur(5px)' }}>
++          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, padding: 0, borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
++            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
++              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
++                <Activity size={20} />
++              </div>
++              <div style={{ fontSize: 18, fontWeight: 700 }}>Activity Details</div>
++            </div>
++            <div style={{ padding: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
++              <div style={{ marginBottom: 16 }}>
++                <strong>Action:</strong> {translateAction(logDetailModal.action)}<br />
++                <strong>Entity:</strong> {logDetailModal.entity_name} ({logDetailModal.entity_type})<br />
++                <strong>User:</strong> {logDetailModal.username} ({logDetailModal.user_role})<br />
++                <strong>Time:</strong> {new Date(logDetailModal.timestamp).toLocaleString('en-IN')}
++              </div>
++              
++              <div style={{ padding: '12px', background: '#f8fafc', borderRadius: 8, fontSize: 13, color: '#334155', marginBottom: 16, border: '1px solid #e2e8f0' }}>
++                {translateDetails(logDetailModal.description)}
++              </div>
++
++              {logDetailModal.changes && (
++                <div style={{ marginTop: 16 }}>
++                  <strong style={{ fontSize: 14, color: '#1e293b', marginBottom: 8, display: 'block' }}>Changes / Details:</strong>
++                  <pre style={{ background: '#f1f5f9', padding: 12, borderRadius: 8, fontSize: 12, color: '#475569', overflowX: 'auto', border: '1px solid #e2e8f0' }}>
++                    {JSON.stringify(logDetailModal.changes, null, 2)}
++                  </pre>
++                </div>
++              )}
++
++              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
++                <button type="button" onClick={() => setLogDetailModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>Close</button>
++                {logDetailModal.action !== 'delete' && logDetailModal.entity_type && ['invoice', 'trip', 'vehicle', 'customer'].includes(logDetailModal.entity_type) && logDetailModal.entity_id && (
++                  <button 
++                    onClick={() => {
++                      setLogDetailModal(null);
++                      if (logDetailModal.entity_type === 'invoice') navigate(`/invoices/${logDetailModal.entity_id}`);
++                      else if (logDetailModal.entity_type === 'trip') navigate(`/trip/${logDetailModal.entity_id}`);
++                      else if (logDetailModal.entity_type === 'vehicle') navigate(`/vehicles`);
++                      else if (logDetailModal.entity_type === 'customer') navigate(`/customers`);
++                    }} 
++                    style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: 8, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(59,130,246,0.3)' }}
++                  >
++                    View Record
++                  </button>
++                )}
++              </div>
++            </div>
++          </div>
++        </div>
++      )}
++
+     </div>
+   );
+ }

@@ -13,6 +13,8 @@ const adminSchema = new mongoose.Schema({
   },
   secret_key: { type: String, default: '' },         // hashed, supervisor only
   is_active: { type: Boolean, default: true },
+  is_on_hold: { type: Boolean, default: false },
+  is_online: { type: Boolean, default: false },
   can_edit_products: { type: Boolean, default: false },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   display_name: { type: String, default: '' },

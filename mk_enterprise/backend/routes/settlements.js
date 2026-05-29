@@ -121,6 +121,7 @@ router.post('/', async (req, res) => {
       entity_id: settlement._id,
       entity_name: party_name || (isPaidOut ? 'Supplier' : 'Customer'),
       description: actionDesc,
+      changes: settlement.toObject(),
       ip_address: req.ip
     });
 

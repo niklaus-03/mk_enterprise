@@ -5,10 +5,14 @@ const dailyReportSchema = new mongoose.Schema({
   manager_name: { type: String, required: true },
   date: { type: String, required: true }, // Format: YYYY-MM-DD
   opening_balance: { type: Number, required: true, default: 0 },
+  system_sales_reported: { type: Number, default: 0 },
+  system_money_received: { type: Number, default: 0 },
+  system_debt_reported: { type: Number, default: 0 },
   system_cash_reported: { type: Number, required: true, default: 0 },
   actual_cash_reported: { type: Number, required: true, default: 0 },
   system_bills_reported: { type: Number, required: true, default: 0 },
   system_deliveries_reported: { type: Number, required: true, default: 0 },
+  system_expenses_reported: { type: Number, default: 0 },
   discrepancy_notes: { type: String, default: '' },
   quick_entries: [{
     type: { type: String, enum: ['bill', 'payment_in', 'payment_out', 'expense'] },
