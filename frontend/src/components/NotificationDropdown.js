@@ -266,7 +266,7 @@ export default function NotificationDropdown({ user, className, style, bellSize 
       </div>
 
       {/* List Area */}
-      <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
+      <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, padding: '8px 0' }}>
         {groupedNotifs.length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8' }}>
             <Heart size={40} style={{ opacity: 0.3, marginBottom: 16 }} strokeWidth={1.5} />
