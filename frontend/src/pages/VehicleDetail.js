@@ -4,18 +4,21 @@ import toast from 'react-hot-toast';
 import { deliveryApi, productApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { Truck, Calendar, ArrowLeft, CheckCircle, Clock, User, AlertTriangle, FileText, X, Check, ArrowRight, Save, LayoutGrid } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function VehicleDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [delivery, setDelivery] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [supplierCharge, setSupplierCharge] = useState('');
+  const [supplierCharge, setExtraCharge] = useState('');
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState([]);
   const [globalQuintalCharge, setGlobalQuintalCharge] = useState('');
   const [applyingQuintal, setApplyingQuintal] = useState(false);
-  const [supplierChargeApplied, setSupplierChargeApplied] = useState(false);
+  const [supplierChargeApplied, setExtraChargeApplied] = useState(false);
+  const [showDeliverModal, setShowDeliverModal] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const fc = formatCurrency;
 
@@ -38,11 +41,20 @@ export default function VehicleDetail() {
           quintal_charge: item.quintal_charge > 0 ? String(item.quintal_charge) : '',
           gst: item.gst || 0,
           final_price: item.final_price > 0 ? String(item.final_price) : '',
+          supplier_charge_per_item: item.supplier_charge_per_item > 0 ? String(item.supplier_charge_per_item) : '',
           final_stock: item.final_stock != null ? String(item.final_stock) : String(item.quantity),
           current_stock: null,
         })));
         const firstQC = d.items.find(i => i.quintal_charge > 0);
         if (firstQC) setGlobalQuintalCharge(String(firstQC.quintal_charge));
+
+        const totalExtraCharge = d.items.reduce((sum, item) => {
+          return sum + ((parseFloat(item.supplier_charge_per_item) || 0) * (parseFloat(item.quantity) || 1));
+        }, 0);
+        if (totalExtraCharge > 0) {
+          setExtraCharge(String(parseFloat(totalExtraCharge.toFixed(2))));
+          setExtraChargeApplied(true);
+        }
       })
       .catch(e => { toast.error('Could not load delivery'); navigate('/vehicle-incoming'); })
       .finally(() => setLoading(false));
@@ -80,17 +92,20 @@ export default function VehicleDetail() {
       const updated = [...prev];
       updated[idx] = { ...updated[idx], [field]: value };
 
-      const it = updated[idx];
-      const base = parseFloat(it.base_price) || 0;
-      const qCharge = parseFloat(it.quintal_charge) || 0;
-      const weight = parseFloat(it.weight) || 0;
-      const gst = parseFloat(it.gst) || 0;
+      if (field !== 'final_price') {
+        const it = updated[idx];
+        const base = parseFloat(it.base_price) || 0;
+        const qCharge = parseFloat(it.quintal_charge) || 0;
+        const supplierCharge = parseFloat(it.supplier_charge_per_item) || 0;
+        const weight = parseFloat(it.weight) || 0;
+        const gst = parseFloat(it.gst) || 0;
 
-      if (base > 0) {
-        const quintalAdj = qCharge > 0 && weight > 0 ? (qCharge * weight) / 100 : 0;
-        const beforeGST = base + quintalAdj;
-        const gstAmt = (beforeGST * gst) / 100;
-        updated[idx].final_price = parseFloat((beforeGST + gstAmt).toFixed(2));
+        if (base > 0 || supplierCharge > 0) {
+          const quintalAdj = qCharge > 0 && weight > 0 ? (qCharge * weight) / 100 : 0;
+          const beforeGST = base + quintalAdj + supplierCharge;
+          const gstAmt = (beforeGST * gst) / 100;
+          updated[idx].final_price = parseFloat((beforeGST + gstAmt).toFixed(2));
+        }
       }
 
       return updated;
@@ -111,6 +126,7 @@ export default function VehicleDetail() {
           weight: parseFloat(item.weight) || 0,
           base_price: parseFloat(item.base_price) || 0,
           quintal_charge: parseFloat(item.quintal_charge) || 0,
+          supplier_charge_per_item: parseFloat(item.supplier_charge_per_item) || 0,
           gst: parseFloat(item.gst) || 0,
           final_price: parseFloat(item.final_price) || 0,
           final_stock: parseFloat(item.final_stock) || parseFloat(item.quantity) || 0,
@@ -123,8 +139,12 @@ export default function VehicleDetail() {
     finally { setSaving(false); }
   };
 
-  const handleMarkDelivered = async () => {
-    if (!window.confirm('Mark as delivered? Stock and prices will be updated automatically.')) return;
+  const handleMarkDelivered = () => {
+    setShowDeliverModal(true);
+  };
+
+  const confirmDelivery = async () => {
+    setShowDeliverModal(false);
     await handleSave();
     setSaving(true);
     try {
@@ -205,10 +225,10 @@ export default function VehicleDetail() {
           <div className="card-body" style={{ padding: isMobile ? 12 : 18 }}>
             <div style={{ display: 'flex', flexDirection: 'row', gap: isMobile ? 10 : 20, alignItems: 'flex-start' }}>
 
-              {/* Supplier Charges */}
+              {/* Extra Charges */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: 'var(--text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <span>🏭</span> {isMobile ? 'Supplier (₹)' : 'Supplier Charges (Total ₹)'}
+                  <span>🏭</span> {isMobile ? 'Extra (₹)' : 'Extra Charges (Total ₹)'}
                 </div>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                   <input
@@ -217,7 +237,7 @@ export default function VehicleDetail() {
                     style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 11.5 : 12.5, padding: isMobile ? '6px 8px' : '8px 12px', borderRadius: 6 }}
                     value={supplierCharge}
                     placeholder={isMobile ? "1k" : "e.g. 1000"}
-                    onChange={e => { setSupplierCharge(e.target.value); setSupplierChargeApplied(false); }}
+                    onChange={e => { setExtraCharge(e.target.value); setExtraChargeApplied(false); }}
                   />
                   <button
                     className="btn btn-primary btn-sm"
@@ -227,13 +247,13 @@ export default function VehicleDetail() {
                       const validItems = items.filter(i => i.item_name);
                       if (!validItems.length) return toast.error('No items to distribute charge to');
 
-                      const numItems = validItems.length;
-                      const chargePerItem = totalCharge / numItems;
+                      const totalQty = validItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 1), 0);
+                      const chargePerQty = totalCharge / totalQty;
 
                       setItems(prev => prev.map(item => {
                         if (!item.item_name) return item;
                         const qty = parseFloat(item.quantity) || 1;
-                        const perUnitSupplierCharge = chargePerItem / qty;
+                        const perUnitExtraCharge = chargePerQty;
 
                         const base = parseFloat(item.base_price) || 0;
                         const weight = parseFloat(item.weight) || 0;
@@ -243,23 +263,23 @@ export default function VehicleDetail() {
                         let newFinal;
                         if (base > 0) {
                           const quintalAdj = qc > 0 && weight > 0 ? (qc * weight) / 100 : 0;
-                          const beforeGST = base + quintalAdj + perUnitSupplierCharge;
+                          const beforeGST = base + quintalAdj + perUnitExtraCharge;
                           const gstAmt = (beforeGST * gst) / 100;
                           newFinal = parseFloat((beforeGST + gstAmt).toFixed(2));
                         } else {
                           const existing = parseFloat(item.final_price) || 0;
-                          newFinal = parseFloat((existing + perUnitSupplierCharge).toFixed(2));
+                          newFinal = parseFloat((existing + perUnitExtraCharge).toFixed(2));
                         }
 
                         return {
                           ...item,
-                          supplier_charge_per_item: parseFloat(perUnitSupplierCharge.toFixed(4)),
+                          supplier_charge_per_item: parseFloat(perUnitExtraCharge.toFixed(4)),
                           final_price: newFinal,
                         };
                       }));
 
-                      setSupplierChargeApplied(true);
-                      toast.success(`₹${totalCharge.toFixed(0)} split: ₹${chargePerItem.toFixed(2)}/item across ${numItems} items`);
+                      setExtraChargeApplied(true);
+                      toast.success(`₹${totalCharge.toFixed(0)} distributed: ₹${chargePerQty.toFixed(2)}/unit across ${totalQty} total units`);
                     }}
                   >
                     {isMobile ? 'Split' : 'Distribute'}
@@ -272,7 +292,7 @@ export default function VehicleDetail() {
                 </div>
                 {!isMobile && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                    Per item: ₹{((parseFloat(supplierCharge) || 0) / Math.max(1, items.filter(i => i.item_name).length)).toFixed(2)} → then ÷ qty per item
+                    Distributed equally based on total quantity across all items (₹{(parseFloat(supplierCharge) || 0) / Math.max(1, items.reduce((sum, item) => item.item_name ? sum + (parseFloat(item.quantity) || 1) : sum, 0))} per unit)
                   </div>
                 )}
               </div>
@@ -301,7 +321,7 @@ export default function VehicleDetail() {
                         const base = parseFloat(item.base_price) || 0;
                         const weight = parseFloat(item.weight) || 0;
                         const gst = parseFloat(item.gst) || 0;
-                        const scPU = item.supplier_charge_per_item || 0;
+                        const scPU = parseFloat(item.supplier_charge_per_item) || 0;
                         const quintalAdj = qc > 0 && weight > 0 ? (qc * weight) / 100 : 0;
                         const beforeGST = base + quintalAdj + scPU;
                         const gstAmt = (beforeGST * gst) / 100;
@@ -319,7 +339,7 @@ export default function VehicleDetail() {
                 </div>
                 {!isMobile && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                    Formula: Base + (QC × Weight ÷ 100) + SupplierCharge + GST
+                    Formula: Base + (QC × Weight ÷ 100) + ExtraCharge + GST
                   </div>
                 )}
               </div>
@@ -410,16 +430,24 @@ export default function VehicleDetail() {
                             {item.weight ? `${item.weight} kg` : '—'}
                           </span>
                         </div>
-                        <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Base Price:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
-                            {item.base_price ? fc(item.base_price) : '—'}
-                          </span>
-                        </div>
+                        {user?.role === 'supervisor' && (
+                          <div>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Base Price:</span>
+                            <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
+                              {item.base_price ? fc(item.base_price) : '—'}
+                            </span>
+                          </div>
+                        )}
                         <div>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Quintal:</span>
                           <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
                             {item.quintal_charge ? fc(item.quintal_charge) : '—'}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Supplier:</span>
+                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
+                            {item.supplier_charge_per_item ? fc(item.supplier_charge_per_item) : '—'}
                           </span>
                         </div>
                         <div>
@@ -468,16 +496,26 @@ export default function VehicleDetail() {
                         </div>
 
                         {/* Base Price */}
-                        <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Base Price ₹</label>
-                          <input type="number" min="0" step="0.01" className="form-control"
-                            style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
-                            value={item.base_price}
-                            placeholder="0.00"
-                            onChange={e => updateItem(idx, 'base_price', e.target.value)} />
-                        </div>
+                        {user?.role === 'supervisor' && (
+                          <div style={{ gridColumn: 'span 6' }}>
+                            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Base Price ₹</label>
+                            <input type="number" min="0" step="0.01" className="form-control"
+                              style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
+                              value={item.base_price}
+                              placeholder="0.00"
+                              onChange={e => updateItem(idx, 'base_price', e.target.value)} />
+                          </div>
+                        )}
 
                         {/* Quintal Charge */}
+                        <div style={{ gridColumn: 'span 6' }}>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Extra Charge ₹</label>
+                          <input type="number" min="0" step="0.01" className="form-control"
+                            style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
+                            value={item.supplier_charge_per_item || ''}
+                            placeholder="per unit"
+                            onChange={e => updateItem(idx, 'supplier_charge_per_item', e.target.value)} />
+                        </div>
                         <div style={{ gridColumn: 'span 6' }}>
                           <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Quintal Charge ₹</label>
                           <div>
@@ -531,7 +569,7 @@ export default function VehicleDetail() {
                     {[
                       'Item', 'Type', 'Current Stock', 'Incoming Qty',
                       'Final Stock', 'Weight (kg)',
-                      'Base Price ₹', 'Quintal Charge ₹', 'GST %', 'Final Price ₹'
+                      ...(user?.role === 'supervisor' ? ['Base Price ₹'] : []), 'Extra Charge ₹', 'Quintal Charge ₹', 'GST %', 'Final Price ₹'
                     ].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif" }}>{h}</th>
                     ))}
@@ -608,18 +646,31 @@ export default function VehicleDetail() {
                         )}
                         </td>
                         {/* Base Price */}
+                        {user?.role === 'supervisor' && (
+                          <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
+                            {isDelivered ? (
+                              <span>{item.base_price ? fc(item.base_price) : '—'}</span>
+                            ) : (
+                              <input type="number" min="0" step="0.01" className="form-control"
+                                style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
+                                value={item.base_price}
+                                placeholder="0.00"
+                                onChange={e => updateItem(idx, 'base_price', e.target.value)} />
+                            )}
+                          </td>
+                        )}
+                        {/* Quintal Charge */}
                         <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
                           {isDelivered ? (
-                            <span>{item.base_price ? fc(item.base_price) : '—'}</span>
+                            <span>{item.supplier_charge_per_item ? fc(item.supplier_charge_per_item) : '—'}</span>
                           ) : (
                             <input type="number" min="0" step="0.01" className="form-control"
                               style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
-                              value={item.base_price}
-                              placeholder="0.00"
-                              onChange={e => updateItem(idx, 'base_price', e.target.value)} />
+                              value={item.supplier_charge_per_item || ''}
+                              placeholder="per unit"
+                              onChange={e => updateItem(idx, 'supplier_charge_per_item', e.target.value)} />
                           )}
                         </td>
-                        {/* Quintal Charge */}
                         <td style={{ padding: '12px 16px', minWidth: 120, fontFamily: "'Inter', sans-serif" }}>
                           {isDelivered ? (
                             <span>{item.quintal_charge ? fc(item.quintal_charge) : '—'}</span>
@@ -683,7 +734,24 @@ export default function VehicleDetail() {
       {!isDelivered && (
         <div style={{ marginTop: 14, padding: '12px 18px', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 12, fontSize: '13px', color: '#1e40af', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>💡</span>
-          <span><strong>Pricing Formula:</strong> Final Price = Base Price + (Quintal Charge × Weight ÷ 100) + GST%. Final Price is auto-calculated but can be manually overridden.</span>
+          <span><strong>Pricing Formula:</strong> Final Price = Base Price + Extra Charge + (Quintal Charge × Weight ÷ 100) + GST%. Final Price is auto-calculated but can be manually overridden.</span>
+        </div>
+      )}
+
+      {/* Custom Deliver Confirm Modal */}
+      {showDeliverModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', padding: 24, borderRadius: 16, width: '90%', maxWidth: 400, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, color: 'var(--text)' }}>Confirm Delivery</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+              Are you sure you want to mark this vehicle as delivered?<br/><br/>
+              <strong>Stock and prices will be updated automatically</strong> across your entire inventory.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-outline" onClick={() => setShowDeliverModal(false)}>Cancel</button>
+              <button className="btn btn-success" onClick={confirmDelivery}>Yes, Mark Delivered</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

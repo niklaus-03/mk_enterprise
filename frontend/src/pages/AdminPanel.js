@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { managerApi, driverApi, activityLogApi, authApi, deliveryApi, supplierApi, walkinApi } from '../utils/api';
-import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock, PauseCircle, PlayCircle, Eye } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock, PauseCircle, PlayCircle, Eye, UserCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import HawkEye from '../components/HawkEye';
+import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -20,6 +21,9 @@ export default function AdminPanel() {
   const [mgrCreating, setMgrCreating] = useState(false);
   const [mgrResetModal, setMgrResetModal] = useState(null);
   const [mgrResetPw, setMgrResetPw] = useState('');
+
+  // Walk-in Delivery Modal
+  const [showWalkinModal, setShowWalkinModal] = useState(false);
 
   // Tabs State
   const [searchParams, setSearchParams] = useSearchParams();
@@ -400,6 +404,17 @@ export default function AdminPanel() {
           <Shield size={24} style={{ color: 'var(--primary)' }} />
           {t('Admin Panel', 'एडमिन पैनल')}
         </h2>
+        <button 
+          onClick={() => setShowWalkinModal(true)}
+          style={{ 
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', 
+            borderRadius: 8, background: '#d97706', color: '#fff', border: 'none', 
+            fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(217, 119, 6, 0.2)',
+            fontSize: 15
+          }}
+        >
+          <UserCheck size={18} /> Walk-in Delivery
+        </button>
       </div>
 
       {/* Standard Tabs */}
@@ -1343,6 +1358,7 @@ export default function AdminPanel() {
         </div>
       )}
 
+      {showWalkinModal && <WalkInDeliveryModal onClose={() => setShowWalkinModal(false)} userRole="admin" />}
     </div>
   );
 }

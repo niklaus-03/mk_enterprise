@@ -32,6 +32,7 @@ export default function ProductGridStep({
   const [selectedItems, setSelectedItems] = useState(new Map());
   const [editingPriceFor, setEditingPriceFor] = useState(null);
   const [tempPrice, setTempPrice] = useState('');
+  const [tempGst, setTempGst] = useState('');
 
   // Add Product Form State
   const [newProductName, setNewProductName] = useState('');
@@ -150,11 +151,13 @@ export default function ProductGridStep({
     setSelectedItems(newMap);
   }, [selectedItems, gstEnabled]);
 
-  const handlePriceChange = useCallback((productId, newPrice) => {
+  const handlePriceChange = useCallback((productId, newPrice, newGst) => {
     const current = selectedItems.get(productId);
     if (!current) return;
     const newMap = new Map(selectedItems);
-    newMap.set(productId, { ...current, price: parseFloat(newPrice) || 0 });
+    const updates = { price: parseFloat(newPrice) || 0 };
+    if (newGst !== undefined) updates.gst = parseFloat(newGst) || 0;
+    newMap.set(productId, { ...current, ...updates });
     setSelectedItems(newMap);
   }, [selectedItems]);
 
@@ -374,21 +377,7 @@ export default function ProductGridStep({
 
         {/* Action Buttons Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="btn"
-              style={{
-                background: '#ef4444',
-                color: 'var(--bg-card)',
-                borderRadius: '12px',
-                fontWeight: '700',
-                padding: '10px 16px',
-              }}
-            >
-              CANCEL
-            </button>
-          )}
+
           <button
             onClick={() => setShowSearch(prev => !prev)}
             style={{
@@ -792,12 +781,13 @@ export default function ProductGridStep({
 
                     {/* Always show Price Box (editable if selected and not temp_manager) */}
                     {editingPriceFor === product._id ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px', background: '#f8fafc', borderRadius: '8px', border: '1.5px solid #c5a059', zIndex: 10, position: 'relative' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
-                          <span>Base {gstEnabled && product.gst > 0 ? `(+${product.gst}%)` : ''}</span>
-                          {(gstEnabled && product.gst > 0) && <span>Final</span>}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'var(--bg-card)', borderRadius: '12px', border: '1.5px solid #c5a059', zIndex: 10, position: 'relative', boxShadow: '0 4px 12px rgba(197, 160, 89, 0.15)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', padding: '0 4px' }}>
+                          <span style={{ flex: 1, textAlign: 'center' }}>Base</span>
+                          {gstEnabled && <span style={{ flex: 1, textAlign: 'center' }}>GST %</span>}
+                          {gstEnabled && <span style={{ flex: 1, textAlign: 'center' }}>Final</span>}
                         </div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
+                        <div style={{ display: 'flex', gap: '6px' }}>
                           <input 
                             type="number"
                             autoFocus
@@ -806,57 +796,72 @@ export default function ProductGridStep({
                             onChange={e => setTempPrice(e.target.value)}
                             onKeyDown={e => {
                               if (e.key === 'Enter') {
-                                handlePriceChange(product._id, tempPrice);
+                                handlePriceChange(product._id, tempPrice, tempGst);
                                 setEditingPriceFor(null);
                                 setTempPrice('');
+                                setTempGst('');
                               }
                             }}
-                            style={{ width: '100%', textAlign: 'center', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px', fontFamily: 'monospace' }}
+                            style={{ flex: 1, width: 0, textAlign: 'center', padding: '6px 4px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', background: 'var(--bg-hover)', color: 'var(--text)', outline: 'none' }}
                           />
-                          {(gstEnabled && product.gst > 0) && (
+                          {gstEnabled && (
+                            <select
+                              value={tempGst !== '' ? tempGst : (selectedItem ? selectedItem.gst : product.gst)}
+                              onChange={e => setTempGst(e.target.value)}
+                              style={{ flex: 1, width: 0, textAlign: 'center', padding: '6px 0', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '13px', background: 'var(--bg-hover)', color: 'var(--text)', outline: 'none', appearance: 'none', cursor: 'pointer' }}
+                            >
+                              <option value="0">0%</option>
+                              <option value="5">5%</option>
+                              <option value="12">12%</option>
+                              <option value="18">18%</option>
+                              <option value="28">28%</option>
+                            </select>
+                          )}
+                          {gstEnabled && (
                             <input 
                               type="number"
                               placeholder="Final"
-                              value={tempPrice !== '' ? ((parseFloat(tempPrice) || 0) * (1 + product.gst / 100)).toFixed(2) : ((selectedItem ? selectedItem.price : product.price) * (1 + product.gst / 100)).toFixed(2)}
+                              value={
+                                tempPrice !== '' 
+                                  ? ((parseFloat(tempPrice) || 0) * (1 + (tempGst !== '' ? parseFloat(tempGst) : (selectedItem ? selectedItem.gst : product.gst)) / 100)).toFixed(2) 
+                                  : ((selectedItem ? selectedItem.price : product.price) * (1 + (tempGst !== '' ? parseFloat(tempGst) : (selectedItem ? selectedItem.gst : product.gst)) / 100)).toFixed(2)
+                              }
                               onChange={e => {
                                 const final = parseFloat(e.target.value) || 0;
-                                const base = final / (1 + product.gst / 100);
+                                const currentGst = tempGst !== '' ? parseFloat(tempGst) : (selectedItem ? selectedItem.gst : product.gst);
+                                const base = final / (1 + currentGst / 100);
                                 setTempPrice(base.toFixed(2));
                               }}
                               onKeyDown={e => {
                                 if (e.key === 'Enter') {
-                                  handlePriceChange(product._id, tempPrice);
+                                  handlePriceChange(product._id, tempPrice, tempGst);
                                   setEditingPriceFor(null);
                                   setTempPrice('');
+                                  setTempGst('');
                                 }
                               }}
-                              style={{ width: '100%', textAlign: 'center', padding: '4px', border: '1.5px solid #059669', borderRadius: '4px', fontSize: '13px', fontFamily: 'monospace', background: '#ecfdf5', color: '#059669' }}
+                              style={{ flex: 1, width: 0, textAlign: 'center', padding: '6px 4px', border: '1.5px solid #c5a059', borderRadius: '6px', fontSize: '13px', background: 'rgba(197, 160, 89, 0.05)', color: '#c5a059', fontWeight: 'bold', outline: 'none' }}
                             />
                           )}
                         </div>
-                        <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
-                          <button 
-                            onClick={(e) => {
-                               e.stopPropagation();
-                               handlePriceChange(product._id, tempPrice !== '' ? tempPrice : (selectedItem ? selectedItem.price : product.price));
-                               setEditingPriceFor(null);
-                               setTempPrice('');
-                            }}
-                            style={{ flex: 1, padding: '6px', background: '#c5a059', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
-                          >
-                            SAVE
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                               e.stopPropagation();
-                               setEditingPriceFor(null);
-                               setTempPrice('');
-                            }}
-                            style={{ flex: 1, padding: '6px', background: '#cbd5e1', color: '#334155', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
-                          >
-                            CANCEL
-                          </button>
-                        </div>
+                        <button 
+                          onClick={(e) => {
+                             e.stopPropagation();
+                             handlePriceChange(
+                               product._id, 
+                               tempPrice !== '' ? tempPrice : (selectedItem ? selectedItem.price : product.price),
+                               tempGst !== '' ? tempGst : (selectedItem ? selectedItem.gst : product.gst)
+                             );
+                             setEditingPriceFor(null);
+                             setTempPrice('');
+                             setTempGst('');
+                          }}
+                          style={{ width: '100%', padding: '8px', background: '#c5a059', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', marginTop: '2px', transition: 'opacity 0.2s' }}
+                          onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+                          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                        >
+                          SAVE
+                        </button>
                       </div>
                     ) : (
                       <div
@@ -865,6 +870,7 @@ export default function ProductGridStep({
                           if (qty > 0 && user?.role !== 'temp_manager') {
                             setEditingPriceFor(product._id);
                             setTempPrice(selectedItem ? selectedItem.price : product.price);
+                            setTempGst(selectedItem ? selectedItem.gst : product.gst);
                           }
                         }}
                         style={{
@@ -879,12 +885,23 @@ export default function ProductGridStep({
                           fontSize: '13px',
                           background: (qty > 0 && user?.role !== 'temp_manager') ? 'rgba(197, 160, 89, 0.1)' : 'rgba(0,0,0,0.1)',
                           cursor: (qty > 0 && user?.role !== 'temp_manager') ? 'pointer' : 'default',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                         title={(qty > 0 && user?.role !== 'temp_manager') ? "Click to edit price" : ""}
                       >
-                        {formatCurrency(selectedItem ? selectedItem.price : product.price)}
-                        {(qty > 0 && user?.role !== 'temp_manager') && (
-                          <PenTool size={10} style={{ marginLeft: 6, display: 'inline-block', verticalAlign: 'baseline' }} />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {formatCurrency(selectedItem ? selectedItem.price : product.price)}
+                          {(qty > 0 && user?.role !== 'temp_manager') && (
+                            <PenTool size={10} style={{ marginLeft: 6, display: 'inline-block', verticalAlign: 'baseline' }} />
+                          )}
+                        </div>
+                        {(gstEnabled && (selectedItem ? selectedItem.gst : product.gst) > 0) && (
+                          <div style={{ fontSize: '10px', color: '#059669', fontWeight: 'bold', marginTop: '4px' }}>
+                            + {selectedItem ? selectedItem.gst : product.gst}% GST = {formatCurrency((selectedItem ? selectedItem.price : product.price) * (1 + (selectedItem ? selectedItem.gst : product.gst) / 100))}
+                          </div>
                         )}
                       </div>
                     )}
@@ -987,7 +1004,7 @@ export default function ProductGridStep({
               {/* Price & Unit side-by-side */}
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Price (₹) *</label>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Base Price (₹) *</label>
                   <input
                     type="number"
                     step="0.01"
@@ -995,16 +1012,66 @@ export default function ProductGridStep({
                     value={newProductPrice}
                     onChange={(e) => setNewProductPrice(e.target.value)}
                     required
-                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px', outline: 'none' }}
                   />
                 </div>
                 
+                {gstEnabled && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                    <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Final Price (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newProductPrice ? (parseFloat(newProductPrice) * (1 + parseFloat(newProductGst || 0) / 100)).toFixed(2) : ''}
+                      onChange={(e) => {
+                        const final = parseFloat(e.target.value) || 0;
+                        const base = final / (1 + parseFloat(newProductGst || 0) / 100);
+                        setNewProductPrice(base ? base.toFixed(2) : '');
+                      }}
+                      style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #c5a059', color: 'var(--text)', padding: '0 12px', outline: 'none' }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Category & GST side-by-side */}
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Category</label>
+                  <input
+                    type="text"
+                    placeholder="Category name..."
+                    value={newProductCategory}
+                    onChange={(e) => setNewProductCategory(e.target.value)}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px', outline: 'none' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>GST %</label>
+                  <select
+                    value={newProductGst}
+                    onChange={(e) => setNewProductGst(e.target.value)}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px', outline: 'none' }}
+                  >
+                    <option value="0">0%</option>
+                    <option value="5">5%</option>
+                    <option value="12">12%</option>
+                    <option value="18">18%</option>
+                    <option value="28">28%</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Unit & Weight per Unit */}
+              <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
                   <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Unit</label>
                   <select
                     value={newProductUnit}
                     onChange={(e) => setNewProductUnit(e.target.value)}
-                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px', outline: 'none' }}
                   >
                     <option value="bag">bag (बोरी)</option>
                     <option value="kg">kg (किलोग्राम)</option>
@@ -1021,49 +1088,19 @@ export default function ProductGridStep({
                     <option value="strip">strip (स्ट्रिप)</option>
                   </select>
                 </div>
-              </div>
 
-              {/* Category & GST side-by-side */}
-              <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Category</label>
+                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Weight / Unit (kg)</label>
                   <input
-                    type="text"
-                    placeholder="Category name..."
-                    value={newProductCategory}
-                    onChange={(e) => setNewProductCategory(e.target.value)}
-                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g., 50 for a 50kg bag"
+                    value={newProductWeight}
+                    onChange={(e) => setNewProductWeight(e.target.value)}
+                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px', outline: 'none' }}
                   />
                 </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
-                  <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>GST %</label>
-                  <select
-                    value={newProductGst}
-                    onChange={(e) => setNewProductGst(e.target.value)}
-                    style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
-                  >
-                    <option value="0">0%</option>
-                    <option value="5">5%</option>
-                    <option value="12">12%</option>
-                    <option value="18">18%</option>
-                    <option value="28">28%</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Weight per Unit */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>Weight / Unit (kg)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="e.g., 50 for a 50kg bag"
-                  value={newProductWeight}
-                  onChange={(e) => setNewProductWeight(e.target.value)}
-                  style={{ height: '42px', borderRadius: '8px', background: 'var(--bg-card)', border: '1.5px solid #334155', color: 'var(--text)', padding: '0 12px' }}
-                />
               </div>
 
               {/* Action Buttons */}

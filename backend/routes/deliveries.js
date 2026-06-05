@@ -132,7 +132,7 @@ router.post('/', checkProductEditPermission, async (req, res) => {
         final_price: parseFloat(i.final_price) || 0,
       })),
       notes: (notes || '').trim(),
-      delivery_type: delivery_type || 'regular',
+      delivery_type: delivery_type || 'vehicle_incoming',
       payment_status: payment_status || 'unpaid',
       created_by: req.user?.id || req.user?._id || req.admin?.id || req.admin?._id || null,
     });
@@ -184,8 +184,22 @@ router.post('/', checkProductEditPermission, async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
   try {
-    const delivery = await Delivery.findById(req.params.id);
+    const delivery = await Delivery.findById(req.params.id).lean();
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
+    
+    if (delivery.status !== 'delivered') {
+      const Product = require('../models/Product');
+      for (let item of delivery.items) {
+        if (item.product_id) {
+          const prod = await Product.findById(item.product_id).select('supplier_base_price price');
+          if (prod) {
+            if (!item.base_price || item.base_price === 0) {
+              item.base_price = prod.supplier_base_price || 0;
+            }
+          }
+        }
+      }
+    }
     res.json(delivery);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -259,10 +273,14 @@ router.patch('/:id/status', checkProductEditPermission, async (req, res) => {
 
           const stock_before = product.stock;
           product.stock += incomingQty;
+          if (item.base_price > 0) {
+            product.supplier_base_price = parseFloat(item.base_price);
+          }
 
           // Fix: Update final price in product — priority: final_price > calculated
           if (item.final_price > 0) {
             product.price = parseFloat(item.final_price);
+            product.last_delivery_final_price = parseFloat(item.final_price);
           } else if (item.base_price > 0) {
             const quintalAdj = (item.quintal_charge > 0 && item.weight > 0)
               ? (item.quintal_charge * item.weight) / 100
@@ -342,6 +360,7 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
         weight: parseFloat(i.weight) || 0,
         base_price: parseFloat(i.base_price) || 0,
         quintal_charge: parseFloat(i.quintal_charge) || 0,
+        supplier_charge_per_item: parseFloat(i.supplier_charge_per_item) || 0,
         gst: parseFloat(i.gst) || 0,
         final_price: parseFloat(i.final_price) || 0,
         final_stock: i.final_stock != null ? parseFloat(i.final_stock) : null,

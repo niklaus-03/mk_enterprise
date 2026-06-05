@@ -217,7 +217,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {form.items.map((item, idx) => (
-                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 70px 80px 100px 100px auto', gap: 12, alignItems: 'center' }}>
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: (user?.role === 'walkin_manager' || user?.role === 'temp_manager') ? '2fr 70px 80px 100px auto' : '2fr 70px 80px 100px 100px auto', gap: 12, alignItems: 'center' }}>
                     
                     {/* Item Name */}
                     <div style={{ position: 'relative' }}>
@@ -242,7 +242,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                               onMouseDown={() => {
                                 setForm(f => {
                                   const items = [...f.items];
-                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || 'bag', base_price: p.price || '' };
+                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || 'bag', base_price: p.supplier_base_price || '', final_price: '' };
                                   if (idx === items.length - 1) {
                                     items.push({ item_name: '', quantity: '0', unit: 'bag', base_price: '', final_price: '' });
                                   }
@@ -285,10 +285,12 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                     </div>
 
                     {/* Base Price */}
-                    <div>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Base (Supp.) ₹</div>}
-                      <input className="form-control" type="number" min="0" step="0.01" value={item.base_price} onChange={e => updateItem(idx, 'base_price', e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6 }} />
-                    </div>
+                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+                      <div>
+                        {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Base (Supp.) ₹</div>}
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.base_price} onChange={e => updateItem(idx, 'base_price', e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6 }} />
+                      </div>
+                    )}
 
                     {/* Final Price */}
                     <div>

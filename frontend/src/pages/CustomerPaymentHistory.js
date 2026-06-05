@@ -125,7 +125,15 @@ export default function CustomerPaymentHistory() {
 
   const ledger = buildLedger();
   const unpaidInvoices = invoices.filter(i => i.balance_due > 0.01);
-  const hasMultipleUnpaid = unpaidInvoices.length > 1;
+  const unpaidInvoicesSum = unpaidInvoices.reduce((s, i) => s + (i.balance_due || 0), 0);
+  const unpaidOpeningBalance = Math.max(0, (customer?.balance || 0) - unpaidInvoicesSum);
+  
+  const itemsToClear = [...unpaidInvoices];
+  if (unpaidOpeningBalance > 0.01) {
+    itemsToClear.unshift({ _id: '000000000000000000000000', invoice_number: 'Opening Balance', ist_formatted: 'From Ledger', balance_due: unpaidOpeningBalance, isOpeningBalance: true });
+  }
+  
+  const hasMultipleUnpaid = itemsToClear.length > 1;
 
   const handleCollectPayment = async () => {
     const amt = parseFloat(collectForm.amount);
@@ -530,11 +538,11 @@ export default function CustomerPaymentHistory() {
               <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Customer</div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{customer?.name}</div>
-                {hasMultipleUnpaid && unpaidInvoices && unpaidInvoices.length > 0 ? (
+                {hasMultipleUnpaid && itemsToClear && itemsToClear.length > 0 ? (
                   <div style={{ marginTop: 12, marginBottom: 12 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Select Invoices to Clear:</div>
                     <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}>
-                      {unpaidInvoices.map((inv, idx) => {
+                      {itemsToClear.map((inv, idx) => {
                         const isSelected = collectForm.selectedInvoices && collectForm.selectedInvoices.includes(inv._id);
                         return (
                           <div 
@@ -547,19 +555,19 @@ export default function CustomerPaymentHistory() {
                                 newSelected.push(inv._id);
                               }
                               
-                              const newAmount = unpaidInvoices
+                              const newAmount = itemsToClear
                                 .filter(i => newSelected.includes(i._id))
                                 .reduce((s, i) => s + (i.balance_due || 0), 0);
 
                               setCollectForm({ ...collectForm, selectedInvoices: newSelected, amount: newAmount > 0 ? newAmount.toFixed(2) : '' });
                             }}
                             style={{ 
-                              display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: idx < unpaidInvoices.length - 1 ? '1px solid var(--border)' : 'none',
+                              display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: idx < itemsToClear.length - 1 ? '1px solid var(--border)' : 'none',
                               cursor: 'pointer', background: isSelected ? '#f0fdf4' : '#fff', transition: 'background 0.2s'
                             }}
                           >
-                            <div style={{ width: 18, height: 18, borderRadius: 10, border: `1px solid ${isSelected ? '#22c55e' : '#cbd5e1'}`, background: isSelected ? '#22c55e' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
-                              {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }}></div>}
+                            <div style={{ width: 18, height: 18, borderRadius: 4, border: `1px solid ${isSelected ? '#22c55e' : '#cbd5e1'}`, background: isSelected ? '#22c55e' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                              {isSelected && <div style={{ color: '#fff', fontSize: 13, fontWeight: 'bold' }}>✓</div>}
                             </div>
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{inv.invoice_number || 'Walk-in Bill'}</div>

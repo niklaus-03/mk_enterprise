@@ -9,6 +9,7 @@ const deliveryItemSchema = new mongoose.Schema({
   weight: { type: Number, default: 0 },           // total weight in kg
   base_price: { type: Number, default: 0 },       // price before charges
   quintal_charge: { type: Number, default: 0 },   // charge per quintal
+  supplier_charge_per_item: { type: Number, default: 0 }, // extra charge per item
   gst: { type: Number, default: 0 },              // GST %
   final_price: { type: Number, default: 0 },      // calculated final price
   final_stock: { type: Number, default: null },   // editable final stock (overrides quantity)

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, customerApi, productApi, managerApi, productListApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare, Download, List, Minus } from 'lucide-react';
+import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare, Download, List, Minus, Save } from 'lucide-react';
 import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
 import PaymentModal from '../components/PaymentModal';
 import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
@@ -73,6 +73,7 @@ function useLiveClock() {
 }
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const { isAdmin, user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -127,6 +128,7 @@ export default function AdminDashboard() {
   const [showMoreSales, setShowMoreSales] = useState(false);
   const [showMoreTopProducts, setShowMoreTopProducts] = useState(false);
   const [editableLowStock, setEditableLowStock] = useState([]);
+  const [focusedItemIdx, setFocusedItemIdx] = useState(null);
   const [productLists, setProductLists] = useState([]);
   const [activeListFilter, setActiveListFilter] = useState(null);
   const [showListFilter, setShowListFilter] = useState(false);
@@ -196,13 +198,10 @@ export default function AdminDashboard() {
     }, 80);
   };
 
-  // Global selected date — drives full dashboard refresh
-  const [selectedDate, setSelectedDate] = useState(getTodayIST());
+  const { globalDate: selectedDate, setGlobalDate: setSelectedDate } = useApp();
   // Reactive — recalculates on every render when selectedDate changes
   const isToday = selectedDate === getTodayIST();
 
-  // Live clock
-  const liveTime = useLiveClock();
   const liveTimeIST = liveTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   const liveDateIST = liveTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -655,6 +654,7 @@ export default function AdminDashboard() {
   // Returns the order quantity for a product (defaults to "needed" amount)
   const getOrderQty = (p) => {
     if (orderQty[p._id] !== undefined) return orderQty[p._id];
+    if (p.saved_order_qty > 0) return p.saved_order_qty;
     const threshold = parseInt(settings?.low_stock_threshold) || 10;
     // Use custom_low_stock if defined and >= 0, otherwise global threshold
     const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
@@ -667,7 +667,7 @@ export default function AdminDashboard() {
     const p = data.lowStockProducts.find(x => x._id === id);
     const threshold = parseInt(settings?.low_stock_threshold) || 10;
     const minStock = (p?.custom_low_stock != null) ? p.custom_low_stock : threshold;
-    const defaultQty = Math.max(0, minStock - (p?.stock ?? 0));
+    const defaultQty = p?.saved_order_qty > 0 ? p.saved_order_qty : Math.max(0, minStock - (p?.stock ?? 0));
     setOrderQty(prev => ({
       ...prev,
       [id]: Math.max(0, (prev[id] !== undefined ? prev[id] : defaultQty) + delta),
@@ -865,57 +865,6 @@ export default function AdminDashboard() {
         {/* RIGHT — Live Metrics & Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           
-          {/* Glassmorphic Live Clock & Date */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 16,
-            background: 'rgba(255,255,255,0.08)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 16, padding: '10px 18px',
-            boxShadow: 'inset 0 0 12px rgba(255,255,255,0.02)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Clock size={18} style={{ color: 'var(--primary)' }} />
-              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'monospace', letterSpacing: '1px', color: '#fff' }}>
-                {liveTimeIST.split(' ')[0]} <span style={{ fontSize: 12, opacity: 0.6 }}>{liveTimeIST.split(' ')[1]}</span>
-              </div>
-            </div>
-            
-            <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)' }} />
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', position: 'relative' }}>
-              <Calendar size={18} style={{ color: '#fcd34d' }} />
-              <div style={{ position: 'relative' }}>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: -2 }}>
-                  {isToday ? 'Today' : 'Archive'}
-                </div>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  max={getTodayIST()}
-                  onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }}
-                  style={{
-                    border: 'none', outline: 'none', fontSize: 13, fontWeight: 700,
-                    fontFamily: 'inherit', background: 'transparent',
-                    cursor: 'pointer', color: isToday ? '#fff' : '#fcd34d', width: 110,
-                  }}
-                />
-              </div>
-              {!isToday && (
-                <button
-                  onClick={() => setSelectedDate(getTodayIST())}
-                  style={{
-                    background: '#fcd34d', border: 'none', cursor: 'pointer',
-                    color: '#92400e', fontWeight: 800, fontSize: 10, padding: '4px 8px',
-                    borderRadius: 6, whiteSpace: 'nowrap', transition: 'all 0.2s',
-                    boxShadow: '0 4px 10px rgba(252, 211, 77, 0.2)',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
-                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                >↩ Today</button>
-              )}
-            </div>
-          </div>
-
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: 10 }}>
             <Link 
@@ -1968,7 +1917,13 @@ export default function AdminDashboard() {
                             borderLeft: d.vehicle_number === 'WALK-IN' && d.status !== 'delivered'
                               ? '3px solid #f59e0b' : 'none',
                             cursor: 'pointer'
-                          }} onClick={() => setDetailsDelivery(d)}>
+                            }} onClick={() => {
+                              if (d.vehicle_number === 'WALK-IN') {
+                                setDetailsDelivery(d);
+                              } else {
+                                navigate(`/vehicle/${d._id}`);
+                              }
+                            }}>
                             <td style={{ padding: '10px 12px' }}>
                               <Link
                                 to={`/vehicle/${d._id}`}
@@ -3430,36 +3385,25 @@ export default function AdminDashboard() {
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {data.lowStockProducts?.length > 0 && (
-                <>
-                  <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
-                    const threshold = parseInt(settings?.low_stock_threshold) || 10;
-                    const source = activeListFilter
-                      ? data.lowStockProducts.filter(p => {
-                          const lst = productLists.find(l => l._id === activeListFilter);
-                          return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
-                        })
-                      : data.lowStockProducts;
-                    setEditableLowStock(source.map(p => ({
-                      ...p,
-                      orderQty: orderQty[p._id] !== undefined
-                        ? orderQty[p._id]
-                        : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
-                    })));
-                    setShowLowStockEditor(true);
-                  }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
-                  <button className="btn btn-success btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
-                    const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-                    const source = activeListFilter
-                      ? data.lowStockProducts.filter(p => {
-                          const lst = productLists.find(l => l._id === activeListFilter);
-                          return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
-                        })
-                      : data.lowStockProducts;
-                    const lines = source.map(p => `  • ${p.name}: *${getOrderQty(p)} ${p.unit}*`).join('\n');
-                    const msg = encodeURIComponent(`*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${source.length} items`);
-                    window.open(`https://wa.me/?text=${msg}`, '_blank');
-                  }}><Phone size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Send Order</span></button>
-                </>
+                <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
+                  const threshold = parseInt(settings?.low_stock_threshold) || 10;
+                  const source = activeListFilter
+                    ? data.lowStockProducts.filter(p => {
+                        const lst = productLists.find(l => l._id === activeListFilter);
+                        return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
+                      })
+                    : data.lowStockProducts;
+                  const initialItems = source.map(p => ({
+                    ...p,
+                    selected: true,
+                    orderQty: p.saved_order_qty > 0
+                      ? p.saved_order_qty
+                      : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
+                  }));
+                  initialItems.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1, selected: false });
+                  setEditableLowStock(initialItems);
+                  setShowLowStockEditor(true);
+                }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
               )}
               <Link to="/products" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }}>{t('Manage', 'प्रबंधन')}</Link>
             </div>
@@ -3539,6 +3483,11 @@ export default function AdminDashboard() {
                           }}>
                             {isOut ? '⚠ Out of Stock' : `${p.stock} ${p.unit} left`}
                           </span>
+                          {p.last_updated_by && (
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <Edit2 size={9} /> Edited by {p.last_updated_by.display_name || p.last_updated_by.username}
+                            </div>
+                          )}
                         </div>
                         {/* Stepper control */}
                         <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, borderRadius: 8, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
@@ -3706,7 +3655,7 @@ export default function AdminDashboard() {
             onClick={e => e.stopPropagation()}
             style={{
               background: '#fff', borderRadius: 16, width: '100%', maxWidth: 660,
-              maxHeight: '92vh', display: 'flex', flexDirection: 'column',
+              height: '80vh', maxHeight: 800, display: 'flex', flexDirection: 'column',
               boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
             }}
           >
@@ -3737,29 +3686,146 @@ export default function AdminDashboard() {
               >✕</button>
             </div>
 
-            {/* List body — scrollable */}
-            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
-              {/* Table header */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)' }}>
+            {/* List filters inside modal */}
+            {productLists.length > 0 && data.lowStockProducts?.length > 0 && (
+              <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#fafbff', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
+                <button
+                  onClick={() => setActiveListFilter(null)}
+                  style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#fff' : 'var(--text-muted)' }}
+                >
+                  All Items
+                </button>
+                {productLists.map(list => {
+                  const listProductIds = (list.products || []).map(p => p._id || p);
+                  const lowInList = data.lowStockProducts.filter(p => listProductIds.includes(p._id)).length;
+                  if (lowInList === 0) return null;
+                  return (
+                    <button
+                      key={list._id}
+                      onClick={() => setActiveListFilter(list._id === activeListFilter ? null : list._id)}
+                      style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5, background: activeListFilter === list._id ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === list._id ? '#fff' : 'var(--text-muted)' }}
+                    >
+                      <List size={11} />
+                      {list.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Table header */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ width: 24, display: 'flex', justifyContent: 'center' }}>
+                  <input type="checkbox"
+                    checked={editableLowStock.filter(p => {
+                      if (activeListFilter && !p._id?.startsWith('custom-')) {
+                        const lst = productLists.find(l => l._id === activeListFilter);
+                        return lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
+                      }
+                      return true;
+                    }).every(p => p.selected !== false)}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setEditableLowStock(prev => prev.map(p => {
+                        let inView = true;
+                        if (activeListFilter && !p._id?.startsWith('custom-')) {
+                          const lst = productLists.find(l => l._id === activeListFilter);
+                          inView = lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
+                        }
+                        const isEmptyCustom = p._id?.startsWith('custom-') && (!p.name || p.name.trim() === '');
+                        return (inView && !isEmptyCustom) ? { ...p, selected: checked } : p;
+                      }));
+                    }}
+                    style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }}
+                  />
+                </div>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Item Name</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center', minWidth: 120 }}>Order Qty</span>
-                <span style={{ width: 32 }}></span>
               </div>
 
-              {editableLowStock.map((p, idx) => (
+              {/* List body — scrollable */}
+              <div style={{ overflowY: 'auto', flex: 1, padding: '0 0 8px 0' }}>
+
+              {editableLowStock.map((p, idx) => {
+                if (activeListFilter && !p._id?.startsWith('custom-')) {
+                  const lst = productLists.find(l => l._id === activeListFilter);
+                  const inList = lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
+                  if (!inList) return null;
+                }
+                return (
                 <div
                   key={p._id || idx}
-                  style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafbff' }}
+                  style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafbff', opacity: p.selected === false ? 0.6 : 1 }}
                 >
-                  {/* Item name input */}
-                  <input
-                    value={p.name}
-                    onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], name: e.target.value }; return u; })}
-                    placeholder="Item name"
-                    style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                    onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                  />
+                  <div style={{ width: 24, display: 'flex', justifyContent: 'center' }}>
+                    <input type="checkbox" checked={p.selected !== false} onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], selected: e.target.checked }; return u; })} style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }} />
+                  </div>
+                  {/* Item Info / Autocomplete */}
+                  <div style={{ position: 'relative' }}>
+                    {p._id?.startsWith('custom-') ? (
+                      <>
+                        <input
+                          value={p.name}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setEditableLowStock(prev => { 
+                              const u = [...prev]; 
+                              u[idx] = { ...u[idx], name: val }; 
+                              if (idx === u.length - 1 && val.trim() !== '') {
+                                u[idx].selected = true;
+                                u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1, selected: false });
+                              }
+                              return u; 
+                            });
+                          }}
+                          placeholder="Item name"
+                          style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                          onFocus={e => { e.target.style.borderColor = 'var(--primary)'; setFocusedItemIdx(idx); }}
+                          onBlur={e => {
+                            e.target.style.borderColor = 'var(--border)';
+                            setTimeout(() => setFocusedItemIdx(null), 200);
+                          }}
+                        />
+                        {focusedItemIdx === idx && p.name && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', zIndex: 50, maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginTop: 4 }}>
+                            {data.allProducts?.filter(prod => prod.name.toLowerCase().includes(p.name.toLowerCase()) && !editableLowStock.some(ep => ep._id === prod._id)).map(prod => (
+                              <div key={prod._id}
+                                   onClick={() => {
+                                     setEditableLowStock(prev => {
+                                        const u = [...prev];
+                                        u[idx] = { _id: prod._id, name: prod.name, stock: prod.stock, unit: prod.unit, orderQty: prod.saved_order_qty > 0 ? prod.saved_order_qty : 1 };
+                                        if (idx === u.length - 1) {
+                                          u[idx].selected = true;
+                                          u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1, selected: false });
+                                        }
+                                        return u;
+                                     });
+                                   }}
+                                   style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                                   onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                                   onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                              >
+                                <div style={{ fontWeight: 600, fontSize: 13 }}>{prod.name}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{prod.stock} {prod.unit} left</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ paddingLeft: 4 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                        <div style={{ display: 'inline-block', fontSize: 10, background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: 20, fontWeight: 700, border: '1px solid #fde68a', marginTop: 2 }}>
+                          {p.stock} {p.unit} left
+                        </div>
+                        {p.last_updated_by && (
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <Edit2 size={9} /> Edited by {p.last_updated_by.display_name || p.last_updated_by.username}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {/* Stepper */}
                   <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minWidth: 120 }}>
                     <button
@@ -3781,82 +3847,47 @@ export default function AdminDashboard() {
                       onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
                     ><Plus size={12} /></button>
                   </div>
-                  {/* Remove */}
-                  <button
-                    onClick={() => setEditableLowStock(prev => prev.filter((_, i) => i !== idx))}
-                    style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 7, cursor: 'pointer', color: 'var(--danger)', transition: 'all 0.15s', flexShrink: 0 }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#fecaca'; }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
                 </div>
-              ))}
+                );
+              })}
 
-              {/* Add Item */}
-              <div style={{ padding: '10px 16px' }}>
-                <button
-                  onClick={() => setEditableLowStock(prev => [...prev, { _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1 }])}
-                  style={{ width: '100%', padding: '9px', border: '1.5px dashed #cbd5e1', borderRadius: 9, background: 'transparent', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
-                >
-                  <Plus size={14} /> Add Item
-                </button>
-              </div>
             </div>
 
             {/* Modal Footer */}
-            <div style={{ padding: '14px 20px', borderTop: '1.5px solid var(--border)', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ padding: '14px 20px', borderTop: '1.5px solid var(--border)', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
               <button
                 onClick={() => setShowLowStockEditor(false)}
                 style={{ padding: '8px 18px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
               >Cancel</button>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {/* Save List */}
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--primary)' }}
+                  onClick={async () => {
+                    try {
+                      const updates = editableLowStock.filter(p => p.selected !== false && p.name && p.name.trim() !== '').map(p => ({ _id: p._id, saved_order_qty: p.orderQty }));
+                      await productApi.bulkOrderQty(updates);
+                      setShowLowStockEditor(false);
+                      dashboardApi.get(selectedDate).then(d => {
+                        setData(d);
+                        setOrderQty({});
+                      });
+                    } catch (e) { toast.error(e.message || 'Failed to save'); console.error(e); }
+                  }}
+                ><Save size={13} /> <span>Save</span></button>
                 {/* WhatsApp */}
                 <button
                   className="btn btn-success btn-sm"
                   style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                   onClick={() => {
                     const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-                    const lines = editableLowStock.filter(p => p.orderQty > 0 && p.name).map(p => `  • ${p.name}: *${p.orderQty} ${p.unit || ''}*`).join('\n');
-                    const msg = encodeURIComponent(`*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${editableLowStock.filter(p => p.orderQty > 0 && p.name).length} items`);
+                    const validItems = editableLowStock.filter(p => p.selected !== false && p.orderQty > 0 && p.name);
+                    const lines = validItems.map(p => `  • ${p.name}: *${p.orderQty} ${p.unit || ''}*`).join('\n');
+                    const msg = encodeURIComponent(`*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${validItems.length} items`);
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
                   }}
                 ><Phone size={13} /> <span>WhatsApp</span></button>
-                {/* PDF */}
-                <button
-                  className="btn btn-primary btn-sm"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                  onClick={() => {
-                    const prevTitle = document.title;
-                    document.title = `Stock-Order-${getTodayIST()}`;
-                    const rows = editableLowStock.filter(p => p.orderQty > 0 && p.name).map((p, i) =>
-                      `<tr style="border-bottom:1px solid #e5e7eb">
-                          <td style="padding:8px 12px">${i + 1}</td>
-                          <td style="padding:8px 12px;font-weight:600">${p.name}</td>
-                          <td style="padding:8px 12px;text-align:right;color:#2563eb;font-weight:800">${p.orderQty} ${p.unit || ''}</td>
-                        </tr>`).join('');
-                    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
-                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${document.title}</title>
-                        <style>@page{margin:12mm 10mm;size:A4;}body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;}
-                        table{width:100%;border-collapse:collapse;}thead tr{background:#1a1f2e;color:#fff;}
-                        th{padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}</style>
-                        </head><body>
-                        <div style="display:flex;justify-content:space-between;padding-bottom:14px;border-bottom:2px solid #1a1f2e;margin-bottom:18px">
-                          <div><h2 style="margin:0">${settings?.business_name || 'My Shop'}</h2>
-                          <p style="margin:4px 0;color:#6b7280">Low Stock Report — ${today}</p></div>
-                        </div>
-                        <table><thead><tr><th>#</th><th>Item Name</th>
-                          <th style="text-align:right;color:#93c5fd">Order Qty</th></tr></thead>
-                        <tbody>${rows}</tbody></table>
-                        </body></html>`;
-                    const win = window.open('', '_blank', 'width=900,height=700');
-                    win.document.write(html);
-                    win.document.close();
-                    win.onload = () => { win.focus(); win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
-                  }}
-                ><FileText size={13} /> <span>PDF</span></button>
               </div>
             </div>
           </div>

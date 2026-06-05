@@ -125,7 +125,7 @@ router.get('/', async (req, res) => {
       // 5. Product count
       Product.countDocuments({ is_active: true, ...(await getProductOwnerFilter(req)) }),
       // 6. All active products — used for both allProducts dropdown AND low stock filtering
-      Product.find({ is_active: true, ...(await getProductOwnerFilter(req)) }).populate('created_by', 'username display_name role').select('name price stock unit gst is_active custom_low_stock weight_per_unit created_by').sort({ name: 1 }),
+      Product.find({ is_active: true, ...(await getProductOwnerFilter(req)) }).populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role').select('name price stock unit gst is_active custom_low_stock weight_per_unit created_by saved_order_qty last_updated_by updatedAt').sort({ name: 1 }),
       // 7. Recent invoices (sidebar widget)
       Invoice.find(notCancelled).sort({ date: -1 }).limit(5),
       // 9. All invoices on selected date (Today's Sale drill-down)
@@ -288,6 +288,8 @@ router.get('/', async (req, res) => {
         custom_low_stock: p.custom_low_stock != null ? p.custom_low_stock : null,
         weight_per_unit: p.weight_per_unit || 0,
         created_by: p.created_by,
+        saved_order_qty: p.saved_order_qty || 0,
+        last_updated_by: p.last_updated_by || null,
       })),
       // lowStockProducts — filtered using per-product or global threshold
       lowStockProducts: lowStockProducts.map(p => ({
@@ -299,6 +301,8 @@ router.get('/', async (req, res) => {
         gst: p.gst || 0,
         custom_low_stock: p.custom_low_stock != null ? p.custom_low_stock : null,
         weight_per_unit: p.weight_per_unit || 0,
+        saved_order_qty: p.saved_order_qty || 0,
+        last_updated_by: p.last_updated_by || null,
       })),
       customersWithDues: registeredPending,
       salesByDay: salesByDay.map(d => ({ day: d._id, sales: d.sales, count: d.count })),
@@ -406,7 +410,7 @@ router.post('/record-payment', async (req, res) => {
       amount: originalPaid,
       mode: mode || 'cash',
       reference: ref,
-      notes: 'Auto-recorded payment',
+      notes: advance > 0 && originalPaid === advance ? 'Advance Received' : 'Due Received',
       date: now,
       ist_date,
       ist_formatted: formatIST(now),

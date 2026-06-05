@@ -10,6 +10,36 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [socket, setSocket] = useState(null);
 
+  const convertAutoDraftsToSaved = () => {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('invoice_auto_draft_')) {
+        const userId = key.replace('invoice_auto_draft_', '');
+        const autoDraftRaw = localStorage.getItem(key);
+        if (autoDraftRaw) {
+          try {
+            const autoDraft = JSON.parse(autoDraftRaw);
+            if (autoDraft && autoDraft.items && autoDraft.items.length > 0) {
+              const draftsKey = `invoice_drafts_${userId}`;
+              const existingDrafts = JSON.parse(localStorage.getItem(draftsKey) || '[]');
+              const savedDraft = {
+                ...autoDraft,
+                id: Date.now().toString() + Math.floor(Math.random() * 1000),
+                name: `Auto-saved Session Draft`,
+                date: new Date().toISOString()
+              };
+              existingDrafts.push(savedDraft);
+              localStorage.setItem(draftsKey, JSON.stringify(existingDrafts));
+            }
+          } catch (e) {
+            console.error('Error migrating auto draft', e);
+          }
+        }
+        localStorage.removeItem(key);
+      }
+    }
+  };
+
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('shopbill_token');
     if (!token) { setLoading(false); return; }
@@ -17,6 +47,7 @@ export function AuthProvider({ children }) {
       const me = await authApi.me();
       setUser(me);
     } catch {
+      convertAutoDraftsToSaved();
       localStorage.removeItem('shopbill_token');
       setUser(null);
     } finally {
@@ -85,13 +116,8 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try { await authApi.logout(); } catch (e) { console.error('Logout error', e); }
     localStorage.removeItem('shopbill_token');
-    // Clear auto drafts on logout so they don't persist across sessions
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('invoice_auto_draft_')) {
-        localStorage.removeItem(key);
-      }
-    }
+    // Convert auto drafts to explicitly saved drafts on logout so they don't get lost
+    convertAutoDraftsToSaved();
     setUser(null);
     window.location.href = '/login';
   };

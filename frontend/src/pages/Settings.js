@@ -254,6 +254,11 @@ export default function Settings() {
                     { value: false, title: '❌ GST Disabled', desc: 'Tax columns will be hidden for a cleaner look.' }
                   ], 'GST Mode')}
 
+                  {admin?.role !== 'temp_manager' && radioGroup('customize_prev_due_enabled', [
+                    { value: true, title: '✅ Show Customize Previous Due', desc: 'Allow managers to selectively include/exclude past invoices when printing new bills.' },
+                    { value: false, title: '❌ Hide Customize Previous Due', desc: 'Strictly enforce the system-calculated previous due without allowing manual edits.' }
+                  ], 'Customize Previous Due')}
+
                   {radioGroup('discount_enabled', [
                     { value: true, title: '✅ Show Discount', desc: 'Enable overall discount field during billing.' },
                     { value: false, title: '❌ Hide Discount', desc: 'Keep billing simplified without discount fields.' }

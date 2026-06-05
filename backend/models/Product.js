@@ -4,6 +4,9 @@ const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   category: { type: String, default: '', trim: true },
   price: { type: Number, required: true, min: 0 },
+  supplier_base_price: { type: Number, default: 0 }, // Last incoming base purchase price
+  last_delivery_final_price: { type: Number, default: 0 }, // Final price set in recent delivery
+  saved_order_qty: { type: Number, default: 0 }, // Persisted order qty for Low Stock Alerts
   stock: { type: Number, required: true, default: 0, min: 0 },
   gst: { type: Number, required: true, default: 0, min: 0, max: 100 },
   unit: { type: String, default: 'pcs', trim: true },

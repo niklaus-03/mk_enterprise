@@ -66,7 +66,7 @@ function UnitInput({ value, onChange, placeholder = 'bag' }) {
 
 const emptyForm = {
   name: '', price: '', gst: '0', unit: 'bag', stock: '0',
-  weight_per_unit: '', suggested_price: '', custom_low_stock: '', is_active: true,
+  weight_per_unit: '', suggested_price: '', custom_low_stock: '', supplier_base_price: 0, last_delivery_final_price: 0, is_active: true,
 };
 
 export default function Products() {
@@ -356,35 +356,18 @@ export default function Products() {
       weight_per_unit: String(p.weight_per_unit || ''),
       suggested_price: String(p.suggested_price || ''),
       custom_low_stock: p.custom_low_stock != null ? String(p.custom_low_stock) : '',
+      supplier_base_price: p.supplier_base_price || 0,
+      last_delivery_final_price: p.last_delivery_final_price || 0,
       is_active: p.is_active !== false,
     });
     setPriceCalculated(false);
     setShowForm(true);
   };
 
-  // Auto-calculate suggested price whenever base, weight, or gst changes
-  useEffect(() => {
-    if (priceCalculated) return;
-    
-    const base = parseFloat(form.price) || 0;
-    if (base === 0) return;
-
-    const weight = parseFloat(form.weight_per_unit) || 0;
-    const quintalCharge = parseFloat(settings?.tax_per_quintal) || 0;
-    const gst = parseFloat(form.gst) || 0;
-
-    const quintalAdj = weight > 0 && quintalCharge > 0
-      ? (weight / 100) * quintalCharge
-      : 0;
-    const beforeGST = base + quintalAdj;
-    const gstAmt = (beforeGST * gst) / 100;
-    const suggested = parseFloat((beforeGST + gstAmt).toFixed(2));
-
-    setForm(f => ({ ...f, suggested_price: String(suggested) }));
-  }, [form.price, form.weight_per_unit, form.gst, settings?.tax_per_quintal, priceCalculated]);
+  // Removed auto-calc useEffect
 
   const calcSuggestedPrice = () => {
-    const base = parseFloat(form.price) || 0;
+    const base = parseFloat(form.supplier_base_price) || 0;
     const weight = parseFloat(form.weight_per_unit) || 0;
     const quintalCharge = parseFloat(settings?.tax_per_quintal) || 0;
     const gst = parseFloat(form.gst) || 0;
@@ -403,9 +386,10 @@ export default function Products() {
     toast.success(`Suggested price: ₹${suggested}`, { duration: 2000 });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e) => {
+    if (e) e.preventDefault();
     if (!form.name.trim()) return toast.error('Product name required');
-    if (!form.price) return toast.error('Base price required');
+    if (!form.price) return toast.error('Base Price (Selling) required');
     setSaving(true);
     try {
       const payload = {
@@ -671,15 +655,22 @@ export default function Products() {
                 <div className="form-hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>Used for quintal price calculation</div>
               </div>
 
-              {/* Base Price */}
+              {/* Final Selling Price */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 6' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: walkinTripStarted || user?.role === 'walkin_manager' ? '#c5a059' : 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Base Price ₹ * {(walkinTripStarted || user?.role === 'walkin_manager') && <span style={{ fontSize: 9, color: '#c5a059' }}>(editable)</span>}</label>
+                <label className="form-label" style={{ fontWeight: 700, color: walkinTripStarted || user?.role === 'walkin_manager' ? '#c5a059' : 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Final Selling Price ₹ * {(walkinTripStarted || user?.role === 'walkin_manager') && <span style={{ fontSize: 9, color: '#c5a059' }}>(editable)</span>}</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.price}
                   onChange={e => { setForm(f => ({ ...f, price: e.target.value })); setPriceCalculated(false); }}
                   onFocus={e => { if (form.price === '0') setForm(f => ({ ...f, price: '' })); }}
                   onBlur={e => { if (form.price === '') setForm(f => ({ ...f, price: '0' })); }}
                   placeholder="0.00" style={{ borderRadius: 8, borderColor: walkinTripStarted || user?.role === 'walkin_manager' ? '#c5a059' : undefined }} />
+                {editId && user?.role === 'supervisor' && (form.supplier_base_price > 0 || form.last_delivery_final_price > 0) && (
+                  <div style={{ marginTop: 6, fontSize: 11.5, color: form.last_delivery_final_price > 0 ? '#16a34a' : 'var(--text-muted)', fontWeight: 600 }}>
+                    {form.last_delivery_final_price > 0 
+                      ? `Recent Delivery — Base: ₹${form.supplier_base_price.toFixed(2)} | Final: ₹${form.last_delivery_final_price.toFixed(2)}`
+                      : `Recent Delivery — Base: ₹${form.supplier_base_price > 0 ? form.supplier_base_price.toFixed(2) : '0.00'} | Final: Not set`}
+                  </div>
+                )}
               </div>
 
               {/* GST */}
@@ -836,7 +827,7 @@ export default function Products() {
           ) : (
             <>
               {window.innerWidth < 768 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 16px', padding: '10px 14px', background: 'var(--primary-light)', border: '1px solid #bae6fd', borderRadius: 10, color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 16px', padding: '10px 8px', background: 'var(--primary-light)', border: '1px solid #bae6fd', borderRadius: 10, color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
                   <Info size={14} style={{ flexShrink: 0 }} />
                   <span>Swipe horizontally ↔ to view full details (GST, Weight, Stock, Actions).</span>
                 </div>
@@ -849,7 +840,7 @@ export default function Products() {
                       ? ['Product Name', 'Price', 'Stock', 'Actions'] 
                       : ['Product Name', 'Base Price', 'GST', 'Final Price', 'Weight', 'Stock', 'Actions']
                     ).map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: h.includes('Price') || h === 'Stock' || h === 'GST' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                      <th key={h} style={{ padding: '10px 8px', textAlign: h.includes('Price') || h === 'Stock' || h === 'GST' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -868,7 +859,7 @@ export default function Products() {
 
                     return (
                       <tr id={`product-${p._id}`} key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: highlightId === p._id ? 'var(--warning-light)' : (!p.is_active ? 'var(--bg-hover)' : idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)'), transition: 'background-color 0.5s ease' }}>
-                        <td style={{ padding: '10px 14px' }}>
+                        <td style={{ padding: '10px 8px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                               {hl(p.name)}
@@ -886,27 +877,27 @@ export default function Products() {
                             )}
                           </div>
                         </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
                           <div style={{ fontSize: 14 }}>{fc(p.price)}</div>
-                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, maxWidth: 100 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={10} /> {formatLastUpdated(p.updatedAt)}</div>
-                            {p.last_updated_by && user?.role !== 'walkin_manager' && <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
+                            {p.last_updated_by && user?.role !== 'walkin_manager' && <div style={{ fontSize: 8.5, color: 'var(--text-muted)', whiteSpace: 'normal', textAlign: 'right' }}>by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
                           </div>
                         </td>
                         {user?.role !== 'walkin_manager' && (
                           <>
-                            <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--text-muted)' }}>
+                            <td style={{ padding: '10px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>
                               {p.gst}%
                             </td>
-                            <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                            <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
                               {p.suggested_price > 0 ? fc(p.suggested_price) : <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>—</span>}
                             </td>
-                            <td style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--text-muted)' }}>
+                            <td style={{ padding: '10px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>
                               {p.weight_per_unit > 0 ? `${p.weight_per_unit} kg` : '—'}
                             </td>
                           </>
                         )}
-                        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                           <span style={{ fontWeight: 700, color: stockColor }}>
                             {p.stock} {p.unit}
                           </span>
@@ -917,15 +908,16 @@ export default function Products() {
                             <span style={{ marginLeft: 4, fontSize: 10, background: 'var(--warning-light)', color: '#92400e', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>Low</span>
                           )}
                         </td>
-                        <td style={{ padding: '10px 14px' }}>
+                        <td style={{ padding: '10px 8px' }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             {isAdmin && (
                               <button 
                                 className="btn btn-outline btn-sm" 
                                 onClick={() => setShareModal(p)}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#3b82f6', borderColor: '#bfdbfe' }}
+                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: 6, color: '#3b82f6', borderColor: '#bfdbfe' }}
+                                title="Share"
                               >
-                                <Share2 size={12} /> Share
+                                <Share2 size={14} />
                               </button>
                             )}
                             {user?.role !== 'temp_manager' && (
@@ -933,13 +925,15 @@ export default function Products() {
                                 <button 
                                   className="btn btn-outline btn-sm" 
                                   onClick={() => openEdit(p)}
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}
+                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: 6 }}
+                                  title="Edit"
                                 >
-                                  <Edit size={12} />{t('Edit', 'संपादित करें')}</button>
+                                  <Edit size={14} />
+                                </button>
                                 {user?.role === 'supervisor' && (
                                   <button 
                                     className="btn btn-ghost btn-sm" 
-                                    style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }}
+                                    style={{ color: '#ef4444', padding: '6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                                     onClick={() => setDeleteConfirmId(p._id)}
                                     title="Delete Product"
                                   >

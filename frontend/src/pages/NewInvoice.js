@@ -50,6 +50,7 @@ export default function NewInvoice() {
   const { theme } = useTheme();
   const gstEnabled = settings.gst_enabled !== false;
   const discountEnabled = settings.discount_enabled !== false;
+  const customizePrevDueEnabled = settings.customize_prev_due_enabled !== false;
   
   const [step, setStep] = useState((user?.role === 'supervisor') ? 0 : 1); // Wizard Steps: 0 = Booklet, 1 = Customer, 2 = Product, 3 = Details
   const [customers, setCustomers] = useState([]);
@@ -72,6 +73,8 @@ export default function NewInvoice() {
   const [managers, setManagers] = useState([]);
   const [walkIn, setWalkIn] = useState({ prefix: 'Shree', name: '', phone: '', address: '' });
   const [prevBalance, setPrevBalance] = useState(0);
+  const [balanceBreakdown, setBalanceBreakdown] = useState(null);
+  const [breakdownSelections, setBreakdownSelections] = useState(null);
   const [allowEditPrevDue, setAllowEditPrevDue] = useState(false);
   const [editedPrevDue, setEditedPrevDue] = useState('');
   const [walkinMatch, setWalkinMatch] = useState(null);
@@ -245,17 +248,51 @@ export default function NewInvoice() {
         } else {
           setPrevBalance(c.balance || 0);
         }
+        customerApi.getBalanceBreakdown(customerId, { manager_id: selectedManagerForBill })
+          .then(res => {
+            setBalanceBreakdown(res);
+            setPrevBalance(res.total_balance || 0);
+          })
+          .catch(err => console.error(err));
       } else {
         setPrevBalance(0);
+        setBalanceBreakdown(null);
       }
     } else {
       setPrevBalance(0);
+      setBalanceBreakdown(null);
     }
   }, [customerId, customerMode, customers, selectedManagerForBill]);
 
   useEffect(() => {
     setEditedPrevDue(prevBalance.toString());
   }, [prevBalance]);
+
+  useEffect(() => {
+    if (balanceBreakdown) {
+      setBreakdownSelections({
+        opening_balance: { selected: true, amount: balanceBreakdown.opening_balance || 0 },
+        advance: { selected: true, amount: balanceBreakdown.unregistered_advance || 0 },
+        invoices: (balanceBreakdown.unpaid_invoices || []).reduce((acc, inv) => {
+          acc[inv._id] = { selected: true, amount: inv.balance_due || 0 };
+          return acc;
+        }, {})
+      });
+    } else {
+      setBreakdownSelections(null);
+    }
+  }, [balanceBreakdown]);
+
+  const getComputedTreeBalance = () => {
+    if (!breakdownSelections) return parseFloat(editedPrevDue) || 0;
+    let sum = 0;
+    if (breakdownSelections.opening_balance?.selected) sum += parseFloat(breakdownSelections.opening_balance.amount) || 0;
+    Object.values(breakdownSelections.invoices || {}).forEach(inv => {
+      if (inv.selected) sum += parseFloat(inv.amount) || 0;
+    });
+    if (breakdownSelections.advance?.selected) sum -= parseFloat(breakdownSelections.advance.amount) || 0;
+    return sum;
+  };
 
   const handleConvertToOrder = () => {
     const validItems = items.filter(i => i.product_name && parseFloat(i.qty) > 0);
@@ -615,7 +652,7 @@ export default function NewInvoice() {
   const vc = parseFloat(vehicleCharge) || 0;
   const lc = parseFloat(labourCharge) || 0;
   const total = Math.max(0, subtotal + gstTotal - dis) + vc + lc;
-  const activePrevBalance = allowEditPrevDue ? (parseFloat(editedPrevDue) || 0) : prevBalance;
+  const activePrevBalance = allowEditPrevDue ? (balanceBreakdown && breakdownSelections ? getComputedTreeBalance() : (parseFloat(editedPrevDue) || 0)) : prevBalance;
   const totalWithPrev = total + activePrevBalance;
   const amtReceived = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
   const balanceDue = totalWithPrev - amtReceived;
@@ -1190,7 +1227,30 @@ export default function NewInvoice() {
                         <strong style={{ fontFamily: 'monospace' }}>{fc(prevBalance)}</strong>
                       </div>
                       
-                      {['supervisor', 'manager', 'walkin_manager'].includes(user?.role) && prevBalance > 0 && (
+                      {balanceBreakdown && prevBalance > 0 && !allowEditPrevDue && customizePrevDueEnabled && (
+                        <div style={{ marginLeft: 12, paddingLeft: 12, borderLeft: '2px solid var(--border)', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {balanceBreakdown.opening_balance > 0.01 && (
+                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
+                               <span>Opening Balance:</span>
+                               <span style={{ fontFamily: 'monospace' }}>{fc(balanceBreakdown.opening_balance)}</span>
+                             </div>
+                          )}
+                          {balanceBreakdown.unpaid_invoices_sum > 0.01 && (
+                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
+                               <span>Previous Invoices ({balanceBreakdown.unpaid_invoices.length}):</span>
+                               <span style={{ fontFamily: 'monospace' }}>{fc(balanceBreakdown.unpaid_invoices_sum)}</span>
+                             </div>
+                          )}
+                          {balanceBreakdown.unregistered_advance > 0.01 && (
+                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
+                               <span>Unregistered Balance:</span>
+                               <span style={{ fontFamily: 'monospace' }}>-{fc(balanceBreakdown.unregistered_advance)}</span>
+                             </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {['supervisor', 'manager', 'walkin_manager'].includes(user?.role) && prevBalance > 0 && customizePrevDueEnabled && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', borderTop: '1px dashed var(--border)', paddingTop: '8px' }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '600', color: 'var(--text)' }}>
                             <input 
@@ -1199,18 +1259,61 @@ export default function NewInvoice() {
                               onChange={(e) => setAllowEditPrevDue(e.target.checked)} 
                               style={{ cursor: 'pointer' }}
                             />
-                            Allow editing Previous Due
+                            {balanceBreakdown ? 'Customize Previous Due' : 'Allow editing Previous Due'}
                           </label>
                           {allowEditPrevDue && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>New Amount:</span>
-                              <input 
-                                type="number" 
-                                className="form-control form-control-sm"
-                                value={editedPrevDue}
-                                onChange={(e) => setEditedPrevDue(e.target.value)}
-                                style={{ width: '100px', padding: '4px 8px' }}
-                              />
+                            <div style={{ marginTop: 8 }}>
+                              {!balanceBreakdown ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>New Amount:</span>
+                                  <input 
+                                    type="number" 
+                                    className="form-control form-control-sm"
+                                    value={editedPrevDue}
+                                    onChange={(e) => setEditedPrevDue(e.target.value)}
+                                    style={{ width: '100px', padding: '4px 8px' }}
+                                  />
+                                </div>
+                              ) : (
+                                breakdownSelections && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid var(--primary)', paddingLeft: 10 }}>
+                                    {true && (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: 0, cursor: 'pointer' }}>
+                                          <input type="checkbox" checked={breakdownSelections.opening_balance?.selected} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, opening_balance: { ...prev.opening_balance, selected: e.target.checked } }))} />
+                                          Opening Balance
+                                        </label>
+                                        <input type="number" className="form-control form-control-sm" value={breakdownSelections.opening_balance?.amount} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, opening_balance: { ...prev.opening_balance, amount: e.target.value } }))} style={{ width: 80, fontSize: 12, padding: '2px 6px', height: 26 }} />
+                                      </div>
+                                    )}
+                                    
+                                    {balanceBreakdown.unpaid_invoices.map(inv => (
+                                      <div key={inv._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: 0, cursor: 'pointer' }}>
+                                          <input type="checkbox" checked={breakdownSelections.invoices[inv._id]?.selected} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, invoices: { ...prev.invoices, [inv._id]: { ...prev.invoices[inv._id], selected: e.target.checked } } }))} />
+                                          {inv.invoice_number || 'Walk-in Bill'}
+                                        </label>
+                                        <input type="number" className="form-control form-control-sm" value={breakdownSelections.invoices[inv._id]?.amount} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, invoices: { ...prev.invoices, [inv._id]: { ...prev.invoices[inv._id], amount: e.target.value } } }))} style={{ width: 80, fontSize: 12, padding: '2px 6px', height: 26 }} />
+                                      </div>
+                                    ))}
+
+                                    {true && (
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: 0, cursor: 'pointer' }}>
+                                          <input type="checkbox" checked={breakdownSelections.advance?.selected} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, advance: { ...prev.advance, selected: e.target.checked } }))} />
+                                          Unregistered Balance (Subtracts)
+                                        </label>
+                                        <input type="number" className="form-control form-control-sm" value={breakdownSelections.advance?.amount} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, advance: { ...prev.advance, amount: e.target.value } }))} style={{ width: 80, fontSize: 12, padding: '2px 6px', height: 26 }} />
+                                      </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700 }}>Customized Due:</span>
+                                      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{fc(getComputedTreeBalance())}</span>
+                                    </div>
+                                  </div>
+                                )
+                              )}
                             </div>
                           )}
                         </div>

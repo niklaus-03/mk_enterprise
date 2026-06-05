@@ -2,8 +2,9 @@ const fs = require('fs');
 
 let content = fs.readFileSync('frontend/src/pages/AdminDashboard.js', 'utf8');
 
-const searchStr = '              </button>\n\n              <SortDropdown';
-const searchStr2 = '              </button>\r\n\r\n              <SortDropdown';
+const searchStr = `              </button>
+
+              <SortDropdown`;
 
 const replaceStr = `              </button>
 
@@ -19,11 +20,11 @@ const replaceStr = `              </button>
 if (content.includes(searchStr)) {
   content = content.replace(searchStr, replaceStr);
   fs.writeFileSync('frontend/src/pages/AdminDashboard.js', content);
-  console.log('Success (LF)');
-} else if (content.includes(searchStr2)) {
-  content = content.replace(searchStr2, replaceStr.replace(/\n/g, '\r\n'));
+  console.log('Success exact match');
+} else if (content.includes(searchStr.replace(/\r\n/g, '\n'))) {
+  content = content.replace(searchStr.replace(/\r\n/g, '\n'), replaceStr.replace(/\r\n/g, '\n'));
   fs.writeFileSync('frontend/src/pages/AdminDashboard.js', content);
-  console.log('Success (CRLF)');
+  console.log('Success LF match');
 } else {
-  console.log('Not found');
+  console.log('Not found at all');
 }

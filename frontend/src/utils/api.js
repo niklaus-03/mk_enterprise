@@ -1,9 +1,6 @@
 import axios from 'axios';
 
-const baseURL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000/api"
-    : "http://192.168.1.41:5000/api";
+const baseURL = `http://${window.location.hostname}:5000/api`;
 
 const api = axios.create({
   baseURL,
@@ -106,6 +103,7 @@ export const productApi = {
   get: (id) => api.get(`/products/${id}`),
   create: (data) => api.post('/products', data),
   update: (id, data) => api.put(`/products/${id}`, data),
+  bulkOrderQty: (updates) => api.post('/products/bulk-order-qty', { updates }),
   delete: (id) => api.delete(`/products/${id}`),
   adjustStock: (id, data) => api.patch(`/products/${id}/stock`, data),
   delegate: (id, manager_id) => api.post(`/products/${id}/delegate`, { manager_id }),

@@ -188,7 +188,6 @@ export default function ManagerDashboard() {
       : settlementSortDate === 'asc' ? 'date_asc' : 'date_desc';
   // Fix 3: View mode — 'date' = selected date, 'all' = full history
   const [settlementViewMode, setSettlementViewMode] = useState('date');
-
   const scrollToPanel = (ref) => {
     setTimeout(() => {
       if (ref?.current) {
@@ -198,12 +197,10 @@ export default function ManagerDashboard() {
   };
 
   // Global selected date — drives full dashboard refresh
-  const [selectedDate, setSelectedDate] = useState(getTodayIST());
+  const { globalDate: selectedDate, setGlobalDate: setSelectedDate } = useApp();
   // Reactive — recalculates on every render when selectedDate changes
   const isToday = selectedDate === getTodayIST();
 
-  // Live clock
-  const liveTime = useLiveClock();
   const liveTimeIST = liveTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   const liveDateIST = liveTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -271,6 +268,7 @@ export default function ManagerDashboard() {
   const [orders, setOrders] = useState([]);
   const [showDeparture, setShowDeparture] = useState(false);
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+  const [confirmDeliveryId, setConfirmDeliveryId] = useState(null);
   // Helper: get current datetime in datetime-local input format (IST)
   const getNowDateTimeLocal = () => {
     const now = new Date();
@@ -284,13 +282,14 @@ export default function ManagerDashboard() {
     expected_arrival: getNowDateTimeLocal(), // default = today now
     notes: '',
     items: [
-      { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
-      { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' },
     ],
   });
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [editDeliveryId, setEditDeliveryId] = useState(null);
   const [supplierSuggestions, setSupplierSuggestions] = useState([]);
+  const [deliverySupplierInput, setDeliverySupplierInput] = useState('');
   const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
   const [deliveryDateInput, setDeliveryDateInput] = useState(''); // temp input before OK
   const [showWalkinModal, setShowWalkinModal] = useState(false);
@@ -348,7 +347,7 @@ export default function ManagerDashboard() {
   const checkAutoAddRow = (items) => {
     const last = items[items.length - 1];
     if (last && last.item_name.trim()) {
-      return [...items, { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' }];
+      return [...items, { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' }];
     }
     return items;
   };
@@ -389,6 +388,8 @@ export default function ManagerDashboard() {
     if (!deliveryForm.vehicle_number) return toast.error('Vehicle number required');
     if (!deliveryForm.expected_arrival) return toast.error('Expected arrival time required');
     if (!deliveryForm.items[0]?.item_name) return toast.error('At least one item required');
+    const hasEmptyQty = deliveryForm.items.some(i => i.item_name && (!i.quantity || parseFloat(i.quantity) <= 0));
+    if (hasEmptyQty) return toast.error('Please enter a valid quantity for all items before saving.');
     setDeliverySaving(true);
     try {
       const payload = {
@@ -404,7 +405,7 @@ export default function ManagerDashboard() {
         await deliveryApi.create(payload);
         toast.success('Delivery entry saved');
       }
-      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' }, { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' }] });
+      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' }, { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' }] });
       setShowDeliveryForm(false);
       setEditDeliveryId(null);
       loadDeliveries(getTodayIST());
@@ -1663,7 +1664,7 @@ export default function ManagerDashboard() {
                         const neededQty = Math.max(1, minStock - p.stock);
                         return {
                           item_name: p.name,
-                          quantity: String(neededQty),
+                          quantity: '',
                           unit: p.unit || 'bag',
                           product_id: p._id,
                           label: 'Goods',
@@ -1675,7 +1676,7 @@ export default function ManagerDashboard() {
                         ...f,
                         items: [
                           ...mapped,
-                          { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
+                          { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' },
                         ],
                       }));
                       toast.success(`${mapped.length} low stock item${mapped.length !== 1 ? 's' : ''} imported`);
@@ -1984,8 +1985,7 @@ export default function ManagerDashboard() {
                                       style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        if (window.confirm(`Mark as delivered? Stock will be updated automatically for matched products.`))
-                                          handleDeliveryStatus(d._id, 'delivered');
+                                        setConfirmDeliveryId(d._id);
                                       }}
                                     ><CheckCircle size={11} /> Delivered</button>
                                     <button
@@ -3721,6 +3721,26 @@ export default function ManagerDashboard() {
                   {paying ? <><span className="spinner"></span> Saving...</> : 'Record Payment'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Deliver Confirm Modal */}
+      {confirmDeliveryId && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', padding: 24, borderRadius: 16, width: '90%', maxWidth: 400, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, color: 'var(--text)' }}>Confirm Delivery</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+              Are you sure you want to mark this vehicle as delivered?<br/><br/>
+              <strong>Stock and prices will be updated automatically</strong> for matched products.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-outline" onClick={() => setConfirmDeliveryId(null)}>Cancel</button>
+              <button className="btn btn-success" onClick={() => {
+                handleDeliveryStatus(confirmDeliveryId, 'delivered');
+                setConfirmDeliveryId(null);
+              }}>Yes, Mark Delivered</button>
             </div>
           </div>
         </div>

@@ -23,6 +23,11 @@ export function AppProvider({ children }) {
   const { isAuthenticated } = useAuth();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [globalDate, setGlobalDate] = useState(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + d.getTimezoneOffset() + 330);
+    return d.toISOString().split('T')[0];
+  });
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -41,7 +46,7 @@ export function AppProvider({ children }) {
   const t = (en, hi_text) => settings.language === 'hi' && hi_text ? hi_text : en;
 
   return (
-    <AppContext.Provider value={{ settings, settingsLoaded, updateSettings, t }}>
+    <AppContext.Provider value={{ settings, settingsLoaded, updateSettings, t, globalDate, setGlobalDate }}>
       {children}
     </AppContext.Provider>
   );

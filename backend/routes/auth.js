@@ -324,12 +324,18 @@ router.post('/managers', auth, requireSupervisor, async (req, res) => {
     });
 
     // Auto-create a ProductList for this new manager
+    const Product = require('../models/Product');
     const ProductList = require('../models/ProductList');
+    
+    // Fetch all existing product IDs
+    const allProducts = await Product.find({}, '_id');
+    const allProductIds = allProducts.map(p => p._id);
+
     await ProductList.create({
       name: manager.display_name || manager.username,
       created_by: req.user.id,
       auto_for_manager: manager._id,
-      products: [],
+      products: allProductIds,
       shares: [{ manager_id: manager._id, overrides: [] }]
     });
 

@@ -564,12 +564,12 @@ router.post('/', async (req, res) => {
       let actual_payments_made = payments
         .filter(p => p.mode !== 'advance_credit')
         .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-      let newBalance = prevBalance + total - actual_payments_made;
-
+      // Fix: Use the actual ledger balance instead of the potentially customized prevBalance
       if (customer.setManagerBalance && !customer.merged_by_admin) {
-        customer.setManagerBalance(invoiceCreatorId, newBalance);
+        let currentDBBalance = customer.getManagerBalance(invoiceCreatorId);
+        customer.setManagerBalance(invoiceCreatorId, currentDBBalance + total - actual_payments_made);
       } else {
-        customer.balance = newBalance;
+        customer.balance = (customer.balance || 0) + total - actual_payments_made;
       }
       await customer.save();
     }

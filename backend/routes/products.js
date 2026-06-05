@@ -235,7 +235,7 @@ router.get('/autocomplete', async (req, res) => {
         Object.assign(query, searchFilter);
       }
     }
-    let products = await Product.find(query, { name: 1, price: 1, gst: 1, unit: 1, stock: 1 }).limit(list_id ? 1000 : 20).lean();
+    let products = await Product.find(query, { name: 1, price: 1, gst: 1, unit: 1, stock: 1, supplier_base_price: 1, last_delivery_final_price: 1 }).limit(list_id ? 1000 : 20).lean();
     
     if (list_id) {
       products = await applyListOverrides(req, products, list_id);
@@ -350,6 +350,32 @@ router.post('/', checkProductEditPermission, async (req, res) => {
 });
 
 // PUT update product
+// Update saved_order_qty in bulk
+router.all('/bulk-order-qty', async (req, res) => {
+  try {
+    const { updates } = req.body; // Array of { _id, saved_order_qty }
+    if (!Array.isArray(updates)) return res.status(400).json({ error: 'Expected updates array' });
+
+    for (let u of updates) {
+      if (u._id && !u._id.startsWith('custom-')) {
+        const product = await Product.findOne({ _id: u._id, ...(await getOwnerFilter(req)) });
+        if (product) {
+          const newQty = parseInt(u.saved_order_qty) || 0;
+          if (product.saved_order_qty !== newQty) {
+            await Product.updateOne(
+              { _id: u._id },
+              { $set: { saved_order_qty: newQty, last_updated_by: req.user.id } }
+            );
+          }
+        }
+      }
+    }
+    res.json({ message: 'Order quantities saved successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.put('/:id', checkProductEditPermission, async (req, res) => {
   try {
     const checkProduct = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });

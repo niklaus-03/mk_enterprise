@@ -88,7 +88,10 @@ router.post('/collect/:customer_id', async (req, res) => {
     // Build list of invoices to pay
     let invoicesToPay = [];
 
-    const invoiceIdsToFetch = req.body.invoice_ids || (invoice_id ? invoice_id.split(',').map(id => id.trim()) : null);
+    let invoiceIdsToFetch = req.body.invoice_ids || (invoice_id ? invoice_id.split(',').map(id => id.trim()) : null);
+    if (invoiceIdsToFetch && Array.isArray(invoiceIdsToFetch)) {
+      invoiceIdsToFetch = invoiceIdsToFetch.filter(id => id && id.length === 24); // Remove 'OPENING_BALANCE'
+    }
 
     if (invoiceIdsToFetch && Array.isArray(invoiceIdsToFetch) && invoiceIdsToFetch.length > 0) {
       // Pay specific invoices
@@ -190,7 +193,7 @@ router.post('/collect/:customer_id', async (req, res) => {
       amount: originalPaid,
       mode: mode || 'cash',
       reference: ref,
-      notes: 'Auto-recorded payment',
+      notes: advance > 0 && originalPaid === advance ? 'Advance Received' : 'Due Received',
       date: now,
       ist_date,
       ist_formatted,

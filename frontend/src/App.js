@@ -31,6 +31,7 @@ import DailyReport from './pages/DailyReport';
 import DriverDashboard from './pages/DriverDashboard';
 import NotificationDropdown from './components/NotificationDropdown';
 import MobileGlobalSearch from './components/MobileGlobalSearch';
+import TopNavDateTime from './components/TopNavDateTime';
 import { ThemeProvider } from './context/ThemeContext';
 import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search } from 'lucide-react';
 import { tripApi } from './utils/api';
@@ -77,10 +78,11 @@ function VehicleRoute({ children }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
-function Sidebar({ open, onClose, onLock }) {
+function Sidebar({ open, onClose }) {
   const { logout, admin, isAdmin, user } = useAuth();
   const { settings } = useApp();
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
+  const [isHovered, setIsHovered] = React.useState(false);
   const lang = settings.language === 'hi';
 
   const isTempManager = user?.role === 'temp_manager';
@@ -100,7 +102,7 @@ function Sidebar({ open, onClose, onLock }) {
     { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
     { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} /> },
     ...(isWalkinManager ? [] : [{ to: '/suppliers', label: lang ? 'आपूर्तिकर्ता' : 'Suppliers', icon: <Building2 size={16} /> }]),
-    ...(!isWalkinManager ? [{ to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} /> }] : []),
+    ...((!isWalkinManager && !isAdmin) ? [{ to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} /> }] : []),
     { to: '/daily-report', label: lang ? 'दैनिक रिपोर्ट' : 'Daily Report', icon: <Moon size={16} /> },
     ...(isAdmin ? [
       { to: '/vehicle-incoming', label: lang ? 'वाहन' : 'Vehicles', icon: <Truck size={16} /> },
@@ -120,8 +122,9 @@ function Sidebar({ open, onClose, onLock }) {
             position: 'fixed',
             inset: 0,
             background: 'rgba(0,0,0,0.5)',
-            zIndex: 998,
+            zIndex: 1001,
           }}
+          className="hide-on-desktop"
         />
       )}
 
@@ -152,52 +155,11 @@ function Sidebar({ open, onClose, onLock }) {
         </div>
       )}
 
-      <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
-        <div className="sidebar-brand" style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
-              <div style={{
-                width: 42, height: 42, borderRadius: '50%', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                overflow: 'hidden', background: '#F8F9FA',
-                boxShadow: '0 2px 8px rgba(197,160,89,0.3)',
-                border: '1.5px solid #C5A059'
-              }}>
-                <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="60" cy="60" r="48" stroke="#C5A059" strokeWidth="3.5" />
-                  <circle cx="60" cy="60" r="41" stroke="#C5A059" strokeWidth="1" />
-                  
-                  <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" strokeWidth="1" />
-                  <path d="M19 60 H101" stroke="#C5A059" strokeWidth="1" />
-                  <path d="M60 19 V101" stroke="#C5A059" strokeWidth="1" />
-                  
-                  <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
-                  <circle cx="60" cy="60" r="26" stroke="#C5A059" strokeWidth="2" />
-                  <text x="60" y="75" fontFamily="Georgia, 'Times New Roman', serif" fontSize="42" fontWeight="bold" textAnchor="middle" fill="#0B132B" letterSpacing="-2">MK</text>
-                </svg>
-              </div>
-              <div style={{ overflow: 'hidden' }}>
-                <div className="brand-text" style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Mehta Traders
-                </div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {settings.business_name || 'Business Management'}
-                </div>
-              </div>
-            </div>
-
-            {/* Laptop/Desktop Golden Notification Bell - Hidden on Mobile */}
-            {user && (
-              <div className="hide-on-mobile">
-                <NotificationDropdown 
-                  user={user} 
-                  style={{ marginLeft: '8px', flexShrink: 0 }} 
-                  iconColor="#C5A059" 
-                  bellSize={18} 
-                  dropdownAlign="left"
-                />
-              </div>
-            )}
-          </div>
+      <aside 
+        className={`sidebar ${open || isHovered ? 'sidebar-expanded' : ''}`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
         <nav className="sidebar-nav">
           {navItems.map(item => (
             <NavLink
@@ -210,29 +172,12 @@ function Sidebar({ open, onClose, onLock }) {
               }
             >
               <span className="nav-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="nav-label">{item.label}</span>
             </NavLink>
           ))}
         </nav>
         <div className="sidebar-footer">
-          {/* Manual lock button */}
-          {onLock && (
-            <button
-              onClick={() => { onLock(); onClose && onClose(); }}
-              style={{
-                width: '100%', background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
-                color: 'rgba(255,255,255,0.55)', fontSize: 12.5, fontWeight: 600,
-                padding: '7px 12px', cursor: 'pointer', marginBottom: 6,
-                display: 'flex', alignItems: 'center', gap: 8,
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }}
-            >
-              <Lock size={14} /> <span>{lang ? 'स्क्रीन लॉक करें' : 'Lock Screen'}</span>
-            </button>
-          )}
+
           {/* Fullscreen toggle button */}
           <button
             onClick={() => {
@@ -250,16 +195,19 @@ function Sidebar({ open, onClose, onLock }) {
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
           >
-            <Maximize2 size={14} /> <span>{isCurrentlyFullscreen() ? (lang ? 'पूर्ण स्क्रीन से बाहर' : 'Exit Fullscreen') : (lang ? 'पूर्ण स्क्रीन' : 'Fullscreen')}</span>
+            <Maximize2 size={14} /> <span className="nav-label">{isCurrentlyFullscreen() ? (lang ? 'पूर्ण स्क्रीन से बाहर' : 'Exit Fullscreen') : (lang ? 'पूर्ण स्क्रीन' : 'Fullscreen')}</span>
           </button>
           <div className="sidebar-user">
             <div className="sidebar-username" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-              {isAdmin ? <Shield size={14} style={{ color: '#facc15' }} /> : <User size={14} />} {admin?.display_name || admin?.username || 'User'}
-              <span style={{ fontSize: 9, background: isAdmin ? 'rgba(250,204,21,0.25)' : 'rgba(99,102,241,0.25)', color: isAdmin ? '#facc15' : '#818cf8', padding: '1px 6px', borderRadius: 6, marginLeft: 6, fontWeight: 700 }}>
-                {isAdmin ? 'ADMIN' : 'MANAGER'}
+              {isAdmin ? <Shield size={14} style={{ color: '#facc15' }} /> : <User size={14} />} 
+              <span className="nav-label" style={{ display: 'flex', alignItems: 'center' }}>
+                {admin?.display_name || admin?.username || 'User'}
+                <span style={{ fontSize: 9, background: isAdmin ? 'rgba(250,204,21,0.25)' : 'rgba(99,102,241,0.25)', color: isAdmin ? '#facc15' : '#818cf8', padding: '1px 6px', borderRadius: 6, marginLeft: 6, fontWeight: 700 }}>
+                  {isAdmin ? 'ADMIN' : 'MANAGER'}
+                </span>
               </span>
             </div>
-            <button className="logout-btn" onClick={() => setShowLogoutConfirm(true)} title="Logout" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button className="logout-btn nav-label" onClick={() => setShowLogoutConfirm(true)} title="Logout" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <LogOut size={13} /> {lang ? hi.logout : 'Logout'}
             </button>
           </div>
@@ -324,10 +272,7 @@ function AppLayout() {
   const isTempManager = user?.role === 'temp_manager';
   const isWalkinManager = user?.role === 'walkin_manager';
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const idleTimer = React.useRef(null);
-  const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
   // Track fullscreen state changes (user pressed Esc etc.)
   useEffect(() => {
@@ -356,24 +301,6 @@ function AppLayout() {
     document.addEventListener('click', handleFirstClick);
     return () => document.removeEventListener('click', handleFirstClick);
   }, []);
-
-  // Reset idle timer on any user activity
-  const resetIdleTimer = React.useCallback(() => {
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => {
-      setIsLocked(true);
-    }, IDLE_TIMEOUT);
-  }, []);
-
-  useEffect(() => {
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
-    events.forEach(e => document.addEventListener(e, resetIdleTimer, { passive: true }));
-    resetIdleTimer();
-    return () => {
-      events.forEach(e => document.removeEventListener(e, resetIdleTimer));
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-    };
-  }, [resetIdleTimer]);
 
   // Swipe-to-open: track touch start X position
   useEffect(() => {
@@ -421,61 +348,73 @@ function AppLayout() {
 
   return (
     <>
-      {/* ── Fullscreen Lock Overlay ── */}
-      {isLocked && (
-        <div className="fullscreen-overlay">
-          <div className="fullscreen-box">
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
-            <h2>Screen Locked</h2>
-            <p>Your session was locked due to inactivity.<br />Click below to continue.</p>
-            <button onClick={() => {
-              setIsLocked(false);
-              resetIdleTimer();
-              // Re-enter fullscreen after unlock (user gesture here)
-              if (!isCurrentlyFullscreen()) {
-                requestFullscreen();
-              }
-            }}>
-              🔓 Unlock &amp; Continue
-            </button>
-          </div>
-        </div>
-      )}
-
-      <Sidebar open={isOpen} onClose={() => setSidebarOpen(false)} onLock={() => setIsLocked(true)} />
-
-      <div className="app-main">
-        {/* Mobile topbar — Premium Centered Instagram-Style Layout */}
-        <div className={`mobile-topbar ${isFullscreen ? 'is-fullscreen' : ''}`}>
+      <div className="top-navbar">
+        <div className="top-navbar-left">
           <button
-            className={`hamburger-btn${isOpen ? ' is-open' : ''}`}
+            className="nav-hamburger-btn"
             onClick={() => setSidebarOpen(o => !o)}
             aria-label="Toggle menu"
-            style={{ justifySelf: 'start' }}
           >
-            <span className="ham-line" style={isOpen ? { transform: 'rotate(45deg) translate(5px, 5px)' } : {}}></span>
-            <span className="ham-line ham-line-mid" style={isOpen ? { opacity: 0, width: 0 } : {}}></span>
-            <span className="ham-line" style={isOpen ? { transform: 'rotate(-45deg) translate(5px, -5px)' } : {}}></span>
+            <span className={`ham-line ${isOpen ? 'ham-open-1' : ''}`}></span>
+            <span className={`ham-line ham-line-mid ${isOpen ? 'ham-open-2' : ''}`}></span>
+            <span className={`ham-line ${isOpen ? 'ham-open-3' : ''}`}></span>
           </button>
           
-          <span className="mobile-brand">
-            MK Enterprise
-          </span>
-
-          {user ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifySelf: 'end' }}>
-              <MobileGlobalSearch />
-              <NotificationDropdown 
-                user={user} 
-                iconColor="#0f172a" 
-                bellSize={21} 
-              />
+          <div className="top-navbar-brand">
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', background: '#F8F9FA',
+              boxShadow: '0 2px 8px rgba(197,160,89,0.3)',
+              border: '1.5px solid #C5A059'
+            }}>
+              <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="60" cy="60" r="48" stroke="#C5A059" strokeWidth="3.5" />
+                <circle cx="60" cy="60" r="41" stroke="#C5A059" strokeWidth="1" />
+                
+                <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" strokeWidth="1" />
+                <path d="M19 60 H101" stroke="#C5A059" strokeWidth="1" />
+                <path d="M60 19 V101" stroke="#C5A059" strokeWidth="1" />
+                
+                <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
+                <circle cx="60" cy="60" r="26" stroke="#C5A059" strokeWidth="2" />
+                <text x="60" y="75" fontFamily="Georgia, 'Times New Roman', serif" fontSize="42" fontWeight="bold" textAnchor="middle" fill="#0B132B" letterSpacing="-2">MK</text>
+              </svg>
             </div>
-          ) : (
-            <div style={{ width: 33, justifySelf: 'end' }} />
-          )}
+            <span className="brand-text">MK Enterprise</span>
+          </div>
+          
+          {user && <TopNavDateTime />}
         </div>
 
+        {user && (
+          <div className="top-navbar-center hide-on-mobile">
+            <div style={{ width: '100%', maxWidth: 600 }}>
+              <MobileGlobalSearch desktop={true} />
+            </div>
+          </div>
+        )}
+
+        {user ? (
+          <div className="top-navbar-right">
+            <div className="hide-on-desktop">
+              <MobileGlobalSearch />
+            </div>
+            <NotificationDropdown 
+              user={user} 
+              iconColor="#0f172a" 
+              bellSize={21} 
+              dropdownAlign="right"
+            />
+          </div>
+        ) : (
+          <div className="top-navbar-right" />
+        )}
+      </div>
+
+      <Sidebar open={isOpen} onClose={() => setSidebarOpen(false)} />
+
+      <div className="app-main">
         {/* Facebook Style Top Nav — Manager only, mobile only */}
         {!isAdmin && !isTempManager && (
           <div className={`fb-top-nav ${isFullscreen ? 'is-fullscreen' : ''}`}>
