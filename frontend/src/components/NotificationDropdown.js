@@ -220,6 +220,7 @@ export default function NotificationDropdown({ user, className, style, bellSize 
         position: 'fixed',
         top: Math.min(dropdownPos.top, window.innerHeight - 500),
         left: dropdownPos.left,
+        right: dropdownPos.right,
         width: 380,
         maxHeight: 'calc(100vh - 100px)',
         background: 'var(--bg-card)',

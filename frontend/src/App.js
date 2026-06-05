@@ -78,7 +78,7 @@ function VehicleRoute({ children }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
-function Sidebar({ open, onClose }) {
+function Sidebar({ open, onClose, isFullscreen }) {
   const { logout, admin, isAdmin, user } = useAuth();
   const { settings } = useApp();
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
@@ -89,14 +89,14 @@ function Sidebar({ open, onClose }) {
   const isWalkinManager = user?.role === 'walkin_manager';
 
   const navItems = isTempManager ? [
-    { to: '/', label: lang ? hi.dashboard : 'Dashboard', icon: <BarChart3 size={16} />, exact: true },
+    { to: '/dashboard', label: lang ? hi.dashboard : 'Dashboard', icon: <BarChart3 size={16} />, exact: true },
     { to: '/invoices/new', label: lang ? hi.newBill : 'New Bill', icon: <FileText size={16} />, highlight: true },
     { to: '/invoices', label: lang ? hi.invoices : 'Invoice History', icon: <ClipboardList size={16} />, exact: true },
     { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
     { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} /> },
     { to: '/settings', label: lang ? hi.settings : 'Settings', icon: <SettingsIcon size={16} /> },
   ] : [
-    { to: '/', label: lang ? hi.dashboard : 'Dashboard', icon: <BarChart3 size={16} />, exact: true },
+    { to: '/dashboard', label: lang ? hi.dashboard : 'Dashboard', icon: <BarChart3 size={16} />, exact: true },
     { to: '/invoices/new', label: lang ? hi.newBill : 'New Bill', icon: <FileText size={16} />, highlight: true },
     { to: '/invoices', label: lang ? hi.invoices : 'Invoice History', icon: <ClipboardList size={16} />, exact: true },
     { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
@@ -160,7 +160,7 @@ function Sidebar({ open, onClose }) {
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <nav className="sidebar-nav">
+        <div style={{height: 72, flexShrink: 0}}></div><nav className="sidebar-nav">
           {navItems.map(item => (
             <NavLink
               key={item.to}
@@ -412,7 +412,7 @@ function AppLayout() {
         )}
       </div>
 
-      <Sidebar open={isOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar isFullscreen={isFullscreen} open={isOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="app-main">
         {/* Facebook Style Top Nav — Manager only, mobile only */}
@@ -537,7 +537,7 @@ function InnerApp() {
           </AppProvider>
         </ProtectedRoute>
       }>
-        <Route index element={<Dashboard />} />
+        <Route index element={<Navigate to="/dashboard" replace />} /><Route path="dashboard" element={<Dashboard />} />
         <Route path="products" element={<Products />} />
         <Route path="customers" element={<Customers />} />
         <Route path="customers/:id/history" element={<CustomerPaymentHistory />} />
