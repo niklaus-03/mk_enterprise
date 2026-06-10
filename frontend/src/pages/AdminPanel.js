@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import HawkEye from '../components/HawkEye';
 import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -148,6 +149,14 @@ export default function AdminPanel() {
       if (!isPolling) setRequestsLoading(false);
     }
   }, [isAdmin]);
+
+  const handlePullRefresh = useCallback(async () => {
+    if (activeTab === 'managers') await loadManagers(false);
+    else if (activeTab === 'drivers') await loadDrivers(false);
+    else if (activeTab === 'activity') await loadActivityLogs(false);
+    else if (activeTab === 'requests') await loadRequests(false);
+  }, [activeTab, loadManagers, loadDrivers, loadActivityLogs, loadRequests]);
+  useRegisterRefresh(handlePullRefresh);
 
   useEffect(() => {
     if (activeTab === 'managers') loadManagers(false);
@@ -418,7 +427,7 @@ export default function AdminPanel() {
       </div>
 
       {/* Standard Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, overflowX: 'auto' }}>
+      <div className="hide-scroll" style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10, overflowX: 'auto' }}>
         <button 
           onClick={() => setActiveTab('managers')}
           style={{ 
@@ -499,7 +508,9 @@ export default function AdminPanel() {
           </button>
         </div>
         
-        <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 180px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
+          <div style={{ minWidth: 900 }}>
+            <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 180px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           <div>User Info</div>
           <div>Phone</div>
           <div>Status</div>
@@ -559,22 +570,28 @@ export default function AdminPanel() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                  <button onClick={() => setConfirmHoldModal({ user: mgr, type: 'manager' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: mgr.is_on_hold ? '#fef08a' : '#f1f5f9', color: mgr.is_on_hold ? '#a16207' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} title={mgr.is_on_hold ? "Lift Hold" : "Put on Hold"}>
+                  <button onClick={() => setConfirmHoldModal({ user: mgr, type: 'manager' })} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: mgr.is_on_hold ? '#fef08a' : '#f1f5f9', color: mgr.is_on_hold ? '#a16207' : '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} title={mgr.is_on_hold ? "Lift Hold" : "Put on Hold"}>
                       {mgr.is_on_hold ? <PlayCircle size={14} /> : <PauseCircle size={14} />}
-                    </button>
-                  <button onClick={() => openEditModal(mgr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#334155'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>{mgr.is_on_hold ? 'Un-Hold' : 'Hold'}</span>
+                  </button>
+                  <button onClick={() => openEditModal(mgr)} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#334155'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}>
                     <Edit2 size={14} />
+                    <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Edit</span>
                   </button>
-                  <button onClick={() => setMgrResetModal(mgr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fde68a'; e.currentTarget.style.color = '#92400e'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.color = '#b45309'; }}>
+                  <button onClick={() => setMgrResetModal(mgr)} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#fef3c7', color: '#b45309', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fde68a'; e.currentTarget.style.color = '#92400e'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.color = '#b45309'; }}>
                     <Key size={14} />
+                    <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Reset PW</span>
                   </button>
-                  <button onClick={() => setConfirmDeleteModal({ user: mgr, type: 'manager' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
+                  <button onClick={() => setConfirmDeleteModal({ user: mgr, type: 'manager' })} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
                     <Trash2 size={14} />
+                    <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Delete</span>
                   </button>
                 </div>
               </div>
             ))
           )}
+        </div>
+          </div>
         </div>
       </div>
       )}
@@ -595,7 +612,9 @@ export default function AdminPanel() {
             </button>
           </div>
           
-          <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
+            <div style={{ minWidth: 900 }}>
+              <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 150px 120px 100px', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             <div>Driver Info</div>
             <div>Phone</div>
             <div>Status</div>
@@ -643,22 +662,28 @@ export default function AdminPanel() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                      <button onClick={() => setConfirmHoldModal({ user: dr, type: 'driver' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: dr.is_on_hold ? '#fef08a' : '#f1f5f9', color: dr.is_on_hold ? '#a16207' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} title={dr.is_on_hold ? "Lift Hold" : "Put on Hold"}>
+                      <button onClick={() => setConfirmHoldModal({ user: dr, type: 'driver' })} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: dr.is_on_hold ? '#fef08a' : '#f1f5f9', color: dr.is_on_hold ? '#a16207' : '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} title={dr.is_on_hold ? "Lift Hold" : "Put on Hold"}>
                         {dr.is_on_hold ? <PlayCircle size={14} /> : <PauseCircle size={14} />}
+                        <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>{dr.is_on_hold ? 'Un-Hold' : 'Hold'}</span>
                       </button>
-                    <button onClick={() => openEditDriverModal(dr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#334155'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}>
+                    <button onClick={() => openEditDriverModal(dr)} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#334155'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}>
                       <Edit2 size={14} />
+                      <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Edit</span>
                     </button>
-                    <button onClick={() => setDriverResetModal(dr)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fde68a'; e.currentTarget.style.color = '#92400e'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.color = '#b45309'; }}>
+                    <button onClick={() => setDriverResetModal(dr)} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#fef3c7', color: '#b45309', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fde68a'; e.currentTarget.style.color = '#92400e'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.color = '#b45309'; }}>
                       <Key size={14} />
+                      <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Reset PW</span>
                     </button>
-                    <button onClick={() => setConfirmDeleteModal({ user: dr, type: 'driver' })} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
+                    <button onClick={() => setConfirmDeleteModal({ user: dr, type: 'driver' })} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#fee2e2', color: '#b91c1c', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#fecaca'; e.currentTarget.style.color = '#991b1b'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#b91c1c'; }}>
                       <Trash2 size={14} />
+                      <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Delete</span>
                     </button>
                   </div>
                 </div>
               ))
             )}
+          </div>
+            </div>
           </div>
         </div>
       )}
@@ -718,7 +743,9 @@ export default function AdminPanel() {
             </div>
           </div>
           
-          <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: '150px 180px 140px minmax(200px, 1fr)', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
+            <div style={{ minWidth: 900 }}>
+              <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: '150px 180px 140px minmax(200px, 1fr)', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             <div>Time</div>
             <div>User</div>
             <div>Action</div>
@@ -775,6 +802,8 @@ export default function AdminPanel() {
               })
             )}
           </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -786,7 +815,9 @@ export default function AdminPanel() {
               <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Trip Bypass Requests</span>
             </div>
             
-            <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: '150px 180px 120px 150px minmax(180px, 1fr)', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
+              <div style={{ minWidth: 900 }}>
+                <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: '150px 180px 120px 150px minmax(180px, 1fr)', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               <div>Date</div>
               <div>Manager</div>
               <div>Type</div>
@@ -859,6 +890,8 @@ export default function AdminPanel() {
                 ))
               )}
             </div>
+              </div>
+            </div>
           </div>
 
         <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
@@ -867,7 +900,9 @@ export default function AdminPanel() {
             <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Password Recovery Requests</span>
           </div>
           
-          <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: '150px 180px 150px 100px minmax(180px, 1fr)', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
+            <div style={{ minWidth: 900 }}>
+              <div style={{ background: '#f8fafc', padding: '12px 24px', display: 'grid', gridTemplateColumns: '150px 180px 150px 100px minmax(180px, 1fr)', gap: 16, borderBottom: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             <div>Requested At</div>
             <div>Username</div>
             <div>Phone</div>
@@ -907,6 +942,8 @@ export default function AdminPanel() {
                 </div>
               ))
             )}
+          </div>
+            </div>
           </div>
         </div>
         </>

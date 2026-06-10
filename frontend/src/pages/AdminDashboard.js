@@ -202,6 +202,7 @@ export default function AdminDashboard() {
   // Reactive — recalculates on every render when selectedDate changes
   const isToday = selectedDate === getTodayIST();
 
+  const liveTime = useLiveClock();
   const liveTimeIST = liveTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   const liveDateIST = liveTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -623,7 +624,7 @@ export default function AdminDashboard() {
       }
 
       const res = await dashboardApi.recordPayment({
-        invoice_id: invoiceId, invoice_ids: payForm.selectedInvoices,
+        invoice_id: invoiceId, invoice_ids: payForm.selectedInvoices, invoice_ids: payForm.selectedInvoices,
         customer_id: payModal.customer_id || null,
         amount: parseFloat(payForm.amount),
         mode: payForm.mode,
@@ -834,87 +835,7 @@ export default function AdminDashboard() {
         delivery={detailsDelivery}
       />
 
-      {/* ── Dashboard Header (Premium Command Center) ─────────────────────────── */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        borderRadius: 20,
-        padding: '24px 28px',
-        marginBottom: 24,
-        color: '#fff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 20,
-        boxShadow: '0 10px 30px -5px rgba(2, 6, 23, 0.3)',
-        border: '1px solid rgba(255, 255, 255, 0.05)',
-      }}>
-        {/* LEFT — Contextual Greeting (Ultra-Minimal) */}
-        <div style={{ flex: '1 1 300px' }}>
-          {isAdmin ? (
-            <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-1px', color: '#fff', margin: 0 }}>
-              Welcome
-            </h1>
-          ) : (
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
-              Welcome back, {user?.display_name || user?.username || 'Manager'}
-            </div>
-          )}
-        </div>
 
-        {/* RIGHT — Live Metrics & Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <Link 
-              to="/invoices/new" 
-              className="btn" 
-              style={{ 
-                background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
-                color: '#fff',
-                border: 'none', 
-                padding: '12px 20px',
-                borderRadius: 14,
-                fontWeight: 800,
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 10px 20px -5px rgba(37, 99, 235, 0.4)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 25px -5px rgba(37, 99, 235, 0.5)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 20px -5px rgba(37, 99, 235, 0.4)'; }}
-            >
-              <FileText size={18} /> {t('New Bill', 'नया बिल')}
-            </Link>
-            
-            <Link 
-              to="/orders/new" 
-              className="btn" 
-              style={{ 
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
-                color: '#fff',
-                border: 'none', 
-                padding: '12px 20px',
-                borderRadius: 14,
-                fontWeight: 800,
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 10px 20px -5px rgba(217, 119, 6, 0.4)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 25px -5px rgba(217, 119, 6, 0.5)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 20px -5px rgba(217, 119, 6, 0.4)'; }}
-            >
-              <Package size={18} /> {t('New Order', 'नया ऑर्डर')}
-            </Link>
-          </div>
-        </div>
-      </div>
 
       {/* Stats */}
       {/* Notification bar — shows if any deliveries are arriving soon */}

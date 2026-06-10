@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { productApi, settingsApi, managerApi, walkinApi } from '../utils/api';
+import { Repeat } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 import { useAuth } from '../context/AuthContext';
 import { Package, Plus, Search, Edit, Trash2, ArrowDownAZ, AlertTriangle, User, Clock, Share2, Info, Sparkles, MapPin, Check, X, Scale, IndianRupee, Save, List, CheckSquare, Square, CheckCircle2, ShieldAlert } from 'lucide-react';
 import ProductLists from './ProductLists';
@@ -67,6 +69,8 @@ function UnitInput({ value, onChange, placeholder = 'bag' }) {
 const emptyForm = {
   name: '', price: '', gst: '0', unit: 'bag', stock: '0',
   weight_per_unit: '', suggested_price: '', custom_low_stock: '', supplier_base_price: 0, last_delivery_final_price: 0, is_active: true,
+  parent_product: '', conversion_factor: '', is_loose_item_enabled: false,
+  create_loose_item: false, loose_unit: '', loose_conversion_factor: '', loose_price: '', initial_loose_stock: ''
 };
 
 export default function Products() {
@@ -124,6 +128,15 @@ export default function Products() {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [existingMatch, setExistingMatch] = useState(null);
   const [nameFocused, setNameFocused] = useState(false);
+
+  // Bulk-to-Loose state
+  const [showConvertModal, setShowConvertModal] = useState(null); // holds parent product for conversion
+  const [convertQty, setConvertQty] = useState('');
+  const [convertChildId, setConvertChildId] = useState('');
+  const [childProducts, setChildProducts] = useState([]);
+  const [converting, setConverting] = useState(false);
+  const [parentSearch, setParentSearch] = useState('');
+  const [parentSuggestions, setParentSuggestions] = useState([]);
 
   const walkinTripStarted = user?.role === 'walkin_manager' && activeTrip?.trip_started;
 
@@ -314,6 +327,13 @@ export default function Products() {
       .finally(() => setLoading(false));
   }, [page, sortBy, highlightId]);
 
+  const refreshProducts = useCallback(() => {
+    load(search, page, sortBy);
+    loadWalkinTrip();
+  }, [load, search, page, sortBy, loadWalkinTrip]);
+
+  useRegisterRefresh(refreshProducts);
+
   useEffect(() => { load(search, page, sortBy); }, [load, search, page, sortBy]);
 
   // Reset page when search or sort changes
@@ -359,9 +379,63 @@ export default function Products() {
       supplier_base_price: p.supplier_base_price || 0,
       last_delivery_final_price: p.last_delivery_final_price || 0,
       is_active: p.is_active !== false,
+      parent_product: p.parent_product?._id || p.parent_product || '',
+      conversion_factor: p.conversion_factor ? String(p.conversion_factor) : '',
+      is_loose_item_enabled: !!p.parent_product,
     });
+    if (p.parent_product?.name) setParentSearch(p.parent_product.name);
+    else setParentSearch('');
     setPriceCalculated(false);
     setShowForm(true);
+  };
+
+  // Search parent products for loose item linking
+  useEffect(() => {
+    if (!parentSearch.trim()) { setParentSuggestions([]); return; }
+    const timer = setTimeout(() => {
+      productApi.getAll({ search: parentSearch.trim() }).then(res => {
+        const list = Array.isArray(res) ? res : (res?.products || []);
+        // Exclude products that are themselves loose items
+        setParentSuggestions(list.filter(p => !p.is_loose_item).slice(0, 8));
+      }).catch(() => {});
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [parentSearch]);
+
+  // Load children for convert modal
+  const openConvertModal = async (product, mode = 'unpack') => {
+    setShowConvertModal({ ...product, _convertMode: mode });
+    setConvertQty('');
+    setConvertChildId('');
+    try {
+      if (mode === 'unpack') {
+        const children = await productApi.getChildren(product._id);
+        setChildProducts(children || []);
+        if (children?.length === 1) setConvertChildId(children[0]._id);
+      } else {
+        const parent = await productApi.getById(product.parent_product);
+        setChildProducts(parent ? [parent] : []);
+        if (parent) setConvertChildId(parent._id);
+      }
+    } catch { setChildProducts([]); }
+  };
+
+  const handleConvert = async () => {
+    if (!convertQty || parseFloat(convertQty) <= 0) return toast.error('Enter quantity to convert');
+    if (!convertChildId) return toast.error(showConvertModal._convertMode === 'unpack' ? 'Select a loose item' : 'Parent product missing');
+    setConverting(true);
+    try {
+      if (showConvertModal._convertMode === 'unpack') {
+        const res = await productApi.convert(showConvertModal._id, { qty: parseFloat(convertQty), child_product_id: convertChildId });
+        toast.success(`Converted! ${res.parent.name}: ${res.parent.stock} ${showConvertModal.unit} → ${res.child.name}: ${res.child.stock} ${res.converted.child_qty} added`);
+      } else {
+        const res = await productApi.packBulk(showConvertModal._id, { qty: parseFloat(convertQty) });
+        toast.success(`Packed! ${res.child.name}: ${res.child.stock} ${showConvertModal.unit} → ${res.parent.name}: ${res.parent.stock} ${res.packed.parent_qty} added`);
+      }
+      setShowConvertModal(null);
+      load(search);
+    } catch (err) { toast.error(err.message); }
+    finally { setConverting(false); }
   };
 
   // Removed auto-calc useEffect
@@ -402,6 +476,13 @@ export default function Products() {
         suggested_price: parseFloat(form.suggested_price) || 0,
         custom_low_stock: form.custom_low_stock !== '' ? parseFloat(form.custom_low_stock) : null,
         is_active: form.is_active,
+        parent_product: form.is_loose_item_enabled && form.parent_product ? form.parent_product : null,
+        conversion_factor: form.is_loose_item_enabled ? parseFloat(form.conversion_factor) || 0 : 0,
+        create_loose_item: form.create_loose_item,
+        loose_unit: form.loose_unit,
+        loose_conversion_factor: form.loose_conversion_factor,
+        loose_price: form.loose_price,
+        initial_loose_stock: form.initial_loose_stock,
       };
       if (editId) {
         await productApi.update(editId, payload);
@@ -741,6 +822,75 @@ export default function Products() {
                   <div className="form-hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>Leave blank to use global threshold ({threshold})</div>
                 </div>
               )}
+
+
+              {/* Sell in Loose Toggle */}
+              {user?.role === 'supervisor' && !editId && (
+                <div className="form-group" style={{ gridColumn: 'span 12', marginTop: 8 }}>
+                  <div style={{ background: form.create_loose_item ? '#f5f3ff' : 'var(--bg-hover)', border: form.create_loose_item ? '1.5px solid #8b5cf6' : '1px solid var(--border)', padding: '16px', borderRadius: '12px', transition: 'all 0.2s' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ background: form.create_loose_item ? '#8b5cf6' : '#94a3b8', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                          <Scale size={18} />
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, color: form.create_loose_item ? '#6d28d9' : 'var(--text)', fontSize: 14 }}>
+                            Sell in loose quantities?
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                            Enable this if you want to automatically create a loose version of this item.
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Toggle Switch */}
+                      <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, margin: 0, cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={form.create_loose_item}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setForm(f => ({ ...f, create_loose_item: checked, is_loose_item_enabled: false }));
+                          }}
+                          style={{ opacity: 0, width: 0, height: 0 }} 
+                        />
+                        <span style={{ position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: form.create_loose_item ? '#8b5cf6' : '#cbd5e1', transition: '.4s', borderRadius: 24 }}>
+                          <span style={{ position: 'absolute', content: '""', height: 18, width: 18, left: form.create_loose_item ? 22 : 3, bottom: 3, backgroundColor: 'white', transition: '.4s', borderRadius: '50%' }}></span>
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Auto-Create Loose Child Item Settings */}
+                    {form.create_loose_item && (
+                      <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px dashed #c4b5fd', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: '#6d28d9', marginBottom: 4, display: 'block' }}>Loose Unit</label>
+                          <UnitInput value={form.loose_unit} onChange={v => setForm(f => ({ ...f, loose_unit: v }))} placeholder="e.g. kg" />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: '#6d28d9', marginBottom: 4, display: 'block' }}>Conversion Factor</label>
+                          <input type="number" min="1" className="form-control" placeholder={`e.g. 50 (if 1 ${form.unit || 'bag'} = 50 loose units)`} value={form.loose_conversion_factor} onChange={e => setForm(f => ({ ...f, loose_conversion_factor: e.target.value }))} style={{ borderRadius: 8, borderColor: '#c4b5fd' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: '#6d28d9', marginBottom: 4, display: 'block' }}>Initial Loose Stock</label>
+                          <input type="number" min="0" className="form-control" placeholder="Current loose stock" value={form.initial_loose_stock} onChange={e => setForm(f => ({ ...f, initial_loose_stock: e.target.value }))} style={{ borderRadius: 8, borderColor: '#c4b5fd' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: '#6d28d9', marginBottom: 4, display: 'block' }}>Loose Selling Price</label>
+                          <input type="number" min="0" step="0.01" className="form-control" placeholder="Price per unit" value={form.loose_price} onChange={e => setForm(f => ({ ...f, loose_price: e.target.value }))} style={{ borderRadius: 8, borderColor: '#c4b5fd' }} />
+                        </div>
+                        
+                        {form.loose_price && form.loose_conversion_factor && form.supplier_base_price > 0 && 
+                         (parseFloat(form.loose_price) * parseFloat(form.loose_conversion_factor) < parseFloat(form.supplier_base_price)) && (
+                          <div style={{ gridColumn: 'span 2', marginTop: 4, padding: '8px 12px', background: '#fef3c7', color: '#b45309', borderRadius: 8, fontSize: 12, fontWeight: 500 }}>
+                            ⚠️ Warning: Your loose selling price total is lower than the bulk cost price (₹{form.supplier_base_price})!
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
@@ -865,10 +1015,15 @@ export default function Products() {
                               {hl(p.name)}
                               {isNewProduct(p.createdAt) && user?.role !== 'walkin_manager' && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 800, letterSpacing: 0.5 }}>NEW</span>}
                               {!p.is_active && <span style={{ fontSize: 10, background: 'var(--border)', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
+                              {p.is_loose_item && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>Loose</span>}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
                               <span>{p.unit}</span>
-                              {/* Removed shared by label per request */}
+                              {p.is_loose_item && p.parent_product && (
+                                <span style={{ fontSize: 10, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <Repeat size={10} /> From: {p.parent_product.name || 'Bulk'} ({p.conversion_factor}:1)
+                                </span>
+                              )}
                             </div>
                             {p.created_by && p.created_by.role !== 'supervisor' && user?.role === 'supervisor' && (
                               <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, marginTop: 2 }}>
@@ -910,6 +1065,16 @@ export default function Products() {
                         </td>
                         <td style={{ padding: '10px 8px' }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {isAdmin && (
+                              <button 
+                                className="btn btn-outline btn-sm" 
+                                onClick={() => openConvertModal(p, p.is_loose_item ? 'pack' : 'unpack')}
+                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: 6, color: p.is_loose_item ? '#d97706' : '#7c3aed', borderColor: p.is_loose_item ? '#fde68a' : '#ddd6fe' }}
+                                title={p.is_loose_item ? "Pack into Bulk" : "Convert to Loose"}
+                              >
+                                <Repeat size={14} />
+                              </button>
+                            )}
                             {isAdmin && (
                               <button 
                                 className="btn btn-outline btn-sm" 
@@ -1196,6 +1361,98 @@ export default function Products() {
               >
                 {requestingTrip ? 'Sending...' : 'Request Admin'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert Stock Modal */}
+      {showConvertModal && (
+        <div className="modal-overlay" onMouseDown={() => setShowConvertModal(null)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.60)', zIndex: 9999, backdropFilter: 'blur(4px)', padding: '20px' }}>
+          <div className="modal" onMouseDown={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: '440px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: showConvertModal._convertMode === 'unpack' ? '#f5f3ff' : '#fffbeb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 16, color: showConvertModal._convertMode === 'unpack' ? '#7c3aed' : '#d97706' }}>
+                <Repeat size={18} />
+                <span>{showConvertModal._convertMode === 'unpack' ? 'Convert Bulk → Loose' : 'Pack Loose → Bulk'}</span>
+              </div>
+              <button onClick={() => setShowConvertModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: 20 }}>
+              <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, marginBottom: 16, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{showConvertModal.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Available: <strong>{showConvertModal.stock} {showConvertModal.unit}</strong></div>
+              </div>
+              
+              {childProducts.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                  {showConvertModal._convertMode === 'unpack' ? (
+                    <>No loose items linked to this product yet.<br /><span style={{ fontSize: 12 }}>Create a loose item first and link it to this product.</span></>
+                  ) : (
+                    <>No parent bulk product found for this item.</>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>
+                      {showConvertModal._convertMode === 'unpack' ? 'Loose Item' : 'Target Bulk Product'}
+                    </label>
+                    <select
+                      value={convertChildId}
+                      onChange={e => setConvertChildId(e.target.value)}
+                      style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, background: 'var(--bg)', fontSize: 13, color: 'var(--text)' }}
+                      disabled={showConvertModal._convertMode === 'pack'}
+                    >
+                      <option value="">{showConvertModal._convertMode === 'unpack' ? 'Select loose item...' : 'Select bulk product...'}</option>
+                      {childProducts.map(c => (
+                        <option key={c._id} value={c._id}>{c.name} {showConvertModal._convertMode === 'unpack' ? `(${c.conversion_factor}:1)` : ''} — Stock: {c.stock} {c.unit}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>
+                      {showConvertModal._convertMode === 'unpack' ? `Qty to Convert (${showConvertModal.unit})` : `Target Bulk Qty to Form (${childProducts[0]?.unit || 'units'})`}
+                    </label>
+                    <input
+                      type="number" min="0.5" step="0.5"
+                      value={convertQty}
+                      onChange={e => setConvertQty(e.target.value)}
+                      placeholder={showConvertModal._convertMode === 'unpack' ? `e.g. 5 (of ${showConvertModal.stock} available)` : `e.g. 1`}
+                      style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, background: 'var(--bg)', fontSize: 14, fontWeight: 700, color: 'var(--text)', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  {convertQty && convertChildId && (() => {
+                    const target = childProducts.find(c => c._id === convertChildId);
+                    if (showConvertModal._convertMode === 'unpack') {
+                      const looseQty = parseFloat(convertQty) * (target?.conversion_factor || 1);
+                      return (
+                        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, color: '#065f46' }}>
+                          <strong>{convertQty} {showConvertModal.unit}</strong> → <strong>{looseQty} {target?.unit}</strong> of {target?.name}
+                        </div>
+                      );
+                    } else {
+                      const looseNeeded = parseFloat(convertQty) * (showConvertModal.conversion_factor || 1);
+                      return (
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, color: '#92400e' }}>
+                          Requires <strong>{looseNeeded} {showConvertModal.unit}</strong> → Forms <strong>{convertQty} {target?.unit}</strong> of {target?.name}
+                        </div>
+                      );
+                    }
+                  })()}
+                  <button
+                    onClick={handleConvert}
+                    disabled={converting}
+                    style={{
+                      width: '100%', padding: '12px 0', background: showConvertModal._convertMode === 'unpack' ? '#7c3aed' : '#d97706', color: '#fff',
+                      border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
+                      cursor: converting ? 'not-allowed' : 'pointer', opacity: converting ? 0.6 : 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    }}
+                  >
+                    <Repeat size={16} /> {converting ? (showConvertModal._convertMode === 'unpack' ? 'Converting...' : 'Packing...') : (showConvertModal._convertMode === 'unpack' ? 'Convert Stock' : 'Pack Stock')}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -55,6 +55,8 @@ app.use('/api/trips', require('./routes/trips'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/walkin', require('./routes/walkin'));
 app.use('/api/payments', require('./routes/payments'));
+app.use('/api/admin-home', require('./routes/adminHome'));
+app.use('/api/voice', require('./routes/voice'));
 
 // ── Scheduled backup at 3:00 AM daily ─────────────────────────────────────────
 const { createBackup } = require('./utils/backup');

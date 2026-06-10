@@ -371,9 +371,67 @@ router.post('/', async (req, res) => {
         }
         
         if (stockToUse < parseFloat(item.qty)) {
-          return res.status(400).json({
-            error: `Insufficient stock for "${product.name}". Available: ${stockToUse}, Requested: ${item.qty}`,
-          });
+          // Auto-convert from bulk parent if this is a loose item
+          if (product.is_loose_item && product.parent_product) {
+            const parentProduct = await Product.findById(product.parent_product);
+            if (parentProduct) {
+              const deficit = parseFloat(item.qty) - stockToUse;
+              const factor = product.conversion_factor || 1;
+              const bulkUnitsNeeded = Math.ceil(deficit / factor);
+
+              if (parentProduct.stock >= bulkUnitsNeeded) {
+                // Execute auto-conversion
+                const looseQtyToAdd = bulkUnitsNeeded * factor;
+                const parentBefore = parentProduct.stock;
+                parentProduct.stock -= bulkUnitsNeeded;
+                await parentProduct.save();
+
+                const childBefore = product.stock;
+                product.stock += looseQtyToAdd;
+                await product.save();
+                // Update stockToUse for the subsequent deduction
+                stockToUse = product.stock;
+
+                await StockMovement.create({
+                  product_id: parentProduct._id, product_name: parentProduct.name,
+                  type: 'outgoing', qty: bulkUnitsNeeded, qty_unit: parentProduct.unit || 'pcs',
+                  stock_before: parentBefore, stock_after: parentProduct.stock,
+                  source: 'conversion', notes: `Auto-converted for invoice: ${bulkUnitsNeeded} ${parentProduct.unit} → ${looseQtyToAdd} ${product.unit} of ${product.name}`,
+                  ist_formatted: formatIST(new Date()), created_by: invoiceCreatorId,
+                });
+                await StockMovement.create({
+                  product_id: product._id, product_name: product.name,
+                  type: 'incoming', qty: looseQtyToAdd, qty_unit: product.unit || 'pcs',
+                  stock_before: childBefore, stock_after: product.stock,
+                  source: 'conversion', notes: `Auto-converted from ${bulkUnitsNeeded} ${parentProduct.unit} of ${parentProduct.name}`,
+                  ist_formatted: formatIST(new Date()), created_by: invoiceCreatorId,
+                });
+
+                // Track for response notification
+                if (!req._autoConversions) req._autoConversions = [];
+                req._autoConversions.push({
+                  parent_name: parentProduct.name,
+                  parent_qty: bulkUnitsNeeded,
+                  parent_unit: parentProduct.unit,
+                  child_name: product.name,
+                  child_qty: looseQtyToAdd,
+                  child_unit: product.unit,
+                });
+              } else {
+                return res.status(400).json({
+                  error: `Insufficient stock for "${product.name}". Available: ${stockToUse} (+ ${parentProduct.stock} ${parentProduct.unit} bulk). Not enough to auto-convert.`,
+                });
+              }
+            } else {
+              return res.status(400).json({
+                error: `Insufficient stock for "${product.name}". Available: ${stockToUse}, Requested: ${item.qty}`,
+              });
+            }
+          } else {
+            return res.status(400).json({
+              error: `Insufficient stock for "${product.name}". Available: ${stockToUse}, Requested: ${item.qty}`,
+            });
+          }
         }
       }
     }
@@ -600,7 +658,11 @@ router.post('/', async (req, res) => {
       }
     }
 
-    res.status(201).json(invoice);
+    const responseData = { ...invoice.toObject() };
+    if (req._autoConversions && req._autoConversions.length > 0) {
+      responseData.auto_conversions = req._autoConversions;
+    }
+    res.status(201).json(responseData);
 
     // Log activity (fire-and-forget, after response)
     logActivity(req, {

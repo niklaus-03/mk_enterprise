@@ -1,6 +1,6 @@
 import React from 'react';
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
@@ -28,12 +28,14 @@ import NewOrder from './pages/NewOrder';
 import AdminPanel from './pages/AdminPanel';
 import WalkInDelivery from './pages/WalkInDelivery';
 import DailyReport from './pages/DailyReport';
+import AdminHome from './pages/AdminHome';
 import DriverDashboard from './pages/DriverDashboard';
+import NotificationsPage from './pages/Notifications';
 import NotificationDropdown from './components/NotificationDropdown';
 import MobileGlobalSearch from './components/MobileGlobalSearch';
 import TopNavDateTime from './components/TopNavDateTime';
 import { ThemeProvider } from './context/ThemeContext';
-import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search } from 'lucide-react';
+import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search, Home } from 'lucide-react';
 import { tripApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────
@@ -105,6 +107,7 @@ function Sidebar({ open, onClose, isFullscreen }) {
     ...((!isWalkinManager && !isAdmin) ? [{ to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} /> }] : []),
     { to: '/daily-report', label: lang ? 'दैनिक रिपोर्ट' : 'Daily Report', icon: <Moon size={16} /> },
     ...(isAdmin ? [
+      { to: '/admin-home', label: lang ? 'एडमिन होम' : 'Admin Home', icon: <Home size={16} /> },
       { to: '/vehicle-incoming', label: lang ? 'वाहन' : 'Vehicles', icon: <Truck size={16} /> },
       { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
       { to: '/admin', label: lang ? 'एडमिन पैनल' : 'Admin Panel', icon: <Shield size={16} /> },
@@ -400,6 +403,35 @@ function AppLayout() {
             <div className="hide-on-desktop">
               <MobileGlobalSearch />
             </div>
+            <div className="hide-on-mobile" style={{ display: 'flex', gap: 10, marginRight: 15, alignItems: 'center' }}>
+              <Link 
+                to="/invoices/new" 
+                className="btn" 
+                style={{ 
+                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
+                  color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 14, 
+                  fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
+                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+              >
+                <FileText size={16} /> <span className="hide-on-tablet">New Bill</span>
+              </Link>
+              
+              {user?.role !== 'temp_manager' && (
+                <Link 
+                  to="/orders/new" 
+                  className="btn" 
+                  style={{ 
+                    background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
+                    color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 14, 
+                    fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
+                    boxShadow: '0 4px 12px rgba(217, 119, 6, 0.2)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                >
+                  <Package size={16} /> <span className="hide-on-tablet">New Order</span>
+                </Link>
+              )}
+            </div>
             <NotificationDropdown 
               user={user} 
               iconColor="#0f172a" 
@@ -557,6 +589,8 @@ function InnerApp() {
         <Route path="orders" element={<Orders />} />
         <Route path="orders/new" element={<NewOrder />} />
         <Route path="admin" element={<SupervisorRoute><AdminPanel /></SupervisorRoute>} />
+        <Route path="admin-home" element={<SupervisorRoute><AdminHome /></SupervisorRoute>} />
+        <Route path="notifications" element={<NotificationsPage />} />
       </Route>
 
 

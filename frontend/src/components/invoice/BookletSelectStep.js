@@ -23,7 +23,7 @@ export default function BookletSelectStep({ managers = [], onSelect, onBack }) {
       </div>
 
       {/* Booklets Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
+      <div className="responsive-2col-grid">
         {/* All Customers Option */}
         {isAdmin && (
           <div

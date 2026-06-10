@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { deliveryApi, notificationApi, supplierApi, settlementApi, productApi } from '../utils/api';
 import { UserCheck, X, Trash2, CheckCircle, AlertTriangle, Wallet, Smartphone, Globe, CreditCard } from 'lucide-react';
@@ -7,6 +8,7 @@ import { UserCheck, X, Trash2, CheckCircle, AlertTriangle, Wallet, Smartphone, G
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
 export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'manager' }) {
+  const { user } = useAuth();
   const { t, fc } = useApp();
   const [saving, setSaving] = useState(false);
   const [submitAction, setSubmitAction] = useState('save');
@@ -215,9 +217,9 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid #e2e8f0' }}>
                 <label style={{ fontWeight: 800, color: '#1e293b', fontSize: 14, margin: 0 }}>Order Items <span style={{ color: '#ef4444' }}>*</span></label>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="hide-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
                 {form.items.map((item, idx) => (
-                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: (user?.role === 'walkin_manager' || user?.role === 'temp_manager') ? '2fr 70px 80px 100px auto' : '2fr 70px 80px 100px 100px auto', gap: 12, alignItems: 'center' }}>
+                  <div key={idx} style={{ minWidth: 550, display: 'grid', gridTemplateColumns: (user?.role === 'walkin_manager' || user?.role === 'temp_manager') ? '2fr 70px 80px 100px auto' : '2fr 70px 80px 100px 100px auto', gap: 12, alignItems: 'center' }}>
                     
                     {/* Item Name */}
                     <div style={{ position: 'relative' }}>

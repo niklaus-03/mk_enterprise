@@ -20,7 +20,7 @@ const stockMovementSchema = new mongoose.Schema({
   supplier: { type: String, default: '', trim: true },
   notes: { type: String, default: '' },
   reference: { type: String, default: '' },
-  source: { type: String, enum: ['invoice', 'manual', 'return', 'adjustment', 'walkin_loading'], default: 'manual' },
+  source: { type: String, enum: ['invoice', 'manual', 'return', 'adjustment', 'walkin_loading', 'admin_usage', 'conversion'], default: 'manual' },
   date: { type: Date, default: Date.now },
   ist_formatted: { type: String, default: '' },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },

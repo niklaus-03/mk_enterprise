@@ -20,8 +20,7 @@ function TopNavDateTime() {
       setLiveTimeIST(d.toLocaleTimeString('en-IN', {
         hour12: true,
         hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
+        minute: '2-digit'
       }).toLowerCase());
     };
     updateTime();
@@ -30,59 +29,67 @@ function TopNavDateTime() {
   }, []);
 
   const isToday = globalDate === getTodayIST();
+  
+  // Format YYYY-MM-DD to DD-MMM-YYYY
+  const formatMonthDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${d.getFullYear()}`;
+  };
 
   if (!liveTimeIST) return null;
 
   return (
     <div style={{
       display: 'flex', 
+      flexDirection: 'column',
       alignItems: 'center', 
-      gap: 16,
-      background: 'var(--bg-hover)',
-      border: '1px solid var(--border)',
-      borderRadius: 12, 
-      padding: '6px 14px',
-      marginLeft: 16
-    }} className="hide-on-mobile">
+      justifyContent: 'center',
+      padding: '4px 8px',
+      position: 'relative'
+    }} className="topnav-datetime-container">
       
-      {/* Time Section */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Clock size={16} style={{ color: 'var(--primary)' }} />
-        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.5px', color: 'var(--text)' }}>
-          {liveTimeIST.split(' ')[0]} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{liveTimeIST.split(' ')[1]}</span>
-        </div>
+      {/* Time Display (Top) */}
+      <div style={{ 
+        fontSize: 16, 
+        fontWeight: 700, 
+        fontFamily: 'monospace', 
+        letterSpacing: '0.5px', 
+        color: 'var(--text)',
+        lineHeight: 1.2
+      }} className="topnav-time-text">
+        {liveTimeIST.split(' ')[0]} <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{liveTimeIST.split(' ')[1]}</span>
       </div>
       
-      <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
-      
-      {/* Date Picker Section */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', position: 'relative' }}>
-        <Calendar size={16} style={{ color: isToday ? 'var(--text-muted)' : '#f59e0b' }} />
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: -2 }}>
-            {isToday ? 'Today' : 'Archive'}
-          </div>
-          <input
-            type="date"
-            value={globalDate}
-            max={getTodayIST()}
-            onChange={e => { if (e.target.value) setGlobalDate(e.target.value); }}
-            style={{
-              border: 'none', 
-              outline: 'none', 
-              fontSize: 12, 
-              fontWeight: 700,
-              fontFamily: 'inherit', 
-              background: 'transparent',
-              cursor: 'pointer', 
-              color: isToday ? 'var(--text)' : '#d97706', 
-              width: 100,
-              padding: 0
-            }}
-          />
-        </div>
+      {/* Date Display (Bottom) */}
+      <div style={{ 
+        fontSize: 14, 
+        fontWeight: 700, 
+        color: isToday ? 'var(--text-muted)' : '#d97706',
+        lineHeight: 1.2,
+        marginTop: 2
+      }} className="topnav-date-text">
+        {formatMonthDate(globalDate)}
       </div>
 
+      {/* Invisible Date Picker Overlay */}
+      <input
+        type="date"
+        value={globalDate}
+        max={getTodayIST()}
+        onChange={e => { if (e.target.value) setGlobalDate(e.target.value); }}
+        onClick={e => { try { e.target.showPicker(); } catch(err) {} }}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          opacity: 0,
+          cursor: 'pointer',
+          width: '100%',
+          height: '100%'
+        }}
+        title="Change Date"
+      />
     </div>
   );
 }

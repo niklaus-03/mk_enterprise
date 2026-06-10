@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { tripApi, notificationApi, invoiceApi } from '../utils/api';
 import { Car, Truck, History, Settings, Bell, Wallet, MapPin, RefreshCw, CheckCircle, FileText, Play, LogOut, Plus, Package, ArrowLeft, Landmark, Clock, Calendar, Shield, Info, Map, ChevronRight, Download } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 
 const GOODS_TYPES = [
@@ -237,6 +238,16 @@ export default function DriverDashboard() {
     }, 5000);
     return () => clearInterval(interval);
   }, [loadActiveTrip, loadNotifications]);
+
+  const handleRefresh = useCallback(async () => {
+    if (view === 'history') await loadHistory();
+    else {
+      await loadActiveTrip();
+      await loadNotifications();
+    }
+  }, [view, loadHistory, loadActiveTrip, loadNotifications]);
+  useRegisterRefresh(handleRefresh);
+
 
   useEffect(() => {
     if (location.state?.dispatchNotif && view === 'home' && !activeTrip) {
@@ -928,6 +939,11 @@ export default function DriverDashboard() {
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const containerWidth = (view === 'home' && !activeTrip) ? 500 : 1000;
+
+  const refreshDriver = useCallback(() => {
+    return Promise.all([loadActiveTrip(), loadNotifications()]);
+  }, [loadActiveTrip, loadNotifications]);
+  useRegisterRefresh(refreshDriver);
 
   return (
     <div style={{ maxWidth: containerWidth, margin: '0 auto' }}>

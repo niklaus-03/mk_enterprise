@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { customerApi, managerApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 import { FileText, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Share2, Plus, Phone, Wallet, X, AlertTriangle, Users, User, Search, MapPin, ArrowRight, Clock, CreditCard } from 'lucide-react';
 import { parseCustomerName, formatCustomerName, isHindi, titleCase, getPrefixOptions, applyAutoSuffix } from '../utils/nameFormatter';
 
@@ -196,6 +197,11 @@ export default function Customers() {
     }, 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  const refreshCustomers = useCallback(() => {
+    return customerApi.getAll({ search }).then(setCustomers).catch(e => toast.error(e.message));
+  }, [search]);
+  useRegisterRefresh(refreshCustomers);
 
   // Auto-open add form when navigated from dashboard with ?action=add
   useEffect(() => {

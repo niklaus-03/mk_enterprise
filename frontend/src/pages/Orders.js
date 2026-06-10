@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { orderApi } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../utils/helpers';
 import { FileSpreadsheet, Phone, AlertTriangle, Calendar, CreditCard, Trash2, Plus, FileText, Inbox } from 'lucide-react';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 const fc = formatCurrency;
 
@@ -29,6 +30,9 @@ export default function OrdersPage() {
   };
 
   useEffect(() => { loadOrders(); }, []);
+
+  const refreshPage = useCallback(() => { loadOrders(); }, []);
+  useRegisterRefresh(refreshPage);
 
   const filteredOrders = orders.filter(order => {
     const today = getToday();

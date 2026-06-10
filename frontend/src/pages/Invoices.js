@@ -4,6 +4,7 @@ import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { invoiceApi, driverApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
 import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User } from 'lucide-react';
 
@@ -108,6 +109,7 @@ export default function Invoices() {
 
   useEffect(() => { setPage(1); }, [search, customer_id]);
   useEffect(() => { load(); }, [load]);
+  useRegisterRefresh(load);
 
   const handleDelete = async (inv) => {
     if (!window.confirm(`Cancel invoice ${inv.invoice_number}? Stock will be restored.`)) return;

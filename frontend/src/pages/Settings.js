@@ -9,6 +9,7 @@ import {
   Briefcase, CreditCard, FileText, AlertTriangle, User, Truck, DollarSign, 
   Activity, Calendar, Building2, Shield, Languages, Save, Package
 } from 'lucide-react';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 export default function Settings() {
   const { settings, updateSettings } = useApp();
@@ -47,6 +48,7 @@ export default function Settings() {
   }, [isAdmin]);
 
   useEffect(() => { loadManagers(); }, [loadManagers]);
+  useRegisterRefresh(loadManagers);
 
   const handleCreateManager = async (e) => {
     e.preventDefault();

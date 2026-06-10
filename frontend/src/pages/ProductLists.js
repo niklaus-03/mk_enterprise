@@ -310,14 +310,14 @@ export default function ProductLists() {
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-muted)' }}>No lists found</div>
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ minWidth: '800px', width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+            <div className="hide-scroll" style={{ overflowX: 'auto' }}>
+              <table style={{ minWidth: '500px', width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead>
-                  <tr style={{ background: 'var(--bg)' }}>
-                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>List Name</th>
-                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Items</th>
-                    {isAdmin && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Shared With</th>}
-                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)' }}>Actions</th>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', textTransform: 'uppercase', fontSize: 12 }}>List Name</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', textTransform: 'uppercase', fontSize: 12 }}>Items</th>
+                    {isAdmin && <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#475569', textTransform: 'uppercase', fontSize: 12 }}>Shared With</th>}
+                    <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#475569', textTransform: 'uppercase', fontSize: 12 }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -338,32 +338,35 @@ export default function ProductLists() {
                     }
 
                     return (
-                      <tr key={list._id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '10px 14px' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--sidebar-bg)' }}>{list.name}</div>
+                      <tr key={list._id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                        <td style={{ padding: '16px', verticalAlign: 'top' }}>
+                          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 14 }}>{list.name}</div>
                           {!isOwner && (
-                            <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, marginTop: 2 }}>
-                              <User size={12} /> {isAdmin ? 'By:' : 'Shared by:'} {list.created_by?.display_name || list.created_by?.username}
+                            <div style={{ fontSize: 12, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, marginTop: 4 }}>
+                              <User size={13} /> {isAdmin ? 'By:' : 'Shared by:'} {list.created_by?.display_name || list.created_by?.username}
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {displayProducts.slice(0, 5).map(p => (
-                              <span key={p._id} style={{ background: 'var(--bg-hover)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>{p.name}</span>
+                        <td style={{ padding: '16px', verticalAlign: 'top' }}>
+                          <div className="hide-scroll" style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                            {displayProducts.slice(0, 5).map((p, i) => (
+                              <span key={p._id} style={{ whiteSpace: 'nowrap', color: '#475569', fontSize: 13, fontWeight: 500 }}>
+                                {p.name}{i < Math.min(5, displayProducts.length) - 1 || displayProducts.length > 5 ? ',' : ''}
+                              </span>
                             ))}
-                            {displayProducts.length > 5 && <span style={{ background: 'var(--border)', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>+{displayProducts.length - 5} more</span>}
+                            {displayProducts.length > 5 && <span style={{ whiteSpace: 'nowrap', color: '#4338ca', fontSize: 13, fontWeight: 600 }}>+{displayProducts.length - 5} more</span>}
                           </div>
                         </td>
                         {isAdmin && (
-                        <td style={{ padding: '10px 14px' }}>
+                        <td style={{ padding: '16px', verticalAlign: 'top' }}>
                           {list.shares?.length > 0 ? (
-                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                              {list.shares.map(s => (
-                                <span key={s._id || s.manager_id?._id} style={{ fontSize: 12, background: 'var(--warning-light)', color: '#d97706', padding: '2px 6px', borderRadius: 4 }}>
-                                  {s.manager_id?.display_name || s.manager_id?.username || 'Manager'}
+                            <div className="hide-scroll" style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                              {list.shares.slice(0, 2).map((s, i) => (
+                                <span key={s._id || s.manager_id?._id} style={{ whiteSpace: 'nowrap', fontSize: 13, color: '#d97706', fontWeight: 500 }}>
+                                  {s.manager_id?.display_name || s.manager_id?.username || 'Manager'}{i < Math.min(2, list.shares.length) - 1 || list.shares.length > 2 ? ',' : ''}
                                 </span>
                               ))}
+                              {list.shares.length > 2 && <span style={{ whiteSpace: 'nowrap', fontSize: 13, color: '#b45309', fontWeight: 600 }}>+{list.shares.length - 2} more</span>}
                             </div>
                           ) : (
                             <span style={{ fontSize: 12, color: '#94a3b8' }}>Not shared</span>

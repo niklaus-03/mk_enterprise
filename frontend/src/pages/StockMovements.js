@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { stockApi, productApi } from '../utils/api';
 import { formatIST } from '../utils/helpers';
 import { Package, Plus, Filter, ArrowDownRight, ArrowUpRight, FileText, Settings2, RefreshCcw, Truck, User, AlignLeft, Calendar, Info, Layers, CheckCircle2, X } from 'lucide-react';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
@@ -31,6 +32,12 @@ export default function StockMovements() {
 
   useEffect(() => { productApi.getAll().then(setProducts).catch(() => {}); }, []);
   useEffect(() => { load(); }, [filter, page]);
+
+  const refreshPage = useCallback(() => {
+    productApi.getAll().then(setProducts).catch(() => {});
+    load();
+  }, [filter, page]);
+  useRegisterRefresh(refreshPage);
 
   const handleCreate = async () => {
     if (!form.product_id || !form.qty || parseFloat(form.qty) <= 0) return toast.error('Select product and enter a valid quantity');
@@ -252,8 +259,8 @@ export default function StockMovements() {
                   <Package size={20} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--sidebar-bg)' }}>Record Stock Movement</h3>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>Manually adjust inventory levels</div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#1e293b' }}>Record Stock Movement</h3>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Manually adjust inventory levels</div>
                 </div>
               </div>
               <button onClick={() => setShowModal(false)} style={{ background: 'var(--bg-hover)', border: 'none', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--border)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-hover)'}>✕</button>
@@ -269,18 +276,19 @@ export default function StockMovements() {
                 </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
-                <div className="form-group mb-0">
-                  <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Movement Type <span className="text-danger">*</span></label>
-                  <div style={{ display: 'flex', background: 'var(--bg-hover)', borderRadius: 10, padding: 4 }}>
-                    <button onClick={() => setForm({ ...form, type: 'incoming' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'incoming' ? 'var(--bg-card)' : 'transparent', color: form.type === 'incoming' ? '#16a34a' : 'var(--text-muted)', fontWeight: form.type === 'incoming' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'incoming' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
-                      <ArrowDownRight size={16} /> Incoming
-                    </button>
-                    <button onClick={() => setForm({ ...form, type: 'outgoing' })} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: form.type === 'outgoing' ? 'var(--bg-card)' : 'transparent', color: form.type === 'outgoing' ? '#dc2626' : 'var(--text-muted)', fontWeight: form.type === 'outgoing' ? 700 : 600, fontSize: 13, boxShadow: form.type === 'outgoing' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
-                      <ArrowUpRight size={16} /> Outgoing
-                    </button>
-                  </div>
+              <div style={{ marginBottom: 20 }}>
+                <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Movement Type <span className="text-danger">*</span></label>
+                <div style={{ display: 'flex', background: 'var(--bg-hover)', borderRadius: 10, padding: 4 }}>
+                  <button onClick={() => setForm({ ...form, type: 'incoming' })} style={{ flex: 1, padding: '12px 0', borderRadius: 8, border: 'none', background: form.type === 'incoming' ? 'var(--bg-card)' : 'transparent', color: form.type === 'incoming' ? '#16a34a' : 'var(--text-muted)', fontWeight: form.type === 'incoming' ? 700 : 600, fontSize: 14, boxShadow: form.type === 'incoming' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.2s' }}>
+                    <ArrowDownRight size={18} /> Incoming
+                  </button>
+                  <button onClick={() => setForm({ ...form, type: 'outgoing' })} style={{ flex: 1, padding: '12px 0', borderRadius: 8, border: 'none', background: form.type === 'outgoing' ? 'var(--bg-card)' : 'transparent', color: form.type === 'outgoing' ? '#dc2626' : 'var(--text-muted)', fontWeight: form.type === 'outgoing' ? 700 : 600, fontSize: 14, boxShadow: form.type === 'outgoing' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.2s' }}>
+                    <ArrowUpRight size={18} /> Outgoing
+                  </button>
                 </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                 <div className="form-group mb-0">
                   <label className="form-label" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Quantity <span className="text-danger">*</span></label>
                   <input className="form-control" type="number" min="0.01" step="0.01" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} placeholder="0.00" style={{ borderRadius: 12, border: '2px solid #e2e8f0', padding: '12px 16px', fontSize: 15, fontWeight: 700, fontFamily: 'monospace' }} />

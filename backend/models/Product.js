@@ -19,6 +19,10 @@ const productSchema = new mongoose.Schema({
   allowed_managers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }],
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   last_updated_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+  // Bulk-to-Loose linking
+  parent_product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null },
+  conversion_factor: { type: Number, default: 0 },   // How many of THIS item = 1 parent unit (e.g. 50 for 1kg sugar from 50kg bag)
+  is_loose_item: { type: Boolean, default: false },
 }, { timestamps: true });
 
 productSchema.index({ name: 1 });

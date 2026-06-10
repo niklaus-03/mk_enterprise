@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { deliveryApi, notificationApi } from '../utils/api';
@@ -6,6 +6,7 @@ import { UserCheck, Plus, X, Trash2, Calendar, Clock, Package, CheckCircle, Aler
 import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
 import PaymentModal from '../components/PaymentModal';
 import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
@@ -50,6 +51,9 @@ export default function WalkInDelivery() {
   };
 
   useEffect(() => { load(); }, [filterDate, showAll]);
+
+  const refreshPage = useCallback(() => { load(); }, [filterDate, showAll]);
+  useRegisterRefresh(refreshPage);
 
   const openModal = () => {
     setShowModal(true);

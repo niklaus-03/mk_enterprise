@@ -1,17 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, X, User, Package, FileText, ChevronRight, Clock, Building2, Truck, Layers } from 'lucide-react';
-import { customerApi, productApi, invoiceApi, supplierApi, managerApi, driverApi } from '../utils/api';
+import { Search, X, User, Package, FileText, ChevronRight, Clock, Building2, Truck, Layers, Mic } from 'lucide-react';
+import { customerApi, productApi, invoiceApi, supplierApi, managerApi, driverApi, voiceApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import useBackButton from '../hooks/useBackButton';
 import { useAuth } from '../context/AuthContext';
 
 export default function MobileGlobalSearch({ customButton, desktop }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isWalkinManager = user?.role === 'walkin_manager';
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
   const containerRef = useRef(null);
   const [results, setResults] = useState({ customers: [], products: [], invoices: [], suppliers: [], staff: [] });
   const [recentSearches, setRecentSearches] = useState(() => {
@@ -20,7 +25,72 @@ export default function MobileGlobalSearch({ customButton, desktop }) {
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   });
-  const navigate = useNavigate();
+  const startVoiceRecognition = async () => {
+    if (isListening) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        setIsListening(false);
+        setIsProcessing(true);
+        try {
+          const audioBlob = new Blob(audioChunksRef.current);
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          
+          // Decode audio to PCM
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          const offlineContext = new OfflineAudioContext(1, audioBuffer.length, 16000);
+          const source = offlineContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(offlineContext.destination);
+          source.start();
+          const renderedBuffer = await offlineContext.startRendering();
+          const float32Array = renderedBuffer.getChannelData(0);
+          
+          // Convert float32 back to Int16 for raw upload
+          const pcmData = new Int16Array(float32Array.length);
+          for (let i = 0; i < float32Array.length; i++) {
+            let s = Math.max(-1, Math.min(1, float32Array[i]));
+            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+          
+          const rawBlob = new Blob([pcmData.buffer], { type: 'application/octet-stream' });
+          
+          const res = await voiceApi.transcribe(rawBlob);
+          if (res.data && res.data.text) {
+            setQuery(res.data.text.trim());
+            if (!isOpen) setIsOpen(true);
+          }
+        } catch (err) {
+          console.error("Transcription failed", err);
+          alert("Transcription failed. Please try again.");
+        } finally {
+          setIsProcessing(false);
+          stream.getTracks().forEach(track => track.stop());
+        }
+      };
+
+      mediaRecorder.start();
+      setIsListening(true);
+    } catch (err) {
+      console.error("Mic error", err);
+      alert("Could not access microphone.");
+    }
+  };
 
   useBackButton(isOpen, () => setIsOpen(false));
 
@@ -331,28 +401,61 @@ export default function MobileGlobalSearch({ customButton, desktop }) {
     return (
       <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: 12 }} ref={containerRef}>
         <div className="yt-search-container">
-          <div style={{ flex: 1, padding: '0 16px', display: 'flex', alignItems: 'center', position: 'relative' }}>
+          <div className="yt-search-input-wrapper" style={{ flex: 1, padding: '0 8px', display: 'flex', alignItems: 'center', position: 'relative', minWidth: 0 }}>
              <input 
                value={query}
                onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
                onFocus={() => setIsOpen(true)}
                placeholder="Search"
-               style={{ width: '100%', border: 'none', outline: 'none', fontSize: 16, background: 'transparent', color: 'var(--text)' }}
+               style={{ width: '100%', minWidth: 0, border: 'none', outline: 'none', fontSize: 16, background: 'transparent', color: 'var(--text)' }}
              />
-             {query && (
+              {query && (
                 <button onClick={() => setQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}>
                   <i className="bi bi-x-lg" style={{ color: 'var(--text-muted)', fontSize: '18px' }}></i>
                 </button>
              )}
           </div>
-          <button className="yt-search-btn">
-             <i className="bi bi-search" style={{ color: 'var(--text-muted)', fontSize: '16px' }}></i>
+          <button 
+            className={`yt-mic-btn ${isListening ? 'listening' : ''}`} 
+            title={isListening ? "Click to stop recording" : "Search with your voice"}
+            onClick={startVoiceRecognition}
+            style={{
+              position: 'relative',
+              background: isListening ? '#fee2e2' : 'transparent',
+              color: isListening ? '#ef4444' : 'var(--text-muted)',
+              border: 'none',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              animation: isListening ? 'pulse 1.5s infinite' : (isProcessing ? 'pulse 0.5s infinite' : 'none')
+            }}
+          >
+            {isProcessing ? (
+               <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderColor: 'var(--text) transparent var(--text) transparent' }}></div>
+            ) : (
+               <i className="bi bi-mic-fill" style={{ fontSize: '18px', color: 'inherit' }}></i>
+            )}
+            {isListening && (
+              <span style={{
+                position: 'absolute', top: 4, left: 4, right: 4, bottom: 4,
+                borderRadius: '50%', border: '2px solid #ef4444',
+                animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite'
+              }}></span>
+            )}
           </button>
         </div>
         
-        <button className="yt-mic-btn" title="Search with your voice">
-          <i className="bi bi-mic-fill" style={{ color: 'var(--text)', fontSize: '18px' }}></i>
-        </button>
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes ping {
+            75%, 100% { transform: scale(1.5); opacity: 0; }
+          }
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+          }
+        `}} />
         
         {isOpen && (
           <div style={{
@@ -409,12 +512,37 @@ export default function MobileGlobalSearch({ customButton, desktop }) {
                 borderRadius: 20, padding: '0 16px', fontSize: 15, outline: 'none', color: 'var(--text)'
               }}
             />
+            {!query && (
+              <button 
+                onClick={startVoiceRecognition}
+                style={{
+                  position: 'absolute', right: 16, background: isListening ? '#fee2e2' : 'none', border: 'none', 
+                  color: isListening ? '#ef4444' : 'var(--text-muted)', padding: 8, cursor: 'pointer', borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  animation: isListening ? 'pulse 1.5s infinite' : (isProcessing ? 'pulse 0.5s infinite' : 'none')
+                }}
+              >
+                {isProcessing ? (
+                   <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2, borderColor: 'var(--text) transparent var(--text) transparent' }}></div>
+                ) : (
+                   <Mic size={18} color="inherit" />
+                )}
+                {isListening && (
+                  <span style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    borderRadius: '50%', border: '2px solid #ef4444',
+                    animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite'
+                  }}></span>
+                )}
+              </button>
+            )}
             {query && (
               <button 
                 onClick={() => setQuery('')}
                 style={{
-                  position: 'absolute', right: 20, background: 'none', border: 'none', 
-                  color: 'var(--text-muted)', padding: 4, cursor: 'pointer'
+                  position: 'absolute', right: 16, background: 'none', border: 'none', 
+                  color: 'var(--text-muted)', padding: 8, cursor: 'pointer', borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}
               >
                 <X size={18} />

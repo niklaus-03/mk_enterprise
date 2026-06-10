@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { deliveryApi, tripApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { Truck, Calendar, CheckCircle, Clock, User, AlertTriangle, FileText, X, Home, ChevronRight, Package, Car, MapPin, ArrowUpRight, ArrowDownLeft, UserCheck } from 'lucide-react';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 function getTodayIST() {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
@@ -63,6 +64,9 @@ export default function VehicleIncoming() {
     const interval = setInterval(() => pollAll(selectedDate, viewAll), 5000);
     return () => clearInterval(interval);
   }, [selectedDate, viewAll]);
+
+  const refreshPage = useCallback(() => { loadAll(selectedDate, viewAll); }, [selectedDate, viewAll]);
+  useRegisterRefresh(refreshPage);
 
   const statusConfig = {
     pending:        { label: 'Pending',       bg: 'var(--bg-hover)', color: 'var(--text-muted)', border: 'var(--border)', icon: <Clock size={12} /> },

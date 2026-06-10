@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { dashboardApi, invoiceApi, deliveryApi, settlementApi, dailyReportApi, customerApi, supplierApi, productApi, managerApi, walkinApi } from '../utils/api';
 import { Moon, Send, Plus, CheckCircle, AlertTriangle, DollarSign, FileText, Truck, X, ChevronDown, ChevronUp, Clock, Package, Users, Building2, TrendingUp, Loader, Coffee, CreditCard, Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 // Helper: get today's date in IST as YYYY-MM-DD
 function getTodayIST() {
@@ -209,6 +210,12 @@ export default function DailyReport() {
       setAdminLoading(false);
     }
   }, [adminSelectedDate]);
+
+  const refreshPage = useCallback(() => {
+    loadData();
+    if (isAdmin) loadAdminReports();
+  }, [loadData, isAdmin, loadAdminReports]);
+  useRegisterRefresh(refreshPage);
 
   useEffect(() => {
     if (isAdmin) loadAdminReports();

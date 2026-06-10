@@ -190,7 +190,7 @@ export default function NewInvoice() {
     setDrafts(stored);
   }, []);
 
-  // Restore auto-draft on mount
+  // Move auto-draft to Drafts list on mount instead of auto-loading
   useEffect(() => {
     const saved = localStorage.getItem(AUTO_DRAFT_KEY);
     if (saved) {
@@ -198,39 +198,28 @@ export default function NewInvoice() {
         const draft = JSON.parse(saved);
         const sevenDays = 7 * 24 * 60 * 60 * 1000;
         if (Date.now() - draft.savedAt <= sevenDays) {
-          setItems(draft.items || [newItem()]);
-          setCustomerMode(draft.customerMode || 'walkin');
-          setCustomerId(draft.customerId || '');
-          setWalkIn(draft.walkIn || {});
-          setPayments(draft.payments || [{ mode: 'cash', amount: '', reference: '' }]);
-          setDiscount(draft.discount || '');
-          setConcessionReason(draft.concessionReason || '');
-          setNotes(draft.notes || '');
-          setDriverName(draft.driverName || '');
-          setVehicleNumber(draft.vehicleNumber || '');
-          setTotalWeight(draft.totalWeight || '');
-          setVehicleCharge(draft.vehicleCharge || '');
-          setLabourCharge(draft.labourCharge || '');
-          setBillDate(draft.billDate || getISTDateTime());
-          setIsManualBill(draft.isManualBill || false);
-          setManualBillRef(draft.manualBillRef || '');
+          let existing = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]');
+          if (!Array.isArray(existing)) existing = [];
           
-          // Determine the logical step to resume
-          if (draft.customerId || draft.customerMode === 'walkin') {
-            if (draft.items && draft.items.length > 0 && draft.items.some(i => i.product_name)) {
-              setStep(3);
-            } else {
-              setStep(2);
-            }
-          } else {
-            setStep(user?.role === 'supervisor' ? 0 : 1);
-          }
-        } else {
-          localStorage.removeItem(AUTO_DRAFT_KEY);
+          const validItems = (draft.items || []).filter(i => i.product_name && parseFloat(i.qty) > 0);
+          const totalAmount = validItems.reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0);
+          
+          let customerName = draft.customerMode === 'existing' ? 'Existing Customer' : (draft.walkIn?.name || 'Walk-in Customer');
+          
+          const newDraft = {
+            id: Date.now() + Math.random(), 
+            customerName: `[Auto-recovered] ${customerName}`, 
+            totalAmount, 
+            itemCount: validItems.length,
+            ...draft
+          };
+          
+          const updated = [newDraft, ...existing];
+          localStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+          setDrafts(updated);
         }
-      } catch {
-        localStorage.removeItem(AUTO_DRAFT_KEY);
-      }
+      } catch (e) {}
+      localStorage.removeItem(AUTO_DRAFT_KEY);
     }
     setIsDraftLoaded(true);
   }, []);
@@ -573,6 +562,14 @@ export default function NewInvoice() {
 
       const invoice = await invoiceApi.create(payload);
       toast.success('Invoice created!');
+      if (invoice.auto_conversions && invoice.auto_conversions.length > 0) {
+        invoice.auto_conversions.forEach(conv => {
+          toast(`Auto-converted: ${conv.parent_qty} ${conv.parent_unit} ${conv.parent_name} → ${conv.child_qty} ${conv.child_unit} ${conv.child_name}`, {
+            icon: '🔄',
+            duration: 6000,
+          });
+        });
+      }
       localStorage.removeItem(AUTO_DRAFT_KEY);
 
       // Auto-register walk-in if 10 digit number and name is provided

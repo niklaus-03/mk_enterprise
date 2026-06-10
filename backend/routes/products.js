@@ -180,6 +180,7 @@ router.get('/', async (req, res) => {
         Product.find(query)
           .populate('created_by', 'username display_name role')
           .populate('last_updated_by', 'username display_name role')
+          .populate('parent_product', 'name stock unit')
           .collation({ locale: 'hi', strength: 2 })
           .sort(sortObj)
           .skip(skip)
@@ -200,6 +201,7 @@ router.get('/', async (req, res) => {
     let products = await Product.find(query)
       .populate('created_by', 'username display_name role')
       .populate('last_updated_by', 'username display_name role')
+      .populate('parent_product', 'name stock unit')
       .collation({ locale: 'hi', strength: 2 })
       .sort(sortObj)
       .limit(list_id ? 1000 : parseInt(limit))
@@ -280,7 +282,7 @@ router.get('/categories', async (req, res) => {
 // GET single product
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) }).populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role');
+    const product = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) }).populate('parent_product', 'name stock unit').populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role');
     if (!product) return res.status(404).json({ error: 'Product not found or access denied' });
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -305,6 +307,9 @@ router.post('/', checkProductEditPermission, async (req, res) => {
         weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
       category: (category || '').trim(),
+      parent_product: req.body.parent_product || null,
+      conversion_factor: parseFloat(req.body.conversion_factor) || 0,
+      is_loose_item: !!req.body.parent_product,
       created_by: req.user.id,
     };
     if (allowed_managers && Array.isArray(allowed_managers)) {
@@ -345,7 +350,52 @@ router.post('/', checkProductEditPermission, async (req, res) => {
       changes: product.toObject()
     });
 
-    res.status(201).json(product);
+    // Auto-create loose child product if requested
+    let looseProduct = null;
+    if (req.body.create_loose_item && req.body.loose_unit && req.body.loose_conversion_factor) {
+      const looseName = `${name.trim()} (${req.body.loose_unit})`;
+      const looseStock = parseFloat(req.body.initial_loose_stock) || 0;
+      const loosePrice = parseFloat(req.body.loose_price) || 0;
+      const looseFactor = parseFloat(req.body.loose_conversion_factor) || 1;
+
+      looseProduct = await Product.create({
+        name: looseName,
+        price: loosePrice,
+        stock: looseStock,
+        gst: parseFloat(gst) || 0,
+        unit: req.body.loose_unit,
+        parent_product: product._id,
+        conversion_factor: looseFactor,
+        is_loose_item: true,
+        created_by: req.user.id,
+      });
+
+      if (looseStock > 0) {
+        await StockMovement.create({
+          product_id: looseProduct._id,
+          product_name: looseProduct.name,
+          type: 'incoming',
+          qty: looseStock,
+          qty_unit: req.body.loose_unit,
+          stock_before: 0,
+          stock_after: looseStock,
+          source: 'manual',
+          notes: 'Initial loose stock on creation',
+          ist_formatted: formatIST(new Date()),
+          created_by: req.user.id,
+        });
+      }
+
+      logActivity(req, {
+        action: 'create',
+        entity_type: 'product',
+        entity_id: looseProduct._id,
+        entity_name: looseProduct.name,
+        description: `Auto-created loose item. Price: ₹${loosePrice}, Stock: ${looseStock} ${req.body.loose_unit}, Factor: ${looseFactor}:1`,
+      });
+    }
+
+    res.status(201).json({ product, looseProduct });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -381,13 +431,16 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
     const checkProduct = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
 
-    const { custom_low_stock, weight_per_unit, suggested_price, category, ...rest } = req.body;
+    const { custom_low_stock, weight_per_unit, suggested_price, category, parent_product, conversion_factor, ...rest } = req.body;
     const updateData = {
       ...rest,
       custom_low_stock: (custom_low_stock != null && custom_low_stock !== '') ? parseFloat(custom_low_stock) : null,
       weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
       category: category !== undefined ? (category || '').trim() : undefined,
+      parent_product: parent_product || null,
+      conversion_factor: parseFloat(conversion_factor) || 0,
+      is_loose_item: !!parent_product,
       last_updated_by: req.user.id,
     };
     // Remove undefined keys
@@ -531,6 +584,169 @@ router.post('/:id/delegate', async (req, res) => {
     });
 
     res.json({ success: true, allowed_managers: product.allowed_managers });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /:id/convert — Convert bulk stock to loose stock (open bags → loose units)
+router.post('/:id/convert', checkProductEditPermission, async (req, res) => {
+  try {
+    const { qty, child_product_id } = req.body;
+    if (!qty || parseFloat(qty) <= 0) return res.status(400).json({ error: 'Quantity to convert is required' });
+    if (!child_product_id) return res.status(400).json({ error: 'Child product ID is required' });
+
+    const parentProduct = await Product.findById(req.params.id);
+    if (!parentProduct) return res.status(404).json({ error: 'Parent product not found' });
+
+    const childProduct = await Product.findById(child_product_id);
+    if (!childProduct) return res.status(404).json({ error: 'Child (loose) product not found' });
+    if (!childProduct.parent_product || childProduct.parent_product.toString() !== parentProduct._id.toString()) {
+      return res.status(400).json({ error: 'Child product is not linked to this parent' });
+    }
+
+    const convertQty = parseFloat(qty);
+    if (parentProduct.stock < convertQty) {
+      return res.status(400).json({ error: `Insufficient parent stock. Available: ${parentProduct.stock}` });
+    }
+
+    const looseQty = convertQty * (childProduct.conversion_factor || 1);
+
+    // Deduct from parent
+    const parentBefore = parentProduct.stock;
+    parentProduct.stock -= convertQty;
+    await parentProduct.save();
+
+    // Add to child
+    const childBefore = childProduct.stock;
+    childProduct.stock += looseQty;
+    await childProduct.save();
+
+    // Stock movements for both
+    await StockMovement.create({
+      product_id: parentProduct._id,
+      product_name: parentProduct.name,
+      type: 'outgoing',
+      qty: convertQty,
+      qty_unit: parentProduct.unit || 'pcs',
+      stock_before: parentBefore,
+      stock_after: parentProduct.stock,
+      source: 'conversion',
+      notes: `Converted ${convertQty} ${parentProduct.unit} → ${looseQty} ${childProduct.unit} of ${childProduct.name}`,
+      ist_formatted: formatIST(new Date()),
+      created_by: req.user.id,
+    });
+
+    await StockMovement.create({
+      product_id: childProduct._id,
+      product_name: childProduct.name,
+      type: 'incoming',
+      qty: looseQty,
+      qty_unit: childProduct.unit || 'pcs',
+      stock_before: childBefore,
+      stock_after: childProduct.stock,
+      source: 'conversion',
+      notes: `Converted from ${convertQty} ${parentProduct.unit} of ${parentProduct.name}`,
+      ist_formatted: formatIST(new Date()),
+      created_by: req.user.id,
+    });
+
+    logActivity(req, {
+      action: 'stock_adjust',
+      entity_type: 'product',
+      entity_id: parentProduct._id,
+      entity_name: parentProduct.name,
+      description: `Bulk-to-loose conversion: ${convertQty} ${parentProduct.unit} → ${looseQty} ${childProduct.unit} ${childProduct.name}`,
+    });
+
+    res.json({
+      success: true,
+      parent: { _id: parentProduct._id, name: parentProduct.name, stock: parentProduct.stock },
+      child: { _id: childProduct._id, name: childProduct.name, stock: childProduct.stock },
+      converted: { parent_qty: convertQty, child_qty: looseQty }
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /:id/children — Get all loose items linked to this parent product
+router.get('/:id/children', async (req, res) => {
+  try {
+    const children = await Product.find({ parent_product: req.params.id, is_active: true }).lean();
+    res.json(children);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /:id/pack-bulk — Pack loose items back into bulk (reverse conversion)
+router.post('/:id/pack-bulk', checkProductEditPermission, async (req, res) => {
+  try {
+    const { qty } = req.body; // qty = number of BULK units to form
+    if (!qty || parseFloat(qty) <= 0) return res.status(400).json({ error: 'Quantity to pack is required' });
+
+    const childProduct = await Product.findById(req.params.id);
+    if (!childProduct) return res.status(404).json({ error: 'Loose product not found' });
+    if (!childProduct.parent_product) return res.status(400).json({ error: 'This product has no parent bulk item' });
+
+    const parentProduct = await Product.findById(childProduct.parent_product);
+    if (!parentProduct) return res.status(404).json({ error: 'Parent bulk product not found' });
+
+    const packQty = parseFloat(qty);
+    const looseNeeded = packQty * (childProduct.conversion_factor || 1);
+
+    if (childProduct.stock < looseNeeded) {
+      return res.status(400).json({ error: `Insufficient loose stock. Need ${looseNeeded} ${childProduct.unit}, available: ${childProduct.stock}` });
+    }
+
+    // Deduct from child (loose)
+    const childBefore = childProduct.stock;
+    childProduct.stock -= looseNeeded;
+    await childProduct.save();
+
+    // Add to parent (bulk)
+    const parentBefore = parentProduct.stock;
+    parentProduct.stock += packQty;
+    await parentProduct.save();
+
+    // Stock movements
+    await StockMovement.create({
+      product_id: childProduct._id,
+      product_name: childProduct.name,
+      type: 'outgoing',
+      qty: looseNeeded,
+      qty_unit: childProduct.unit || 'pcs',
+      stock_before: childBefore,
+      stock_after: childProduct.stock,
+      source: 'conversion',
+      notes: `Packed ${looseNeeded} ${childProduct.unit} → ${packQty} ${parentProduct.unit} of ${parentProduct.name}`,
+      ist_formatted: formatIST(new Date()),
+      created_by: req.user.id,
+    });
+
+    await StockMovement.create({
+      product_id: parentProduct._id,
+      product_name: parentProduct.name,
+      type: 'incoming',
+      qty: packQty,
+      qty_unit: parentProduct.unit || 'pcs',
+      stock_before: parentBefore,
+      stock_after: parentProduct.stock,
+      source: 'conversion',
+      notes: `Packed from ${looseNeeded} ${childProduct.unit} of ${childProduct.name}`,
+      ist_formatted: formatIST(new Date()),
+      created_by: req.user.id,
+    });
+
+    logActivity(req, {
+      action: 'stock_adjust',
+      entity_type: 'product',
+      entity_id: parentProduct._id,
+      entity_name: parentProduct.name,
+      description: `Loose-to-bulk packing: ${looseNeeded} ${childProduct.unit} → ${packQty} ${parentProduct.unit} ${parentProduct.name}`,
+    });
+
+    res.json({
+      success: true,
+      parent: { _id: parentProduct._id, name: parentProduct.name, stock: parentProduct.stock },
+      child: { _id: childProduct._id, name: childProduct.name, stock: childProduct.stock },
+      packed: { parent_qty: packQty, child_qty: looseNeeded }
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

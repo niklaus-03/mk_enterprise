@@ -108,6 +108,9 @@ export const productApi = {
   adjustStock: (id, data) => api.patch(`/products/${id}/stock`, data),
   delegate: (id, manager_id) => api.post(`/products/${id}/delegate`, { manager_id }),
   getCategories: () => api.get('/products/categories'),
+  convert: (id, data) => api.post(`/products/${id}/convert`, data),
+  packBulk: (id, data) => api.post(`/products/${id}/pack-bulk`, data),
+  getChildren: (id) => api.get(`/products/${id}/children`),
 };
 
 // ── Customers ─────────────────────────────────────────────────────────────────
@@ -117,6 +120,7 @@ export const customerApi = {
   getPendingDues: () => api.get('/customers/pending-dues'),
   get: (id) => api.get(`/customers/${id}`),
   getInvoices: (id) => api.get(`/customers/${id}/invoices`),
+  getBalanceBreakdown: (id, params) => api.get(`/customers/${id}/balance-breakdown`, { params }),
   create: (data) => api.post('/customers', data),
   update: (id, data) => api.put(`/customers/${id}`, data),
   delete: (id) => api.delete(`/customers/${id}`),
@@ -257,6 +261,24 @@ export const dailyReportApi = {
   submit: (data) => api.post('/reports/daily', data),
   review: (id) => api.patch(`/reports/daily/${id}/review`),
   remind: (manager_id, date) => api.post(`/reports/daily/remind/${manager_id}`, { date }),
+};
+
+export const voiceApi = {
+  transcribe: (audioBlob) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'audio.raw');
+    return api.post('/voice/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+};
+
+// ── Admin Home ────────────────────────────────────────────────────────────────
+export const adminHomeApi = {
+  getAll: (params = {}) => api.get('/admin-home', { params }),
+  getSummary: (month) => api.get('/admin-home/summary', { params: month ? { month } : {} }),
+  create: (data) => api.post('/admin-home', data),
+  delete: (id) => api.delete(`/admin-home/${id}`),
 };
 
 export default api;

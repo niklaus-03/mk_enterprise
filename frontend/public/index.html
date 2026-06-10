@@ -20,6 +20,17 @@
         .no-print { display: none !important; }
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       }
+      /* Absolutely banish all scrollbars universally */
+      * {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+      }
     </style>
   </head>
   <body>

@@ -201,6 +201,7 @@ export default function ManagerDashboard() {
   // Reactive — recalculates on every render when selectedDate changes
   const isToday = selectedDate === getTodayIST();
 
+  const liveTime = useLiveClock();
   const liveTimeIST = liveTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   const liveDateIST = liveTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 
@@ -621,7 +622,7 @@ export default function ManagerDashboard() {
       }
 
       const res = await dashboardApi.recordPayment({
-        invoice_id: invoiceId, invoice_ids: payForm.selectedInvoices,
+        invoice_id: invoiceId, invoice_ids: payForm.selectedInvoices, invoice_ids: payForm.selectedInvoices,
         customer_id: payModal.customer_id || null,
         amount: parseFloat(payForm.amount),
         mode: payForm.mode,
@@ -825,140 +826,7 @@ export default function ManagerDashboard() {
         delivery={detailsDelivery}
       />
 
-      {/* ── Dashboard Header (Premium Command Center) ─────────────────────────── */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        borderRadius: 20,
-        padding: '24px 28px',
-        marginBottom: 24,
-        color: '#fff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 20,
-        boxShadow: '0 10px 30px -5px rgba(2, 6, 23, 0.3)',
-        border: '1px solid rgba(255, 255, 255, 0.05)',
-      }}>
-        {/* LEFT — Contextual Greeting (Ultra-Minimal) */}
-        <div style={{ flex: '1 1 300px' }}>
-          {isAdmin ? (
-            <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-1px', color: '#fff', margin: 0 }}>
-              Welcome
-            </h1>
-          ) : (
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
-              Welcome back, {user?.display_name || user?.username || 'Manager'}
-            </div>
-          )}
-        </div>
 
-        {/* RIGHT — Live Metrics & Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          
-          {/* Glassmorphic Live Clock & Date */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 16,
-            background: 'rgba(255,255,255,0.08)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 16, padding: '10px 18px',
-            boxShadow: 'inset 0 0 12px rgba(255,255,255,0.02)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Clock size={18} style={{ color: 'var(--primary)' }} />
-              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'monospace', letterSpacing: '1px', color: '#fff' }}>
-                {liveTimeIST.split(' ')[0]} <span style={{ fontSize: 12, opacity: 0.6 }}>{liveTimeIST.split(' ')[1]}</span>
-              </div>
-            </div>
-            
-            <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)' }} />
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', position: 'relative' }}>
-              <Calendar size={18} style={{ color: '#fcd34d' }} />
-              <div style={{ position: 'relative' }}>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: -2 }}>
-                  {isToday ? 'Today' : 'Archive'}
-                </div>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  max={getTodayIST()}
-                  onChange={e => { if (e.target.value) setSelectedDate(e.target.value); }}
-                  style={{
-                    border: 'none', outline: 'none', fontSize: 13, fontWeight: 700,
-                    fontFamily: 'inherit', background: 'transparent',
-                    cursor: 'pointer', color: isToday ? '#fff' : '#fcd34d', width: 110,
-                  }}
-                />
-              </div>
-              {!isToday && (
-                <button
-                  onClick={() => setSelectedDate(getTodayIST())}
-                  style={{
-                    background: '#fcd34d', border: 'none', cursor: 'pointer',
-                    color: '#92400e', fontWeight: 800, fontSize: 10, padding: '4px 8px',
-                    borderRadius: 6, whiteSpace: 'nowrap', transition: 'all 0.2s',
-                    boxShadow: '0 4px 10px rgba(252, 211, 77, 0.2)',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
-                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                >↩ Today</button>
-              )}
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <Link 
-              to="/invoices/new" 
-              className="btn" 
-              style={{ 
-                background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
-                color: '#fff',
-                border: 'none', 
-                padding: '12px 20px',
-                borderRadius: 14,
-                fontWeight: 800,
-                fontSize: 14,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 10px 20px -5px rgba(37, 99, 235, 0.4)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 25px -5px rgba(37, 99, 235, 0.5)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 20px -5px rgba(37, 99, 235, 0.4)'; }}
-            >
-              <FileText size={18} /> {t('New Bill', 'नया बिल')}
-            </Link>
-            
-            {user?.role !== 'temp_manager' && (
-              <Link 
-                to="/orders/new" 
-                className="btn" 
-                style={{ 
-                  background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
-                  color: '#fff',
-                  border: 'none', 
-                  padding: '12px 20px',
-                  borderRadius: 14,
-                  fontWeight: 800,
-                  fontSize: 14,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  boxShadow: '0 10px 20px -5px rgba(217, 119, 6, 0.4)',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 15px 25px -5px rgba(217, 119, 6, 0.5)'; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 10px 20px -5px rgba(217, 119, 6, 0.4)'; }}
-              >
-                <Package size={18} /> {t('New Order', 'नया ऑर्डर')}
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Stats */}
       {/* Notification bar — shows if any deliveries are arriving soon */}

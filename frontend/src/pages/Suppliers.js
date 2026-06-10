@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -6,6 +6,7 @@ import { supplierApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { Building2, Search, Phone, MapPin, Trash2, Plus, X, Edit, CreditCard, FileText, ArrowRight, Calendar, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 const EMPTY = { name: '', phone: '', contact_numbers: [], address: '', notes: '', balance: '' };
 
@@ -41,6 +42,9 @@ export default function Suppliers() {
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  const refreshPage = useCallback(() => { load(search); }, [search]);
+  useRegisterRefresh(refreshPage);
 
   const openAdd = () => { setForm(EMPTY); setShowModal(true); };
   const openEdit = (s) => { 
