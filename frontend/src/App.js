@@ -408,13 +408,15 @@ function AppLayout() {
                 to="/invoices/new" 
                 className="btn" 
                 style={{ 
-                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)', 
-                  color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 14, 
+                  background: 'transparent', 
+                  color: 'var(--text-muted)', border: 'none', padding: '8px 12px', 
                   fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
-                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
               >
-                <FileText size={16} /> <span className="hide-on-tablet">New Bill</span>
+                <FileText size={18} /> <span className="hide-on-tablet">New Bill</span>
               </Link>
               
               {user?.role !== 'temp_manager' && (
@@ -422,13 +424,15 @@ function AppLayout() {
                   to="/orders/new" 
                   className="btn" 
                   style={{ 
-                    background: 'linear-gradient(135deg, #f59e0b, #d97706)', 
-                    color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 14, 
+                    background: 'transparent', 
+                    color: 'var(--text-muted)', border: 'none', padding: '8px 12px', 
                     fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6,
-                    boxShadow: '0 4px 12px rgba(217, 119, 6, 0.2)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                   }}
+                  onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
                 >
-                  <Package size={16} /> <span className="hide-on-tablet">New Order</span>
+                  <Package size={18} /> <span className="hide-on-tablet">New Order</span>
                 </Link>
               )}
             </div>
