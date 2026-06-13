@@ -5,6 +5,7 @@ const orderItemSchema = new mongoose.Schema({
   product_name: { type: String, required: true },
   qty: { type: Number, required: true, min: 0 },
   price: { type: Number, default: 0 },
+  is_loose: { type: Boolean, default: false },
 });
 
 const orderSchema = new mongoose.Schema({

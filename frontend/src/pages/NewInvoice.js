@@ -11,7 +11,7 @@ import {
   User, Users, Phone, MapPin, Calendar, Truck, FileText, 
   FileSpreadsheet, CheckCircle, AlertTriangle, Plus, Trash2, 
   Monitor, Check, ArrowLeft, Receipt, FolderOpen, Inbox, 
-  Clock, Tag, Wallet, PenTool, Save, Package 
+  Clock, Tag, Wallet, PenTool, Save, Package, X
 } from 'lucide-react';
 import { parseCustomerName, formatCustomerName, isHindi, applyAutoSuffix } from '../utils/nameFormatter';
 
@@ -74,6 +74,7 @@ export default function NewInvoice() {
   const [walkIn, setWalkIn] = useState({ prefix: 'Shree', name: '', phone: '', address: '' });
   const [prevBalance, setPrevBalance] = useState(0);
   const [balanceBreakdown, setBalanceBreakdown] = useState(null);
+  const [timelineData, setTimelineData] = useState(null);
   const [breakdownSelections, setBreakdownSelections] = useState(null);
   const [allowEditPrevDue, setAllowEditPrevDue] = useState(false);
   const [editedPrevDue, setEditedPrevDue] = useState('');
@@ -95,6 +96,7 @@ export default function NewInvoice() {
   const [labourCharge, setLabourCharge] = useState('');
   const [isManualBill, setIsManualBill] = useState(false);
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+  const [qrForCurrentBill, setQrForCurrentBill] = useState(false);
 
   const getISTDateTime = () => {
     const now = new Date();
@@ -242,6 +244,10 @@ export default function NewInvoice() {
             setBalanceBreakdown(res);
             setPrevBalance(res.total_balance || 0);
           })
+          .catch(err => console.error(err));
+          
+        customerApi.getTimelineSinceLastInvoice(customerId, { manager_id: selectedManagerForBill })
+          .then(res => setTimelineData(res))
           .catch(err => console.error(err));
       } else {
         setPrevBalance(0);
@@ -516,7 +522,7 @@ export default function NewInvoice() {
       
       const mergedMap = new Map();
       rawItems.forEach(item => {
-        const key = item.product_id || `custom_${item.product_name}`;
+        const key = item.product_id ? `${item.product_id}_${item.is_loose ? 'loose' : 'bulk'}` : `custom_${item.product_name}`;
         if (item.product_id && mergedMap.has(key)) {
           mergedMap.get(key).qty += item.qty;
         } else {
@@ -552,12 +558,18 @@ export default function NewInvoice() {
         bill_date: billDate,
         is_manual_bill: isManualBill,
         manual_bill_ref: manualBillRef,
+        ledger_payments: timelineData?.recent_payments || [],
+        starting_balance: timelineData ? timelineData.starting_balance : prevBalance,
         signature: sigRef.current.toDataURL("image/png"),
         override_creator_id: selectedManagerForBill,
+        qr_for_current_bill: qrForCurrentBill,
       };
 
       if (allowEditPrevDue) {
         payload.override_previous_balance = editedPrevDue;
+      } else {
+        // ALWAYS send what the frontend calculated to prevent backend from recalculating with wrong manager context
+        payload.override_previous_balance = prevBalance;
       }
 
       const invoice = await invoiceApi.create(payload);
@@ -698,6 +710,95 @@ export default function NewInvoice() {
     );
   }
 
+  const draftsPanelNode = showDrafts && (
+    <div className="animate-fade-in" style={{ paddingBottom: '24px' }}>
+      {drafts.length === 0 ? (
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0' }}>
+          <div style={{ background: 'var(--bg-card)', width: 80, height: 80, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+            <Inbox size={32} style={{ color: 'var(--text-muted)' }} />
+          </div>
+          <h3 style={{ margin: '0 0 8px 0', fontSize: 18, color: 'var(--text)', fontWeight: 700 }}>No drafts saved yet</h3>
+          <p style={{ margin: 0, fontSize: 14 }}>Drafts you save will securely appear here.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+            {drafts.map(d => {
+              const savedDate = d.savedAt
+                ? new Date(d.savedAt).toLocaleString('en-IN', {
+                    day: '2-digit', month: 'short', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit', hour12: true,
+                  })
+                : '—';
+              return (
+                <div
+                  key={d.id}
+                  style={{
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: 14, overflow: 'hidden',
+                    cursor: 'pointer', transition: 'all 0.2s',
+                    display: 'flex', flexDirection: 'column',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = 'var(--primary)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(37,99,235,0.1)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.02)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                  onClick={() => loadDraft(d)}
+                >
+                  <div style={{ padding: '16px', flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                         <div style={{ background: 'var(--bg)', width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                           <User size={16} />
+                         </div>
+                         <div>
+                           <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)', lineHeight: 1.2 }}>{d.customerName || 'Walk-in Customer'}</div>
+                           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{d.itemCount || 0} items</div>
+                         </div>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--success)' }}>{formatCurrency(d.totalAmount || 0)}</span>
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                      <Clock size={13} /> {savedDate}
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+                    <button 
+                      className="btn btn-ghost" 
+                      style={{ flex: 1, padding: 12, borderRadius: 0, color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'background 0.15s' }} 
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      onClick={(e) => { e.stopPropagation(); loadDraft(d); }}
+                    >
+                      <FolderOpen size={14} /> Load
+                    </button>
+                    <div style={{ width: 1, background: 'var(--border)' }}></div>
+                    <button 
+                      className="btn btn-ghost" 
+                      style={{ padding: '12px 18px', borderRadius: 0, color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }} 
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      onClick={(e) => { e.stopPropagation(); deleteDraft(d.id); }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+    </div>
+  );
+
   if (step === 1) {
     return (
       <CustomerSelectStep
@@ -705,6 +806,10 @@ export default function NewInvoice() {
         managers={managers}
         selectedManager={selectedManagerForBill}
         onManagerChange={setSelectedManagerForBill}
+        draftsCount={drafts.length}
+        onShowDrafts={() => setShowDrafts(!showDrafts)}
+        showDrafts={showDrafts}
+        draftsPanel={draftsPanelNode}
         onSelectCustomer={(customer) => {
           setCustomerMode('existing');
           setCustomerId(customer._id);
@@ -763,6 +868,9 @@ export default function NewInvoice() {
         selectedCustomer={selectedCustomer}
         walkInData={customerMode === 'walkin' ? walkIn : null}
         initialItems={initialItemsMapped}
+        selectedManager={selectedManagerForBill}
+        draftsCount={drafts.length}
+        onShowDrafts={() => { setStep(1); setShowDrafts(true); }}
         onBack={() => setStep(1)}
         onSaveDraft={(selectedProducts) => {
           const mappedItems = selectedProducts.map(p => {
@@ -770,12 +878,13 @@ export default function NewInvoice() {
               _key: Date.now() + Math.random(),
               product_id: p.product_id,
               product_name: p.product_name,
+              is_loose: p.is_loose || false,
               qty: p.qty,
               price: p.price,
               gst: p.gst,
               unit: p.unit || 'bag',
-              weight_per_unit: p.weight_per_unit || '',
-              weight: p.weight_per_unit ? (p.qty * p.weight_per_unit) : '',
+              weight_per_unit: p.is_loose ? '' : (p.weight_per_unit || ''),
+              weight: p.is_loose ? (p.unit?.toLowerCase() === 'kg' ? p.qty : (['gm', 'g'].includes(p.unit?.toLowerCase()) ? p.qty / 1000 : '')) : (p.weight_per_unit ? (p.qty * p.weight_per_unit) : ''),
               adjustment: 0,
             };
             return calcItem(item, gstEnabled);
@@ -789,12 +898,13 @@ export default function NewInvoice() {
               _key: Date.now() + Math.random(),
               product_id: p.product_id,
               product_name: p.product_name,
+              is_loose: p.is_loose || false,
               qty: p.qty,
               price: p.price,
               gst: p.gst,
               unit: p.unit || 'bag',
-              weight_per_unit: p.weight_per_unit || '',
-              weight: p.weight_per_unit ? (p.qty * p.weight_per_unit) : '',
+              weight_per_unit: p.is_loose ? '' : (p.weight_per_unit || ''),
+              weight: p.is_loose ? (p.unit?.toLowerCase() === 'kg' ? p.qty : (['gm', 'g'].includes(p.unit?.toLowerCase()) ? p.qty / 1000 : '')) : (p.weight_per_unit ? (p.qty * p.weight_per_unit) : ''),
               adjustment: 0,
             };
             return calcItem(item, gstEnabled);
@@ -813,14 +923,24 @@ export default function NewInvoice() {
   if (step === 3) {
     return (
       <div style={{ paddingBottom: '60px' }}>
+
+
         {/* Step 3 Header bar */}
       <div className="no-print" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 10, marginBottom: 20,
-        background: 'var(--bg-card)', borderRadius: 12, padding: '12px 18px',
-        border: '1.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        borderBottom: '1px solid var(--border)', paddingBottom: '16px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button 
+            type="button"
+            onClick={() => setStep(2)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: 'var(--bg-hover)', color: 'var(--text)', background: 'var(--bg-hover)', cursor: 'pointer' }}
+            title="Back to Products"
+          >
+            <ArrowLeft size={18} />
+          </button>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Receipt size={17} style={{ color: 'var(--primary)' }} />{t('Payment & Adjustments', 'भुगतान और समायोजन')}</div>
@@ -880,13 +1000,7 @@ export default function NewInvoice() {
             }}
           >
             <Trash2 size={14} />{t('Cancel Bill', 'बिल रद्द करें')}</button>
-          <button
-            type="button"
-            onClick={() => setStep(2)}
-            className="btn btn-outline"
-            style={{ borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <ArrowLeft size={14} />{t('Back to Products', 'उत्पादों पर वापस')}</button>
+
           <button
             type="button"
             onClick={() => setStep(4)}
@@ -894,10 +1008,20 @@ export default function NewInvoice() {
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '9px 20px', borderRadius: 8, cursor: 'pointer',
               fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
-              background: 'var(--sidebar-bg)',
-              border: 'none', color: 'var(--bg-card)',
-              boxShadow: '0 2px 10px rgba(22,163,74,0.35)',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              border: '1px solid rgba(255,255,255,0.1)', color: '#ffffff',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
               transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 16px rgba(16, 185, 129, 0.4)';
+              e.currentTarget.style.background = 'linear-gradient(135deg, #34d399 0%, #10b981 100%)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+              e.currentTarget.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
             }}
           >{t('Review & Finalize', 'समीक्षा और अंतिम रूप')}<Check size={14} />
           </button>
@@ -906,71 +1030,7 @@ export default function NewInvoice() {
 
       
         {/* Drafts panel */}
-      {showDrafts && (
-        <div className="card mb-3 animate-fade-in" style={{ border: '1.5px solid var(--border)', borderRadius: 12 }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
-              <FolderOpen size={14.5} style={{ marginRight: 6 }} /> Saved Drafts
-              {drafts.length > 0 && (
-                <span style={{ marginLeft: 8, background: 'var(--primary)', color: 'var(--bg-card)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
-                  {drafts.length}
-                </span>
-              )}
-            </div>
-            <button className="btn btn-ghost btn-sm" style={{ fontSize: 12, color: 'var(--text-muted)' }} onClick={() => setShowDrafts(false)}>✕ Close</button>
-          </div>
-          <div style={{ padding: drafts.length === 0 ? 24 : '8px 12px' }}>
-            {drafts.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                <Inbox size={28} className="text-muted" style={{ marginBottom: 8 }} />
-                <div>No drafts saved yet. Click "Save Draft" to save one.</div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {drafts.map(d => {
-                  const savedDate = d.savedAt
-                    ? new Date(d.savedAt).toLocaleString('en-IN', {
-                        day: '2-digit', month: 'short', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit', hour12: true,
-                        timeZone: 'Asia/Kolkata',
-                      })
-                    : '—';
-                  return (
-                    <div
-                      key={d.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        background: 'var(--bg)', border: '1.5px solid var(--border)',
-                        borderRadius: 10, padding: '12px 14px',
-                        cursor: 'pointer', transition: 'border-color 0.15s', gap: 10,
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                      onClick={() => loadDraft(d)}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                           <span style={{ fontWeight: 700, fontSize: 14 }}>{d.customerName || 'Walk-in Customer'}</span>
-                           <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {savedDate}</span>
-                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileSpreadsheet size={12} /> {d.itemCount || 0} items</span>
-                           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>{formatCurrency(d.totalAmount || 0)}</span>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                        <button className="btn btn-primary btn-sm" onClick={() => loadDraft(d)}><FolderOpen size={12} /> Load</button>
-                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => deleteDraft(d.id)}><Trash2 size={12} /></button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {draftsPanelNode}
 
       
         <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
@@ -1069,7 +1129,28 @@ export default function NewInvoice() {
               </div>
             </div>
           </div>
-
+          {/* QR Code Options */}
+          <div className="card" style={{ padding: '16px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)' }}>
+              QR Code Amount Preference
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', fontSize: '12.5px', color: 'var(--text-muted)' }}>
+              <input 
+                type="checkbox" 
+                checked={qrForCurrentBill} 
+                onChange={(e) => setQrForCurrentBill(e.target.checked)} 
+                style={{ marginTop: '2px', width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+              />
+              <div>
+                <div style={{ fontWeight: qrForCurrentBill ? '700' : '500', color: qrForCurrentBill ? 'var(--primary)' : 'inherit' }}>
+                  Generate QR code ONLY for Current Bill (₹{total.toFixed(2)})
+                </div>
+                <div style={{ fontSize: '11px', marginTop: '2px' }}>
+                  If unchecked, the QR code will default to the Net Payable amount (₹{totalWithPrev.toFixed(2)}).
+                </div>
+              </div>
+            </label>
+          </div>
           
           {user?.role !== 'walkin_manager' && (
             <div className="card" style={{ padding: '20px', marginBottom: '20px' }}>
@@ -1224,97 +1305,7 @@ export default function NewInvoice() {
                         <strong style={{ fontFamily: 'monospace' }}>{fc(prevBalance)}</strong>
                       </div>
                       
-                      {balanceBreakdown && prevBalance > 0 && !allowEditPrevDue && customizePrevDueEnabled && (
-                        <div style={{ marginLeft: 12, paddingLeft: 12, borderLeft: '2px solid var(--border)', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {balanceBreakdown.opening_balance > 0.01 && (
-                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-                               <span>Opening Balance:</span>
-                               <span style={{ fontFamily: 'monospace' }}>{fc(balanceBreakdown.opening_balance)}</span>
-                             </div>
-                          )}
-                          {balanceBreakdown.unpaid_invoices_sum > 0.01 && (
-                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-                               <span>Previous Invoices ({balanceBreakdown.unpaid_invoices.length}):</span>
-                               <span style={{ fontFamily: 'monospace' }}>{fc(balanceBreakdown.unpaid_invoices_sum)}</span>
-                             </div>
-                          )}
-                          {balanceBreakdown.unregistered_advance > 0.01 && (
-                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-                               <span>Unregistered Balance:</span>
-                               <span style={{ fontFamily: 'monospace' }}>-{fc(balanceBreakdown.unregistered_advance)}</span>
-                             </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      {['supervisor', 'manager', 'walkin_manager'].includes(user?.role) && prevBalance > 0 && customizePrevDueEnabled && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', borderTop: '1px dashed var(--border)', paddingTop: '8px' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '600', color: 'var(--text)' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={allowEditPrevDue} 
-                              onChange={(e) => setAllowEditPrevDue(e.target.checked)} 
-                              style={{ cursor: 'pointer' }}
-                            />
-                            {balanceBreakdown ? 'Customize Previous Due' : 'Allow editing Previous Due'}
-                          </label>
-                          {allowEditPrevDue && (
-                            <div style={{ marginTop: 8 }}>
-                              {!balanceBreakdown ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>New Amount:</span>
-                                  <input 
-                                    type="number" 
-                                    className="form-control form-control-sm"
-                                    value={editedPrevDue}
-                                    onChange={(e) => setEditedPrevDue(e.target.value)}
-                                    style={{ width: '100px', padding: '4px 8px' }}
-                                  />
-                                </div>
-                              ) : (
-                                breakdownSelections && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid var(--primary)', paddingLeft: 10 }}>
-                                    {true && (
-                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: 0, cursor: 'pointer' }}>
-                                          <input type="checkbox" checked={breakdownSelections.opening_balance?.selected} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, opening_balance: { ...prev.opening_balance, selected: e.target.checked } }))} />
-                                          Opening Balance
-                                        </label>
-                                        <input type="number" className="form-control form-control-sm" value={breakdownSelections.opening_balance?.amount} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, opening_balance: { ...prev.opening_balance, amount: e.target.value } }))} style={{ width: 80, fontSize: 12, padding: '2px 6px', height: 26 }} />
-                                      </div>
-                                    )}
-                                    
-                                    {balanceBreakdown.unpaid_invoices.map(inv => (
-                                      <div key={inv._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: 0, cursor: 'pointer' }}>
-                                          <input type="checkbox" checked={breakdownSelections.invoices[inv._id]?.selected} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, invoices: { ...prev.invoices, [inv._id]: { ...prev.invoices[inv._id], selected: e.target.checked } } }))} />
-                                          {inv.invoice_number || 'Walk-in Bill'}
-                                        </label>
-                                        <input type="number" className="form-control form-control-sm" value={breakdownSelections.invoices[inv._id]?.amount} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, invoices: { ...prev.invoices, [inv._id]: { ...prev.invoices[inv._id], amount: e.target.value } } }))} style={{ width: 80, fontSize: 12, padding: '2px 6px', height: 26 }} />
-                                      </div>
-                                    ))}
 
-                                    {true && (
-                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: 0, cursor: 'pointer' }}>
-                                          <input type="checkbox" checked={breakdownSelections.advance?.selected} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, advance: { ...prev.advance, selected: e.target.checked } }))} />
-                                          Unregistered Balance (Subtracts)
-                                        </label>
-                                        <input type="number" className="form-control form-control-sm" value={breakdownSelections.advance?.amount} onChange={(e) => setBreakdownSelections(prev => ({ ...prev, advance: { ...prev.advance, amount: e.target.value } }))} style={{ width: 80, fontSize: 12, padding: '2px 6px', height: 26 }} />
-                                      </div>
-                                    )}
-
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
-                                      <span style={{ fontSize: 12, fontWeight: 700 }}>Customized Due:</span>
-                                      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{fc(getComputedTreeBalance())}</span>
-                                    </div>
-                                  </div>
-                                )
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </li>
                     <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
                       <span style={{ fontWeight: '700', color: 'var(--text)' }}>{t('Net Payable', 'देय राशि')}</span>
@@ -1347,6 +1338,22 @@ export default function NewInvoice() {
                   <strong style={{ fontSize: '17px', fontFamily: 'monospace' }}>{fc(Math.abs(balanceDue))}</strong>
                 </li>
               </ul>
+              
+              {timelineData && timelineData.recent_payments && timelineData.recent_payments.length > 0 && (
+                <div style={{ marginTop: 16, padding: '12px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Account History</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                    <span style={{ color: 'var(--text)' }}>Starting Balance</span>
+                    <strong style={{ fontFamily: 'monospace' }}>{fc(timelineData.starting_balance)}</strong>
+                  </div>
+                  {timelineData.recent_payments.map((p, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--success)', marginTop: '4px' }}>
+                      <span>Received ({new Date(p.date).toLocaleDateString()})</span>
+                      <strong style={{ fontFamily: 'monospace' }}>- {fc(p.amount)}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             
@@ -1381,10 +1388,18 @@ export default function NewInvoice() {
       <div className="no-print" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 10, marginBottom: 20,
-        background: 'var(--bg-card)', borderRadius: 12, padding: '12px 18px',
-        border: '1.5px solid var(--border)', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        borderBottom: '1px solid var(--border)', paddingBottom: '16px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button 
+            type="button"
+            onClick={() => setStep(3)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderColor: 'var(--bg-hover)', color: 'var(--text)', background: 'var(--bg-hover)', cursor: 'pointer' }}
+            title="Back to Payments"
+          >
+            <ArrowLeft size={18} />
+          </button>
           <div>
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Receipt size={17} style={{ color: 'var(--primary)' }} /> Bill Details & Review
@@ -1418,53 +1433,6 @@ export default function NewInvoice() {
                 </span>
               )}
             </button>
-            <span style={{ width: 1, height: 20, background: '#d1d5db', flexShrink: 0 }} />
-            
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); saveDraft(items); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                background: 'var(--text-muted)',
-                border: 'none',
-                borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
-                fontSize: 12.5, fontWeight: 600,
-                color: 'var(--bg-card)',
-                transition: 'all 0.15s',
-              }}
-            >
-              <Save size={12.5} /> Save Draft
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleConvertToOrder(); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                background: '#3b82f6',
-                border: 'none',
-                borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
-                fontSize: 12.5, fontWeight: 600,
-                color: 'var(--bg-card)',
-                transition: 'all 0.15s',
-              }}
-            >
-              <FileSpreadsheet size={12.5} /> Create Order
-            </button>
-
-            <span style={{ width: 1, height: 20, background: '#d1d5db', flexShrink: 0 }} />
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/orders'); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                background: 'var(--border)', border: '1.5px solid var(--border)',
-                borderRadius: 20, padding: '5px 14px', cursor: 'pointer',
-                fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)',
-                transition: 'all 0.15s',
-              }}
-            >
-              <FileSpreadsheet size={12.5} />{t('Orders', 'ऑर्डर')}</button>
           </div>
         </div>
 
@@ -1483,23 +1451,25 @@ export default function NewInvoice() {
             <Trash2 size={14} />{t('Cancel Bill', 'बिल रद्द करें')}</button>
           <button
             type="button"
-            onClick={() => setStep(3)}
-            className="btn btn-outline"
-            style={{ borderRadius: '8px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <ArrowLeft size={14} /> Back to Payments
-          </button>
-          <button
-            type="button"
             onClick={() => saveDraft(items)}
             style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '9px 20px', borderRadius: 8, cursor: 'pointer',
               fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
-              background: 'var(--sidebar-bg)',
-              border: 'none', color: 'var(--bg-card)',
-              boxShadow: '0 2px 10px rgba(22,163,74,0.35)',
+              background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
+              border: '1px solid rgba(255,255,255,0.05)', color: '#ffffff',
+              boxShadow: '0 4px 15px rgba(100, 116, 139, 0.3)',
               transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 16px rgba(100, 116, 139, 0.4)';
+              e.currentTarget.style.background = 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(100, 116, 139, 0.3)';
+              e.currentTarget.style.background = 'linear-gradient(135deg, #64748b 0%, #475569 100%)';
             }}
           >
             <Save size={14} /> Save Draft
@@ -1509,71 +1479,7 @@ export default function NewInvoice() {
 
       
       {/* Drafts panel */}
-      {showDrafts && (
-        <div className="card mb-3 animate-fade-in" style={{ border: '1.5px solid var(--border)', borderRadius: 12 }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center' }}>
-              <FolderOpen size={14.5} style={{ marginRight: 6 }} /> Saved Drafts
-              {drafts.length > 0 && (
-                <span style={{ marginLeft: 8, background: 'var(--primary)', color: 'var(--bg-card)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
-                  {drafts.length}
-                </span>
-              )}
-            </div>
-            <button className="btn btn-ghost btn-sm" style={{ fontSize: 12, color: 'var(--text-muted)' }} onClick={() => setShowDrafts(false)}>✕ Close</button>
-          </div>
-          <div style={{ padding: drafts.length === 0 ? 24 : '8px 12px' }}>
-            {drafts.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                <Inbox size={28} className="text-muted" style={{ marginBottom: 8 }} />
-                <div>No drafts saved yet. Click "Save Draft" to save one.</div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {drafts.map(d => {
-                  const savedDate = d.savedAt
-                    ? new Date(d.savedAt).toLocaleString('en-IN', {
-                        day: '2-digit', month: 'short', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit', hour12: true,
-                        timeZone: 'Asia/Kolkata',
-                      })
-                    : '—';
-                  return (
-                    <div
-                      key={d.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        background: 'var(--bg)', border: '1.5px solid var(--border)',
-                        borderRadius: 10, padding: '12px 14px',
-                        cursor: 'pointer', transition: 'border-color 0.15s', gap: 10,
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                      onClick={() => loadDraft(d)}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                           <span style={{ fontWeight: 700, fontSize: 14 }}>{d.customerName || 'Walk-in Customer'}</span>
-                           <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', fontSize: 10.5, fontWeight: 700, borderRadius: 8, padding: '1px 7px' }}>Draft</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {savedDate}</span>
-                           <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileSpreadsheet size={12} /> {d.itemCount || 0} items</span>
-                           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>{formatCurrency(d.totalAmount || 0)}</span>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                        <button className="btn btn-primary btn-sm" onClick={() => loadDraft(d)}><FolderOpen size={12} /> Load</button>
-                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => deleteDraft(d.id)}><Trash2 size={12} /></button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {draftsPanelNode}
 
       
       <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
@@ -1862,8 +1768,8 @@ export default function NewInvoice() {
               </div>
             </div>
 
-            
-          
+
+
             {/* Action buttons */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <button
@@ -1901,7 +1807,7 @@ export default function NewInvoice() {
 
       {walkinWarningModal && (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-          <div className="modal card" style={{ maxWidth: '450px', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+          <div className="modal card" style={{ maxWidth: '450px', maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
             <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--warning)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
               {walkinWarningModal.title}
             </div>
@@ -1919,7 +1825,7 @@ export default function NewInvoice() {
 
       {paymentConfirmModal && (
         <div className="modal-overlay" onClick={() => setPaymentConfirmModal(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
             <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--danger)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
               {paymentConfirmModal.title}
             </div>
@@ -1946,7 +1852,7 @@ export default function NewInvoice() {
 
       {cancelConfirmModal && (
         <div className="modal-overlay" onClick={() => setCancelConfirmModal(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
+          <div className="modal card" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px', maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', animation: 'scaleUp 0.25s' }}>
             <div style={{ fontSize: '17px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--danger)', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
               <Trash2 size={18} /> Cancel Bill?
             </div>

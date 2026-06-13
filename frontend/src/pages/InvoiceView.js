@@ -463,8 +463,9 @@ Thank you! 🙏`
   const upiName = settings.upi_name || settings.business_name;
   const balanceDue = (invoice.total_with_prev_balance || invoice.total || 0) - (invoice.amount_received || 0);
   const finalPayable = balanceDue > 0 ? balanceDue : (invoice.total_with_prev_balance || invoice.total || 0);
+  const qrAmount = invoice.qr_for_current_bill ? (invoice.total || 0) : finalPayable;
   const qrValue = upiId 
-    ? `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${finalPayable.toFixed(2)}&cu=INR`
+    ? `upi://pay?pa=${upiId}&pn=${encodeURIComponent(upiName)}&am=${qrAmount.toFixed(2)}&cu=INR`
     : (settings.business_phone || 'ShopBill Pro');
   const istDisplay = invoice.ist_formatted || formatIST(invoice.date);
   const hasBankDetails = settings.bank_account && settings.bank_ifsc;
@@ -766,7 +767,7 @@ Thank you! 🙏`
                     {item.returned_qty > 0 && <span className="badge badge-warning" style={{ marginLeft: 6, fontSize: 10 }}>Returned: {item.returned_qty}</span>}
                     {item.is_defective && <span className="badge badge-danger" style={{ marginLeft: 6, fontSize: 10 }}>Defective</span>}
                   </td>
-                  <td style={{ textAlign: 'center' }}>{item.qty}</td>
+                  <td style={{ textAlign: 'center' }}>{item.qty} {item.unit || 'bag'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.price)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.taxable_amount)}</td>
                   {invoice.gst_enabled && <>
@@ -800,6 +801,7 @@ Thank you! 🙏`
           )}
           <div className="inv-totals-box" style={{ width: invoice.gst_enabled && Object.keys(gstSummary).length > 0 ? '40%' : '100%', minWidth: 280, marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
             <div style={{ width: '100%', maxWidth: 320 }}>
+
               <div className="inv-total-row"><span className="text-muted">{t('Subtotal', 'उप-कुल')}</span><span className="mono">{fc(invoice.subtotal)}</span></div>
             {invoice.gst_enabled && <>
               <div className="inv-total-row"><span className="text-muted">{t('CGST', 'सीजीएसटी')}</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
@@ -823,6 +825,22 @@ Thank you! 🙏`
             {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ color: 'var(--warning)', fontWeight: 600 }}><span>{t('+ Prev. Balance', '+ पिछला बकाया')}</span><span className="mono">{fc(invoice.previous_balance)}</span></div>}
             {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ fontWeight: 800 }}><span>{t('Net Payable', 'कुल देय')}</span><span className="mono">{fc(invoice.total_with_prev_balance)}</span></div>}
             {(invoice.amount_received > 0) && <div className="inv-total-row rcvd"><span>{t('Amount Received', 'प्राप्त राशि')}</span><span className="mono">{fc(invoice.amount_received)}</span></div>}
+            
+            {invoice.ledger_payments && invoice.ledger_payments.length > 0 && (
+              <div style={{ marginTop: 12, padding: '6px 8px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Account History</div>
+                <div className="inv-total-row" style={{ padding: '2px 0' }}><span>{t('Starting Balance', 'शुरुआती बकाया')}</span><span className="mono">{fc(invoice.starting_balance)}</span></div>
+                {invoice.ledger_payments.map((lp, idx) => {
+                  const d = lp.ist_formatted ? lp.ist_formatted.split(',')[0] : (lp.date ? new Date(lp.date).toLocaleDateString() : '...');
+                  return (
+                    <div key={idx} className="inv-total-row text-success" style={{ padding: '2px 0', fontSize: 11 }}>
+                      <span>{t('Received', 'प्राप्त')} ({d})</span>
+                      <span className="mono">- {fc(lp.amount)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             </div>
           </div>
         </div>

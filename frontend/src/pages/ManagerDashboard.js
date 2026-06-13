@@ -5,7 +5,7 @@ import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, custom
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare, List, Minus } from 'lucide-react';
+import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare, List, Minus, X } from 'lucide-react';
 import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
 import PaymentModal from '../components/PaymentModal';
 import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
@@ -25,11 +25,11 @@ function SortDropdown({ options, value, onChange, open, onToggle }) {
     <div style={{ position: 'relative' }}>
       <button
         className="btn btn-outline btn-sm"
-        style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
+        style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, height: 32, padding: '0 10px', borderRadius: 6 }}
         onClick={onToggle}
       >
         <span>⇅</span>
-        <span style={{ maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span className="hide-on-mobile" style={{ maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {current?.label || 'Sort'}
         </span>
         <span>{open ? '▲' : '▼'}</span>
@@ -115,7 +115,7 @@ export default function ManagerDashboard() {
   const [showAddSettlement, setShowAddSettlement] = useState(false);
   const addSettlementRef = React.useRef(null);
   const [settlementForm, setSettlementForm] = useState({
-    type: 'paid_to_supplier', party_name: '', amount: '', mode: 'cash',
+    type: '', party_name: '', amount: '', mode: 'cash',
     reference: '', notes: '', received_category: 'not_applicable'
   });
   const [settlementSaving, setSettlementSaving] = useState(false);
@@ -137,9 +137,19 @@ export default function ManagerDashboard() {
 
   // Fix 5: Supplier management within Settlement
   const [showSuppliers, setShowSuppliers] = useState(false);
+  const [showAddSupplier, setShowAddSupplier] = useState(false);
+
+  useEffect(() => {
+    if (showAddSettlement) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [showAddSettlement]);
+
   const [suppliers, setSuppliers] = useState([]);
   const [supplierSearch, setSupplierSearch] = useState('');
-  const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [supplierForm, setSupplierForm] = useState({ name: '', phone: '', address: '', notes: '' });
   const [supplierSaving, setSupplierSaving] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null); // for history view
@@ -191,7 +201,7 @@ export default function ManagerDashboard() {
   const scrollToPanel = (ref) => {
     setTimeout(() => {
       if (ref?.current) {
-        ref.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }, 80);
   };
@@ -502,6 +512,8 @@ export default function ManagerDashboard() {
   };
 
   const handleAddSettlement = async () => {
+    if (!settlementForm.type)
+      return toast.error('Select a category');
     if (!settlementForm.amount || parseFloat(settlementForm.amount) <= 0)
       return toast.error('Enter a valid amount');
     if (!settlementForm.party_name && settlementForm.type === 'paid_to_supplier')
@@ -510,7 +522,7 @@ export default function ManagerDashboard() {
     try {
       await settlementApi.create({ ...settlementForm, amount: parseFloat(settlementForm.amount) });
       toast.success('Settlement entry added');
-      setSettlementForm({ type: 'paid_to_supplier', party_name: '', amount: '', mode: 'cash', reference: '', notes: '', received_category: 'not_applicable' });
+      setSettlementForm({ type: '', party_name: '', amount: '', mode: 'cash', reference: '', notes: '', received_category: 'not_applicable' });
       setShowAddSettlement(false);
       // Reload with current filter state
       // Fix 4: use settlementCardDate not selectedDate
@@ -1031,31 +1043,24 @@ export default function ManagerDashboard() {
       {showProducts && (
         <div className="card" style={{ marginBottom: 20 }} ref={productsPanelRef}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <div className="card-title">
-              <Package size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Products
-              {(user?.role !== 'walkin_manager' || walkinTripStarted) && data.allProducts?.length > 0 && (
-                <span className="badge badge-primary" style={{ marginLeft: 8, fontSize: 11 }}>{data.allProducts.length}</span>
-              )}
-              {data.topProducts?.[0] && (
-                <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
-                  ↑ Top Today: {data.topProducts[0].product_name}
-                </span>
-              )}
+            <div className="card-title" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', width: '100%', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                <div style={{ whiteSpace: 'nowrap' }}>
+                  <Package size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Products
+                </div>
+                {(user?.role !== 'walkin_manager' || walkinTripStarted) && data.allProducts?.length > 0 && (
+                  <span className="badge badge-primary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{data.allProducts.length}</span>
+                )}
+                {data.topProducts?.[0] && (
+                  <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    ↑ Top Today: {data.topProducts[0].product_name}
+                  </span>
+                )}
+              </div>
+              <Link to="/products?action=add" className="btn btn-primary btn-sm" style={{ whiteSpace: 'nowrap', flexShrink: 0, padding: '4px 10px', fontSize: 12 }}>+ Add Product</Link>
             </div>
-            <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
-              <SortDropdown
-                options={[
-                  { key: 'name_asc', label: 'A-Z Name' },
-                  { key: 'stock_asc', label: '↑ Low Stock First' },
-                  { key: 'stock_desc', label: '↓ High Stock First' },
-                  { key: 'price_asc', label: '↑ Low Price' },
-                  { key: 'price_desc', label: '↓ High Price' },
-                ]}
-                value={productSort}
-                onChange={v => { setProductSort(v); setProductSortOpen(false); }}
-                open={productSortOpen}
-                onToggle={() => { closeAllSortMenus('product'); setProductSortOpen(o => !o); }}
-              />
+            <div className="flex gap-2" style={{ flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
+
               {/* PDF export of product list */}
               {user?.role !== 'walkin_manager' && (
                 <button className="btn btn-outline btn-sm" onClick={() => {
@@ -1086,35 +1091,51 @@ export default function ManagerDashboard() {
               {user?.role !== 'walkin_manager' && (
                 <button className="btn btn-outline btn-sm" onClick={() => {
                   const lines = (data.allProducts || []).map(p =>
-                    `  • ${p.name}: *${p.stock} ${p.unit}* @ ₹${p.price}`
-                  ).join('\n');
+                    `• ${p.name} ${p.stock} ${p.unit} @${p.price}`
+                  ).join('\n\n');
                   const msg = encodeURIComponent(
-                    `*Product Stock — ${settings?.business_name || 'My Shop'}*\nDate: ${getTodayIST()}\n━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━\nTotal: ${data.allProducts?.length} products`
+                    `Product Report — ${settings?.business_name || 'My Shop'}\nDate: ${getTodayIST()}\n━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━\nTotal: ${data.allProducts?.length} products`
                   );
                   window.open(`https://wa.me/?text=${msg}`, '_blank');
                 }}><MessageSquare size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> WhatsApp</button>
               )}
-              <Link to="/products?action=add" className="btn btn-primary btn-sm">+ Add Product</Link>
             </div>
           </div>
           <div className="card-body" style={{ paddingBottom: 0 }}>
             {/* Dynamic search */}
 
-            <div style={{ position: 'relative', marginBottom: 12 }}>
-              <input
-                className="form-control"
-                placeholder="Search product... (e.g. cement, rice)"
-                value={productSearch}
-                onChange={e => setProductSearch(e.target.value)}
-                style={{ paddingLeft: 14 }}
-              />
-              {productSearch && (
-                <button style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
-                  onClick={() => setProductSearch('')}>✕</button>
-              )}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  className="form-control"
+                  placeholder="Search product... (e.g. cement, rice)"
+                  value={productSearch}
+                  onChange={e => setProductSearch(e.target.value)}
+                  style={{ paddingLeft: 14 }}
+                />
+                {productSearch && (
+                  <button style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                    onClick={() => setProductSearch('')}>✕</button>
+                )}
+              </div>
+              <div style={{ flexShrink: 0 }}>
+                <SortDropdown
+                  options={[
+                    { key: 'name_asc', label: 'A-Z Name' },
+                    { key: 'stock_asc', label: '↑ Low Stock First' },
+                    { key: 'stock_desc', label: '↓ High Stock First' },
+                    { key: 'price_asc', label: '↑ Low Price' },
+                    { key: 'price_desc', label: '↓ High Price' },
+                  ]}
+                  value={productSort}
+                  onChange={v => { setProductSort(v); setProductSortOpen(false); }}
+                  open={productSortOpen}
+                  onToggle={() => { closeAllSortMenus('product'); setProductSortOpen(o => !o); }}
+                />
+              </div>
             </div>
           </div>
-          <div className="card-body no-pad">
+          <div className="no-pad" style={{ padding: 0 }}>
             {user?.role === 'walkin_manager' && !walkinTripStarted ? (
               <div className="empty-state" style={{ padding: 20 }}>
                 Please assign a vehicle and <b>Start Journey</b> to view your loaded products.
@@ -1142,13 +1163,13 @@ export default function ManagerDashboard() {
               );
 
               return (
-                <div style={{ maxHeight: 380, overflowY: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                <div style={{ maxHeight: 380, overflowY: 'auto', width: '100%' }}>
+                  <table style={{ display: 'table', width: '100%', minWidth: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                     <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                       <tr>
-                        <th style={{ padding: '9px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Product</th>
-                        <th style={{ padding: '9px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Stock</th>
-                        <th style={{ padding: '9px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Price ₹</th>
+                        <th style={{ width: '100%', padding: '10px 10px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Product</th>
+                        <th style={{ padding: '10px 10px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Stock</th>
+                        <th style={{ padding: '10px 10px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Price ₹</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1164,7 +1185,7 @@ export default function ManagerDashboard() {
                         };
                         return (
                           <tr key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                            <td style={{ padding: '9px 16px', fontWeight: 600 }}>
+                            <td style={{ padding: '10px 10px', fontWeight: 600 }}>
                               <div>{hl(p.name)}</div>
                               {user?.role !== 'walkin_manager' && (
                                 <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, marginTop: 2 }}>
@@ -1172,11 +1193,11 @@ export default function ManagerDashboard() {
                                 </div>
                               )}
                             </td>
-                            <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: 700, color: stockColor }}>
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 700, color: stockColor }}>
                               {p.stock} {p.unit}
                               {p.stock === 0 && <span style={{ marginLeft: 4, fontSize: 10, background: '#fef2f2', color: 'var(--danger)', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>Out</span>}
                             </td>
-                            <td style={{ padding: '9px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fc(p.price)}</td>
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fc(p.price)}</td>
                           </tr>
                         );
                       })}
@@ -1199,7 +1220,26 @@ export default function ManagerDashboard() {
                 <span className="badge badge-primary" style={{ marginLeft: 8, fontSize: 11 }}>{allCustomers.length}</span>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+              <Link to="/customers?action=add" className="btn btn-primary btn-sm" style={{ height: 32, display: 'inline-flex', alignItems: 'center', borderRadius: 6, fontWeight: 600 }}>+ Add Customer</Link>
+            </div>
+          </div>
+          <div className="card-body">
+            {/* Search */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  className="form-control"
+                  placeholder="Search by name or phone..."
+                  value={customerSearch}
+                  onChange={e => setCustomerSearch(e.target.value)}
+                  style={{ paddingLeft: 14 }}
+                />
+                {customerSearch && (
+                  <button style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                    onClick={() => setCustomerSearch('')}>✕</button>
+                )}
+              </div>
               <SortDropdown
                 options={[
                   { key: 'due_desc', label: '↓ High Due First' },
@@ -1214,23 +1254,6 @@ export default function ManagerDashboard() {
                 open={customerSortOpen}
                 onToggle={() => { closeAllSortMenus('customer'); setCustomerSortOpen(o => !o); }}
               />
-              <Link to="/customers?action=add" className="btn btn-primary btn-sm">+ Add Customer</Link>
-            </div>
-          </div>
-          <div className="card-body">
-            {/* Search */}
-            <div style={{ position: 'relative', marginBottom: 14 }}>
-              <input
-                className="form-control"
-                placeholder="Search by name or phone..."
-                value={customerSearch}
-                onChange={e => setCustomerSearch(e.target.value)}
-                style={{ paddingLeft: 14 }}
-              />
-              {customerSearch && (
-                <button style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
-                  onClick={() => setCustomerSearch('')}>✕</button>
-              )}
             </div>
           </div>
           <div className="card-body no-pad">
@@ -1279,10 +1302,10 @@ export default function ManagerDashboard() {
 
               return (
                 <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
                     <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                       <tr>
-                        {['Customer', 'Phone', 'Balance Due', 'Status'].map(h => (
+                        {['Customer', 'Phone', 'Balance Due'].map(h => (
                           <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Balance Due' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -1302,7 +1325,12 @@ export default function ManagerDashboard() {
                               {c.phone ? (
                                 hasDue ? (
                                   <a
-                                    href={`https://wa.me/91${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent('Hello ' + c.name + ',\nThis is a gentle reminder from ' + (settings?.business_name || 'our store') + '.\nYour outstanding balance is Rs.' + (due && due.toFixed ? due.toFixed(2) : due) + '.\nKindly clear at your earliest convenience.\nThank you.')}`}
+                                    href={`https://wa.me/91${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                                      t(
+                                        `Hello ${c.name},\n\nThis is a reminder from *${settings?.business_name || 'our store'}*.\nYour pending due amount is *₹${due && due.toFixed ? due.toFixed(2) : due}*.\n\nPlease clear it at your earliest convenience. 🙏\nThank you!`,
+                                        `नमस्ते ${c.name},\n\nयह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।\nआपकी बकाया राशि *₹${due && due.toFixed ? due.toFixed(2) : due}* है।\n\nकृपया जल्द से जल्द भुगतान करें। 🙏\nधन्यवाद!`
+                                      )
+                                    )}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={{ color: '#25d366', fontWeight: 600, fontSize: 13, textDecoration: 'none' }}
@@ -1315,14 +1343,7 @@ export default function ManagerDashboard() {
                               ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                             </td>
                             <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: hasDue ? 'var(--danger)' : 'var(--success)' }}>
-                              {hasDue ? fc(due) : '—'}
-                            </td>
-                            <td style={{ padding: '10px 16px' }}>
-                              {hasDue ? (
-                                <span className="badge badge-danger" style={{ fontSize: 10 }}>Due: {fc(due)}</span>
-                              ) : (
-                                <span className="badge badge-success" style={{ fontSize: 10 }}>✓ Clear</span>
-                              )}
+                              {hasDue ? fc(due) : <span className="badge badge-success" style={{ fontSize: 10 }}>✓ Clear</span>}
                             </td>
                           </tr>
                         );
@@ -1356,31 +1377,34 @@ export default function ManagerDashboard() {
             </div>
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
               {/* Calendar with OK button inside dropdown */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px' }}>
-                <Calendar size={13} className="text-muted" style={{ marginRight: 4 }} />
-                <input
-                  type="date"
-                  value={deliveryDateInput || getTodayIST()}
-                  max={getTodayIST()}
-                  style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer' }}
-                  onChange={e => {
-                    // Apply instantly on select — no OK button needed
-                    const d = e.target.value || getTodayIST();
-                    setDeliveryDateInput(d);
-                    setDeliveryDateFilter(d);
-                    loadDeliveries(d);
-                  }}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px' }}>
+                  <input
+                    type="date"
+                    value={deliveryDateInput || getTodayIST()}
+                    max={getTodayIST()}
+                    style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', color: 'var(--text)' }}
+                    onChange={e => {
+                      // Apply instantly on select — no OK button needed
+                      const d = e.target.value || getTodayIST();
+                      setDeliveryDateInput(d);
+                      setDeliveryDateFilter(d);
+                      loadDeliveries(d);
+                    }}
+                  />
+                </div>
                 {deliveryDateFilter && deliveryDateFilter !== getTodayIST() && (
                   <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ padding: '2px 6px', fontSize: 11, color: 'var(--text-muted)' }}
+                    className="btn btn-outline btn-sm"
+                    style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
                     onClick={() => {
                       setDeliveryDateFilter('');
                       setDeliveryDateInput('');
                       loadDeliveries(getTodayIST());
                     }}
-                  >✕ Today</button>
+                  >
+                    <RotateCcw size={12} /> Today
+                  </button>
                 )}
               </div>
 
@@ -1414,10 +1438,20 @@ export default function ManagerDashboard() {
 
             {/* Add / Edit Delivery Form */}
             {showDeliveryForm && (
-              <div style={{ background: '#f8fafc', border: '1.5px solid var(--border)', borderRadius: 10, padding: '16px 18px', marginBottom: 18 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>
-                  {editDeliveryId ? <><Edit2 size={14} style={{ marginRight: 4 }} /> Edit Delivery Entry</> : <><Plus size={14} style={{ marginRight: 4 }} /> New Incoming Vehicle</>}
-                </div>
+              <div className="modal-overlay" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }} style={{ padding: '12px', zIndex: 9999 }}>
+                <div 
+                  onClick={e => e.stopPropagation()} 
+                  style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 550, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}
+                >
+                  <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center' }}>
+                      {editDeliveryId ? <><Edit2 size={18} style={{ marginRight: 8, color: 'var(--primary)' }} /> Edit Delivery Entry</> : <><Plus size={18} style={{ marginRight: 8, color: 'var(--primary)' }} /> New Incoming Vehicle</>}
+                    </div>
+                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }} onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div style={{ padding: '20px 22px', overflowY: 'auto' }}>
 
                 <div className="form-row">
                   {/* Fix 4: Vehicle number — auto uppercase */}
@@ -1555,7 +1589,7 @@ export default function ManagerDashboard() {
                 </div>
 
                 {deliveryForm.items.map((item, idx) => (
-                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr 0.8fr auto', gap: 8, marginBottom: 8, alignItems: 'flex-end' }}>
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 2fr) 80px 85px auto', gap: 8, marginBottom: 8, alignItems: 'flex-end' }}>
 
                     {/* Item Name — live product search, always shows add-new */}
                     <div style={{ position: 'relative' }}>
@@ -1739,11 +1773,13 @@ export default function ManagerDashboard() {
                     placeholder="Optional notes" />
                 </div>
 
-                <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
+                <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
                   <button className="btn btn-outline" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>Cancel</button>
                   <button className="btn btn-primary" onClick={handleSaveDelivery} disabled={deliverySaving}>
                     {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? 'Update' : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
                   </button>
+                </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1764,11 +1800,11 @@ export default function ManagerDashboard() {
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
                     <thead>
                       <tr style={{ background: '#f8fafc' }}>
-                        {['Vehicle', 'Driver', 'Supplier', 'Expected At', 'Items', 'Status', 'Actions'].map(h => (
-                          <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                        {['Vehicle', 'Driver/Supplier', 'Expected At', 'Items', 'Actions'].map(h => (
+                          <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -1801,48 +1837,50 @@ export default function ManagerDashboard() {
                             cursor: 'pointer'
                           }} onClick={() => setDetailsDelivery(d)}>
                             <td style={{ padding: '10px 12px' }}>
-                              <Link
-                                to={`/vehicle/${d._id}`}
-                                onClick={e => e.stopPropagation()}
-                                style={{ fontWeight: 800, fontFamily: 'monospace', letterSpacing: 0.5, color: 'var(--primary)', textDecoration: 'none' }}
-                              >
-                                {d.vehicle_number}
-                              </Link>
-                              {d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid' && (
-                                <div style={{ fontSize: 10, background: '#fef08a', color: '#92400e', padding: '1px 6px', borderRadius: 8, marginTop: 2, display: 'inline-block', fontWeight: 700 }}>
-                                  <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={12} /> Unpaid</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                                <Link
+                                  to={`/vehicle/${d._id}`}
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ fontWeight: 'bold', color: 'var(--text)', textDecoration: 'none' }}
+                                >
+                                  {d.vehicle_number === 'WALK-IN' ? 'Walk-in' : d.vehicle_number}
+                                </Link>
+                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                  <span className={`badge ${statusColors[d.status]}`} style={{ fontSize: 10, padding: '2px 6px' }}>
+                                    {statusLabels[d.status]}
+                                  </span>
+                                  {d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid' && (
+                                    <span className="badge badge-danger" style={{ fontSize: 10, padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={10} /> Unpaid</span>
+                                  )}
+                                  {d.vehicle_number === 'WALK-IN' && d.payment_status === 'paid' && (
+                                    <span className="badge badge-success" style={{ fontSize: 10, padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={10} /> Paid {d.payment_mode ? ` · ${d.payment_mode}` : ''}</span>
+                                  )}
                                 </div>
-                              )}
-                              {d.vehicle_number === 'WALK-IN' && d.payment_status === 'paid' && (
-                                <div style={{ fontSize: 10, background: '#f0fdf4', color: '#16a34a', padding: '1px 6px', borderRadius: 8, marginTop: 2, display: 'inline-block', fontWeight: 700 }}>
-                                  <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={12} /> Paid</span>{d.payment_mode ? ` · ${d.payment_mode}` : ''}
-                                </div>
-                              )}
+                              </div>
                             </td>
-                            <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{d.driver_name || '—'}</td>
-                            <td style={{ padding: '10px 12px' }}>{d.supplier || '—'}</td>
+                            <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                              {d.vehicle_number === 'WALK-IN' 
+                                ? (d.supplier || '—') 
+                                : (d.driver_name || '—')}
+                            </td>
                             <td style={{ padding: '10px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>
                               {d.expected_arrival_ist}
                             </td>
                             <td style={{ padding: '10px 12px' }}>
                               <div style={{ maxWidth: 180 }}>
-                                {d.items.slice(0, 3).map((item, i) => (
+                                {d.items.slice(0, 2).map((item, i) => (
                                   <div key={i} style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                    {item.item_name}: <strong>{item.quantity} {item.unit}</strong>
+                                    {item.item_name}
                                   </div>
                                 ))}
-                                {d.items.length > 3 && (
-                                  <Link to={`/vehicle/${d._id}`} style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>
-                                    +{d.items.length - 3} more →
-                                  </Link>
+                                {d.items.length > 2 && (
+                                  <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 2, fontWeight: 600 }}>
+                                    +{d.items.length - 2} more
+                                  </div>
                                 )}
                               </div>
                             </td>
-                            <td style={{ padding: '10px 12px' }}>
-                              <span className={`badge ${statusColors[d.status]}`} style={{ fontSize: 11 }}>
-                                {statusLabels[d.status]}
-                              </span>
-                            </td>
+
                             <td style={{ padding: '10px 12px' }}>
                               <div className="flex gap-1" style={{ flexWrap: 'wrap' }}>
                                 {/* Only show Delivered / Not Delivered for non-completed entries */}
@@ -1908,11 +1946,7 @@ export default function ManagerDashboard() {
                 </div>
               );
             })()}
-            {/* Stock update note */}
-            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', padding: '8px 12px', background: '#f0fdf4', borderRadius: 6, border: '1px solid #86efac', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Lightbulb size={14} style={{ color: '#16a34a', flexShrink: 0 }} />
-              <span><strong>Auto Stock Update:</strong> When a delivery is marked "Delivered", stock is automatically increased for items that have a matching product linked. Items without a product link are logged as movements only.</span>
-            </div>
+
           </div>
         </div>
       )}
@@ -1931,24 +1965,7 @@ export default function ManagerDashboard() {
               </span>
             </div>
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
-              <SortDropdown
-                options={[
-                  { key: 'date_desc', label: '↓ Latest Date' },
-                  { key: 'date_asc', label: '↑ Oldest Date' },
-                  { key: 'amount_desc', label: '↓ High Amount' },
-                  { key: 'amount_asc', label: '↑ Low Amount' },
-                ]}
-                value={settlementSortKey}
-                onChange={v => {
-                  setSettlementSortOpen(false);
-                  if (v === 'amount_desc') { setSettlementSortAmount('desc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'desc'); }
-                  else if (v === 'amount_asc') { setSettlementSortAmount('asc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'asc'); }
-                  else if (v === 'date_asc') { setSettlementSortDate('asc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'asc', ''); }
-                  else { setSettlementSortDate('desc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
-                }}
-                open={settlementSortOpen}
-                onToggle={() => setSettlementSortOpen(o => !o)}
-              />
+
               <button className="btn btn-primary btn-sm" onClick={() => {
                 setShowAddSettlement(a => {
                   if (!a) {
@@ -1970,8 +1987,6 @@ export default function ManagerDashboard() {
 
             {/* Fix 4: Settlement date controls — independent of global calendar */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>View:</span>
-
               {/* Today — loads today's settlements only */}
               <button
                 className={`btn btn-sm ${settlementViewMode === 'date' && settlementCardDate === getTodayIST() ? 'btn-primary' : 'btn-outline'}`}
@@ -2016,30 +2031,61 @@ export default function ManagerDashboard() {
               </button>
             </div>
 
-            {/* Add Entry Form moved below calendar */}
+            {/* Add Entry Modal */}
             {showAddSettlement && (
-              <div ref={addSettlementRef} style={{ background: '#f8fafc', border: '1.5px solid var(--border)', borderRadius: 10, padding: '16px 18px', marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}><Plus size={16} /> New Settlement Entry</div>
-                <div style={{ marginBottom: 20, background: '#fff', padding: '16px', borderRadius: 8, border: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 250 }}>
-                      <label className="form-label text-danger" style={{ fontWeight: 800, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Paid Out (-)</label>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button type="button" className={`btn btn-sm ${settlementForm.type === 'walkin_delivery' ? 'btn-danger' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'walkin_delivery', received_category: 'not_applicable' })}>Walk-in Delivery</button>
-                        {isAdmin && <button type="button" className={`btn btn-sm ${settlementForm.type === 'paid_to_supplier' ? 'btn-danger' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'paid_to_supplier', received_category: 'not_applicable' })}>Supplier</button>}
-                        {isAdmin && <button type="button" className={`btn btn-sm ${settlementForm.type === 'vehicle_expense' ? 'btn-danger' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'vehicle_expense', received_category: 'not_applicable' })}>Vehicle Expense</button>}
-                        <button type="button" className={`btn btn-sm ${settlementForm.type === 'other_expense' ? 'btn-danger' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'other_expense', received_category: 'not_applicable' })}>Other Expense</button>
+              <div
+                className="cs-modal-overlay"
+                style={{
+                  position: 'fixed',
+                  top: 0, left: 0, right: 0, bottom: 0,
+                  backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                  backdropFilter: 'blur(4px)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 10000, padding: '16px',
+                  animation: 'fadeIn 0.2s ease-out',
+                }}
+                onClick={() => setShowAddSettlement(false)}
+              >
+                <div
+                  ref={addSettlementRef}
+                  className="cs-modal card"
+                  style={{
+                    width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto',
+                    borderRadius: '20px', animation: 'slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    background: '#f8fafc', padding: 0
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', borderRadius: '20px 20px 0 0' }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' }}>
+                      <Plus size={18} /> New Settlement Entry
+                    </div>
+                    <button onClick={() => setShowAddSettlement(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                      <X size={20} />
+                    </button>
+                  </div>
+                  
+                  <div style={{ padding: '20px' }}>
+                    <div style={{ marginBottom: 16, background: '#fff', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label className="form-label text-danger" style={{ fontWeight: 800, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Paid Out (-)</label>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button type="button" style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6 }} className={`btn btn-sm ${settlementForm.type === 'walkin_delivery' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'walkin_delivery', received_category: 'not_applicable' })}>Walk-in Delivery</button>
+                        {isAdmin && <button type="button" style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6 }} className={`btn btn-sm ${settlementForm.type === 'paid_to_supplier' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'paid_to_supplier', received_category: 'not_applicable' })}>Supplier</button>}
+                        <button type="button" style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6 }} className={`btn btn-sm ${settlementForm.type === 'other_expense' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'other_expense', received_category: 'not_applicable' })}>Other Expense</button>
                       </div>
                     </div>
                   </div>
                 </div>
                 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">{settlementForm.type === 'paid_to_supplier' ? 'Supplier / Company *' : 'Party Name'}</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: 12 }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>{settlementForm.type === 'paid_to_supplier' ? 'Supplier / Company *' : 'Party Name'}</label>
                     <input
                       className="form-control"
-                      list="party-names-list"
+                      list={settlementForm.type === 'other_expense' ? undefined : "party-names-list"}
+                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
                       value={settlementForm.party_name}
                       onChange={e => setSettlementForm({ ...settlementForm, party_name: e.target.value })}
                       placeholder="Type or select party name"
@@ -2048,16 +2094,18 @@ export default function ManagerDashboard() {
                       {settlementData.partyNames?.map(p => <option key={p} value={p} />)}
                     </datalist>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Amount ₹ *</label>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Amount ₹ *</label>
                     <input className="form-control" type="number" step="0.01" min="0"
+                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
                       value={settlementForm.amount}
                       onChange={e => setSettlementForm({ ...settlementForm, amount: e.target.value })}
                       placeholder="0.00" />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Payment Mode</label>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Payment Mode</label>
                     <select className="form-control" value={settlementForm.mode}
+                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
                       onChange={e => setSettlementForm({ ...settlementForm, mode: e.target.value })}>
                       <option value="cash">Cash</option>
                       <option value="upi">UPI</option>
@@ -2066,28 +2114,30 @@ export default function ManagerDashboard() {
                       <option value="others">Others</option>
                     </select>
                   </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">Reference (optional)</label>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Reference (optional)</label>
                     <input className="form-control" value={settlementForm.reference}
+                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
                       onChange={e => setSettlementForm({ ...settlementForm, reference: e.target.value })}
-                      placeholder="Transaction ID / UPI ref" />
+                      placeholder="Txn ID / UPI" />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Notes (optional)</label>
+                  <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
+                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Notes (optional)</label>
                     <input className="form-control" value={settlementForm.notes}
+                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
                       onChange={e => setSettlementForm({ ...settlementForm, notes: e.target.value })}
                       placeholder="e.g. Monthly supply payment" />
                   </div>
                 </div>
-                <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
-                  <button className="btn btn-outline" onClick={() => setShowAddSettlement(false)}>Cancel</button>
-                  <button className="btn btn-primary" onClick={handleAddSettlement} disabled={settlementSaving}>
-                    {settlementSaving ? <><span className="spinner"></span> Saving...</> : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
-                  </button>
+                  <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
+                    <button className="btn btn-outline" style={{ padding: '6px 14px', fontSize: 13, height: '34px' }} onClick={() => setShowAddSettlement(false)}>Cancel</button>
+                    <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13, height: '34px' }} onClick={handleAddSettlement} disabled={settlementSaving}>
+                      {settlementSaving ? <><span className="spinner"></span> Saving...</> : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
+                    </button>
+                  </div>
                 </div>
               </div>
+            </div>
             )}
 
             {/* Fix 2: Search by party + Sort controls */}
@@ -2148,8 +2198,26 @@ export default function ManagerDashboard() {
                   </div>
                 )}
               </div>
-
-              {/* Sort controls moved to card header */}
+              <div>
+                <SortDropdown
+                  options={[
+                    { key: 'date_desc', label: '↓ Latest Date' },
+                    { key: 'date_asc', label: '↑ Oldest Date' },
+                    { key: 'amount_desc', label: '↓ High Amount' },
+                    { key: 'amount_asc', label: '↑ Low Amount' },
+                  ]}
+                  value={settlementSortKey}
+                  onChange={v => {
+                    setSettlementSortOpen(false);
+                    if (v === 'amount_desc') { setSettlementSortAmount('desc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'desc'); }
+                    else if (v === 'amount_asc') { setSettlementSortAmount('asc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'asc'); }
+                    else if (v === 'date_asc') { setSettlementSortDate('asc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'asc', ''); }
+                    else { setSettlementSortDate('desc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
+                  }}
+                  open={settlementSortOpen}
+                  onToggle={() => setSettlementSortOpen(o => !o)}
+                />
+              </div>
 
             </div>
 
@@ -2191,27 +2259,27 @@ export default function ManagerDashboard() {
 
               return (
                 <>
-                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
                     {/* Fix 2: Paid Out — clickable */}
                     <div
-                      style={{ background: '#fef2f2', border: `1.5px solid ${showPaidOutDetail ? '#dc2626' : '#fca5a5'}`, borderRadius: 8, padding: '12px 18px', flex: 1, minWidth: 130, cursor: 'pointer' }}
+                      style={{ background: '#fef2f2', border: `1.5px solid ${showPaidOutDetail ? '#dc2626' : '#fca5a5'}`, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
                       onClick={() => { setShowPaidOutDetail(d => !d); setShowReceivedDetail(false); }}
                     >
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Paid Out {showPaidOutDetail ? '▲' : '▼'}
                       </div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--danger)', marginTop: 4 }}>{fc(settlementData.totalOut)}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--danger)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fc(settlementData.totalOut)}</div>
                     </div>
 
                     {/* Fix 2: Received — clickable */}
                     <div
-                      style={{ background: '#f0fdf4', border: `1.5px solid ${showReceivedDetail ? '#16a34a' : '#86efac'}`, borderRadius: 8, padding: '12px 18px', flex: 1, minWidth: 200, cursor: 'pointer' }}
+                      style={{ background: '#f0fdf4', border: `1.5px solid ${showReceivedDetail ? '#16a34a' : '#86efac'}`, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
                       onClick={() => { setShowReceivedDetail(d => !d); setShowPaidOutDetail(false); }}
                     >
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Received {showReceivedDetail ? '▲' : '▼'}
                       </div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)', marginTop: 4 }}>{fc(totalReceived)}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--success)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fc(totalReceived)}</div>
                       {Object.keys(groupedReceived).length > 0 && (
                         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
                           {Object.entries(groupedReceived).map(([cat, data]) => (
@@ -2224,32 +2292,35 @@ export default function ManagerDashboard() {
                       )}
                     </div>
 
-                    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '12px 18px', flex: 1, minWidth: 130 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--warning)', textTransform: 'uppercase' }}>Net</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 4 }}>{fc(net)}</div>
+                    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '8px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--warning)', textTransform: 'uppercase' }}>Net</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 2 }}>{fc(net)}</div>
                     </div>
-                    <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 18px', flex: 1, minWidth: 130 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Entries</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{settlementData.settlements.length}</div>
+                    <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '8px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Entries</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, marginTop: 2 }}>{settlementData.settlements.length}</div>
                     </div>
                   </div>
 
                   {/* Fix 2: Paid Out detail panel */}
                   {showPaidOutDetail && (
-                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={16} /> Paid Out — Details</div>
+                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={14} /> Paid Out — Details</div>
                       {paidOutEntries.length === 0 ? (
-                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No paid-out entries for this date.</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No paid-out entries for this date.</div>
                       ) : paidOutEntries.map((s, i) => (
-                        <div key={s._id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < paidOutEntries.length - 1 ? '1px solid #fca5a5' : 'none', fontSize: 13 }}>
+                        <div key={s._id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < paidOutEntries.length - 1 ? '1px dashed #fca5a5' : 'none', fontSize: 11 }}>
                           <div>
-                            <div style={{ fontWeight: 600 }}>{s.party_name || 'Unknown'}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{s.party_name || 'Unknown'}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                              <span style={{ background: s.type === 'other_expense' ? '#fef08a' : '#fecaca', color: s.type === 'other_expense' ? '#854d0e' : '#b91c1c', padding: '2px 4px', borderRadius: 4, fontWeight: 700, marginRight: 6, fontSize: 8 }}>
+                                {s.type === 'other_expense' ? 'EXPENSE' : 'PAYMENT'}
+                              </span>
                               {s.mode?.toUpperCase()} · {s.ist_formatted ? s.ist_formatted.split(' ').slice(1).join(' ') : '—'}
                               {s.notes ? ` · ${s.notes}` : ''}
                             </div>
                           </div>
-                          <div style={{ fontWeight: 800, color: 'var(--danger)', fontFamily: 'monospace' }}>−{fc(s.amount)}</div>
+                          <div style={{ fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>−{fc(s.amount)}</div>
                         </div>
                       ))}
                     </div>
@@ -2257,19 +2328,20 @@ export default function ManagerDashboard() {
 
                   {/* Fix 2: Received detail panel */}
                   {showReceivedDetail && (
-                    <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 6 }}><ArrowUpDown size={16} /> Received — Details</div>
+                    <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 6 }}><ArrowUpDown size={14} /> Received — Details</div>
                       {receivedEntries.length === 0 ? (
-                        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No received entries for this date.</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No received entries for this date.</div>
                       ) : receivedEntries.map((r, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < receivedEntries.length - 1 ? '1px solid #86efac' : 'none', fontSize: 13 }}>
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < receivedEntries.length - 1 ? '1px dashed #86efac' : 'none', fontSize: 11 }}>
                           <div>
-                            <div style={{ fontWeight: 600 }}>{r.party || r.label}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{r.party || r.label}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                              <span style={{ background: '#bbf7d0', color: '#166534', padding: '2px 4px', borderRadius: 4, fontWeight: 700, marginRight: 6, fontSize: 8 }}>RECEIVED</span>
                               {r.mode?.toUpperCase()} · {r.reason}
                             </div>
                           </div>
-                          <div style={{ fontWeight: 800, color: 'var(--success)', fontFamily: 'monospace' }}>+{fc(r.amount)}</div>
+                          <div style={{ fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>+{fc(r.amount)}</div>
                         </div>
                       ))}
                     </div>
@@ -2294,7 +2366,7 @@ export default function ManagerDashboard() {
               </div>
             ) : (
               <div style={{ overflowX: 'auto', maxHeight: 400, overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
                   <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                     <tr>
                       {/* Fix 5: Date column shown in full history mode */}
@@ -2367,33 +2439,51 @@ export default function ManagerDashboard() {
       {/* All-time Pending Dues Drill-down — with search + calendar */}
       {showAllDues && (
         <div className="card" style={{ marginBottom: 20 }} ref={duesPanelRef}>
-          <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <div className="card-title">
-              <><Clock size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Pending Dues</>
-              <span className="badge badge-danger" style={{ marginLeft: 8, fontSize: 11 }}>
-                {data.pendingCustomers?.length || 0}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <SortDropdown
-                options={[
-                  { key: 'amount_desc', label: '↓ High Due First' },
-                  { key: 'amount_asc', label: '↑ Low Due First' },
-                  { key: 'name_asc', label: 'A-Z Name' },
-                  { key: 'inv_asc', label: '# Invoice No. ↑' },
-                  { key: 'inv_desc', label: '# Invoice No. ↓' },
-                  { key: 'walkin_first', label: '◈ Walk-in First' },
-                  { key: 'registered_first', label: '✦ Registered First' },
-                ]}
-                value={duesSort}
-                onChange={v => { setDuesSort(v); setDuesSortOpen(false); }}
-                open={duesSortOpen}
-                onToggle={() => { closeAllSortMenus('dues'); setDuesSortOpen(o => !o); }}
-              />
-              <span className="badge badge-warning">{fc(data.allTimePendingBalance || 0)} total</span>
-              <button className="btn btn-warning btn-sm" onClick={() => setShowWalkinDueForm(w => !w)}>
+          <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 8 }}>
+              <div className="card-title" style={{ margin: 0 }}>
+                <><Clock size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Pending Dues</>
+                <span className="badge badge-danger" style={{ marginLeft: 8, fontSize: 11 }}>
+                  {data.pendingCustomers?.length || 0}
+                </span>
+              </div>
+              <button className="btn btn-warning btn-sm" style={{ height: 32, padding: '0 12px', display: 'inline-flex', alignItems: 'center', borderRadius: 6 }} onClick={() => setShowWalkinDueForm(w => !w)}>
                 {showWalkinDueForm ? '✕' : '+ Walk-in Due'}
               </button>
+            </div>
+            
+            <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+              <span className="badge badge-warning" style={{ height: 32, display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontSize: 13, borderRadius: 6 }}>{fc(data.allTimePendingBalance || 0)} total</span>
+              
+              {/* Date Filter */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={duesCardDate}
+                  max={getTodayIST()}
+                  style={{ width: 115, fontSize: 12, padding: '0 8px', height: 32, borderRadius: 6, boxSizing: 'border-box' }}
+                  onChange={e => {
+                    const d = e.target.value;
+                    setDuesCardDate(d);
+                    if (d) loadDueDateData(d);
+                    else setDueDateInvoices(null);
+                  }}
+                />
+                {duesCardDate && duesCardDate !== getTodayIST() && (
+                  <button className="btn btn-outline btn-sm" style={{ height: 32, padding: '0 12px', borderRadius: 6, display: 'inline-flex', alignItems: 'center' }} onClick={() => {
+                    setDuesCardDate(getTodayIST());
+                    loadDueDateData(getTodayIST());
+                  }}>Today</button>
+                )}
+                {duesCardDate && (
+                  <button className="btn btn-outline btn-sm" style={{ height: 32, padding: '0 12px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', fontWeight: 600, color: 'var(--primary)', borderColor: 'var(--primary)' }} onClick={() => {
+                    setDuesCardDate('');
+                    setDueDateInvoices(null);
+                  }}>Show All</button>
+                )}
+              </div>
+
             </div>
           </div>
           <div className="card-body">
@@ -2416,7 +2506,7 @@ export default function ManagerDashboard() {
                       placeholder="0.00" />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Phone (optional)</label>
+                    <label className="form-label">Phone</label>
                     <input className="form-control" value={walkinDueForm.phone}
                       onChange={e => setWalkinDueForm(f => ({ ...f, phone: e.target.value }))}
                       placeholder="Mobile number" />
@@ -2440,7 +2530,7 @@ export default function ManagerDashboard() {
             {/* Search + Calendar inside dropdown */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               {/* Search */}
-              <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ flex: 1, minWidth: 140 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Search</div>
                 <div style={{ position: 'relative' }}>
                   <input
@@ -2457,40 +2547,24 @@ export default function ManagerDashboard() {
                   )}
                 </div>
               </div>
-
-              {/* Fix 5: Calendar — filters dues to show who had balance on that date */}
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
-                  Filter by Date {duesCardDate ? `— ${new Date(duesCardDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : '(All Time)'}
-                </div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={duesCardDate}
-                    max={getTodayIST()}
-                    style={{ width: 150, fontSize: 13 }}
-                    onChange={e => {
-                      const d = e.target.value;
-                      setDuesCardDate(d);
-                      if (d) loadDueDateData(d);
-                      else setDueDateInvoices(null);
-                    }}
-                  />
-                  {duesCardDate && duesCardDate !== getTodayIST() && (
-                    <button className="btn btn-outline btn-sm" onClick={() => {
-                      setDuesCardDate(getTodayIST());
-                      loadDueDateData(getTodayIST());
-                    }}>Today</button>
-                  )}
-                  {duesCardDate && (
-                    <button className="btn btn-outline btn-sm" style={{ borderRadius: '20px', fontWeight: 600, color: 'var(--primary)', borderColor: 'var(--primary)', padding: '0px 14px' }} onClick={() => {
-                      setDuesCardDate('');
-                      setDueDateInvoices(null);
-                    }}>Show All</button>
-                  )}
-                </div>
+              <div style={{ flexShrink: 0 }}>
+                <SortDropdown
+                  options={[
+                    { key: 'amount_desc', label: '↓ High Due First' },
+                    { key: 'amount_asc', label: '↑ Low Due First' },
+                    { key: 'name_asc', label: 'A-Z Name' },
+                    { key: 'inv_asc', label: '# Invoice No. ↑' },
+                    { key: 'inv_desc', label: '# Invoice No. ↓' },
+                    { key: 'walkin_first', label: '◈ Walk-in First' },
+                    { key: 'registered_first', label: '✦ Registered First' },
+                  ]}
+                  value={duesSort}
+                  onChange={v => { setDuesSort(v); setDuesSortOpen(false); }}
+                  open={duesSortOpen}
+                  onToggle={() => { closeAllSortMenus('dues'); setDuesSortOpen(o => !o); }}
+                />
               </div>
+
             </div>
 
           </div>
@@ -2578,10 +2652,10 @@ export default function ManagerDashboard() {
 
               return (
                 <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
                     <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
                       <tr>
-                        {['Invoice', 'Customer', 'Phone', 'Type', isHistoricalView ? 'Was Due' : 'Balance Due', 'Action'].map(h => (
+                        {['Invoice', 'Customer', 'Phone', isHistoricalView ? 'Was Due' : 'Balance Due', 'Action'].map(h => (
                           <th key={h} style={{ padding: '10px 14px', textAlign: h.includes('Due') ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -2598,11 +2672,16 @@ export default function ManagerDashboard() {
                         return (
                           <tr key={`${c._id}-${idx}`} style={{ borderBottom: '1px solid #f3f4f6', background: paid ? '#f0fdf4' : idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                             <td style={{ padding: '10px 14px' }}>
-                              {c.invoice_number ? (
-                                <Link to={`/invoices/${c.type === 'walkin' ? c._id : c.invoice_id || '#'}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace', fontSize: 12.5, textDecoration: 'none' }}>
-                                  {c.invoice_number}
-                                </Link>
-                              ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                                {c.invoice_number ? (
+                                  <Link to={`/invoices/${c.type === 'walkin' ? c._id : c.invoice_id || '#'}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace', fontSize: 12.5, textDecoration: 'none' }}>
+                                    {c.invoice_number}
+                                  </Link>
+                                ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                {c.type === 'walkin'
+                                  ? <span className="badge badge-warning" style={{ fontSize: 9, padding: '2px 6px' }}>Walk-in</span>
+                                  : <span style={{ fontSize: 9.5, color: 'var(--primary)', fontWeight: 600 }}>Registered</span>}
+                              </div>
                             </td>
                             <td style={{ padding: '10px 14px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -2630,11 +2709,10 @@ export default function ManagerDashboard() {
                                 (!paid && c.balance > 0.01) ? (
                                   <a
                                     href={`https://wa.me/91${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                                      'Hello ' + c.name +
-                                      ',\nThis is a reminder from ' + (settings?.business_name || 'our store') +
-                                      '.\nYour pending due amount is Rs.' +
-                                      (c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance) +
-                                      '.\nPlease clear at your earliest convenience.\nThank you.'
+                                      t(
+                                        `Hello ${c.name},\n\nThis is a reminder from *${settings?.business_name || 'our store'}*.\nYour pending due amount is *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}*.\n\nPlease clear it at your earliest convenience. 🙏\nThank you!`,
+                                        `नमस्ते ${c.name},\n\nयह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।\nआपकी बकाया राशि *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}* है।\n\nकृपया जल्द से जल्द भुगतान करें। 🙏\nधन्यवाद!`
+                                      )
                                     )}`}
                                     target="_blank"
                                     rel="noreferrer"
@@ -2655,11 +2733,6 @@ export default function ManagerDashboard() {
                               ) : (
                                 <span style={{ color: 'var(--text-muted)' }}>—</span>
                               )}
-                            </td>
-                            <td style={{ padding: '10px 14px' }}>
-                              {c.type === 'walkin'
-                                ? <span className="badge badge-warning" style={{ fontSize: 10 }}>Walk-in</span>
-                                : <span className="badge badge-primary" style={{ fontSize: 10 }}>Registered</span>}
                             </td>
                             <td style={{ padding: '10px 14px', textAlign: 'right', color: paid ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
                               {fc(c.balance)}
@@ -2738,7 +2811,7 @@ export default function ManagerDashboard() {
       {/* Today Sale Drill-down Panel */}
       {showTodaySales && (
         <div className="card mb-5" style={{ marginBottom: 20 }} ref={salesPanelRef}>
-          <div className="card-header">
+          <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
             <div className="card-title">
               <><Calendar size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> {todaySalesCardDate === getTodayIST() ? "Today's" : new Date(todaySalesCardDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} Invoices</>
               {/* Fix 1: Show actual sum of invoices shown in this dropdown */}
@@ -2753,22 +2826,8 @@ export default function ManagerDashboard() {
                 ) : null;
               })()}
             </div>
-            {/* after this*/}
 
-            <div className="flex gap-2" style={{ alignItems: 'center' }}>
-              <SortDropdown
-                options={[
-                  { key: 'time_desc', label: '↓ Latest First' },
-                  { key: 'time_asc', label: '↑ Oldest First' },
-                  { key: 'amount_desc', label: '↓ High Amount' },
-                  { key: 'amount_asc', label: '↑ Low Amount' },
-                  { key: 'inv_asc', label: '# Invoice No.' },
-                ]}
-                value={salesSort}
-                onChange={v => { setSalesSort(v); setSalesSortOpen(false); }}
-                open={salesSortOpen}
-                onToggle={() => { closeAllSortMenus('sales'); setSalesSortOpen(o => !o); }}
-              />
+            <div className="flex gap-2" style={{ alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
               <input
                 type="date"
                 value={todaySalesCardDate}
@@ -2842,44 +2901,62 @@ export default function ManagerDashboard() {
                 <>
 
 
-                  <div style={{ position: 'relative', marginBottom: 14 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 12px' }}>
-                      <Search size={14} className="text-muted" />
-                      <input
-                        type="text"
-                        placeholder="Search by invoice number, customer name, or phone..."
-                        value={salesSearch}
-                        style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13.5, flex: 1, fontFamily: 'inherit' }}
-                        onFocus={() => {
-                          setSalesSearchFocused(true);
-                          setSalesSuggestions(buildSuggestions(salesSearch.trim().toLowerCase()));
-                        }}
-                        onBlur={() => setTimeout(() => setSalesSearchFocused(false), 180)}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setSalesSearch(val);
-                          setSalesSuggestions(buildSuggestions(val.trim().toLowerCase()));
-                        }}
-                      />
-                      {salesSearch && (
-                        <button
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1 }}
-                          onClick={() => { setSalesSearch(''); setSalesSuggestions([]); }}
-                        >✕</button>
-                      )}
-                      {/* Result count badge */}
-                      {salesSearch && (
-                        <span style={{ fontSize: 11, background: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                          {filtered.length} result{filtered.length !== 1 ? 's' : ''}
-                        </span>
-                      )}
+                  <div style={{ position: 'relative', marginBottom: 16, padding: '0 12px' }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#475569', letterSpacing: 0.5, marginBottom: 6 }}>SEARCH</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '9px 12px', flex: 1 }}>
+                        <Search size={16} color="#64748b" />
+                        <input
+                          type="text"
+                          placeholder="Customer name, phone, invoice number..."
+                          value={salesSearch}
+                          style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 14, flex: 1, fontFamily: 'inherit', color: '#334155' }}
+                          onFocus={() => {
+                            setSalesSearchFocused(true);
+                            setSalesSuggestions(buildSuggestions(salesSearch.trim().toLowerCase()));
+                          }}
+                          onBlur={() => setTimeout(() => setSalesSearchFocused(false), 180)}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setSalesSearch(val);
+                            setSalesSuggestions(buildSuggestions(val.trim().toLowerCase()));
+                          }}
+                        />
+                        {salesSearch && (
+                          <button
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1 }}
+                            onClick={() => { setSalesSearch(''); setSalesSuggestions([]); }}
+                          >✕</button>
+                        )}
+                        {/* Result count badge */}
+                        {salesSearch && (
+                          <span style={{ fontSize: 11, background: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ flexShrink: 0 }}>
+                        <SortDropdown
+                          options={[
+                            { key: 'time_desc', label: '↓ Latest First' },
+                            { key: 'time_asc', label: '↑ Oldest First' },
+                            { key: 'amount_desc', label: '↓ High Amount' },
+                            { key: 'amount_asc', label: '↑ Low Amount' },
+                            { key: 'inv_asc', label: '# Invoice No.' },
+                          ]}
+                          value={salesSort}
+                          onChange={v => { setSalesSort(v); setSalesSortOpen(false); }}
+                          open={salesSortOpen}
+                          onToggle={() => { closeAllSortMenus('sales'); setSalesSortOpen(o => !o); }}
+                        />
+                      </div>
                     </div>
 
                     {/* Suggestion dropdown */}
                     {salesSearchFocused && salesSuggestions.length > 0 && (
                       <div style={{
-                        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-                        background: '#fff', border: '1.5px solid var(--border)', borderRadius: 8,
+                        position: 'absolute', top: 'calc(100% + 4px)', left: 12, right: 12,
+                        background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8,
                         boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden',
                       }}>
                         {salesSuggestions.map((s, i) => (
@@ -2933,7 +3010,7 @@ export default function ManagerDashboard() {
                     </div>
                   ) : (
                     <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
                         <thead>
                           <tr style={{ background: '#f8fafc' }}>
                             <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Invoice #</th>
@@ -3021,21 +3098,17 @@ export default function ManagerDashboard() {
             {!data.todayPendingDues?.length ? (
               <div className="empty-state" style={{ padding: 24 }}>No pending dues today</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
+              <div style={{ maxHeight: 350, overflowY: 'auto', overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                    <tr style={{ background: '#f8fafc' }}>
                       <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Invoice</th>
                       <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Customer</th>
                       <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Type</th>
                       <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Balance Due</th>
                     </tr>
                   </thead>
-                </table>
-                {/* Scrollable body */}
-                <div style={{ maxHeight: 350, overflowY: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
-                    <tbody>
+                  <tbody>
                       {data.todayPendingDues.map((c, idx) => (
                         <tr key={c._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                           <td style={{ padding: '10px 14px' }}>
@@ -3060,9 +3133,8 @@ export default function ManagerDashboard() {
                           </td>
                         </tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -3081,7 +3153,7 @@ export default function ManagerDashboard() {
                 <div className="card-title" style={{ margin: 0, lineHeight: 1.2 }}>{t('Low Stock Alerts', 'कम स्टॉक')}</div>
                 {data.lowStockProducts?.length > 0 && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                    <span style={{ background: '#fef3c7', color: '#b45309', padding: '1px 7px', borderRadius: 20, fontWeight: 700 }}>
+                    <span style={{ color: '#b45309', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {data.lowStockProducts.length} item{data.lowStockProducts.length !== 1 ? 's' : ''} need restock
                     </span>
                   </div>
@@ -3108,15 +3180,15 @@ export default function ManagerDashboard() {
                     setShowLowStockEditor(true);
                   }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
                   <button className="btn btn-success btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
-                    const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+                    const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
                     const source = activeListFilter
                       ? data.lowStockProducts.filter(p => {
                           const lst = productLists.find(l => l._id === activeListFilter);
                           return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
                         })
                       : data.lowStockProducts;
-                    const lines = source.map(p => `  • ${p.name}: *${getOrderQty(p)} ${p.unit}*`).join('\n');
-                    const msg = encodeURIComponent(`*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${source.length} items`);
+                    const lines = source.map(p => `● ${p.name} - ${getOrderQty(p)} ${p.unit || ''}`.trimEnd()).join('\n');
+                    const msg = encodeURIComponent(`Demand,\nDated: ${today}\n\n${lines}`);
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
                   }}><Phone size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Send Order</span></button>
                 </>
@@ -3191,11 +3263,10 @@ export default function ManagerDashboard() {
                         <div style={{ flex: 1, minWidth: 100 }}>
                           <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text)', lineHeight: 1.3 }}>{p.name}</div>
                           <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 3,
-                            fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: isOut ? '#fef2f2' : '#fffbeb',
-                            color: isOut ? 'var(--danger)' : '#d97706',
-                            border: `1px solid ${isOut ? '#fecaca' : '#fde68a'}`,
+                            display: 'inline-block', marginTop: 3,
+                            fontSize: 11, fontWeight: 600,
+                            color: isOut ? 'var(--danger)' : 'var(--text-muted)',
+                            whiteSpace: 'nowrap'
                           }}>
                             {isOut ? '⚠ Out of Stock' : `${p.stock} ${p.unit} left`}
                           </span>
@@ -3274,16 +3345,16 @@ export default function ManagerDashboard() {
 
             {/* List body — scrollable */}
             <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px auto', gap: 8, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Item Name</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center', minWidth: 120 }}>Order Qty</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right', paddingRight: 4 }}>Order Qty</span>
                 <span style={{ width: 32 }}></span>
               </div>
 
               {editableLowStock.map((p, idx) => (
                 <div
                   key={p._id || idx}
-                  style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafbff' }}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 130px auto', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafbff' }}
                 >
                   <input
                     value={p.name}
@@ -3293,7 +3364,7 @@ export default function ManagerDashboard() {
                     onFocus={e => e.target.style.borderColor = 'var(--primary)'}
                     onBlur={e => e.target.style.borderColor = 'var(--border)'}
                   />
-                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minWidth: 120 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', width: 120, justifySelf: 'end' }}>
                     <button
                       onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, u[idx].orderQty - 1) }; return u; })}
                       style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
@@ -3347,9 +3418,9 @@ export default function ManagerDashboard() {
                   className="btn btn-success btn-sm"
                   style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                   onClick={() => {
-                    const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-                    const lines = editableLowStock.filter(p => p.orderQty > 0 && p.name).map(p => `  • ${p.name}: *${p.orderQty} ${p.unit || ''}*`).join('\n');
-                    const msg = encodeURIComponent(`*Stock Order — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━\nTotal: ${editableLowStock.filter(p => p.orderQty > 0 && p.name).length} items`);
+                    const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
+                    const lines = editableLowStock.filter(p => p.orderQty > 0 && p.name).map(p => `● ${p.name} - ${p.orderQty} ${p.unit || ''}`.trimEnd()).join('\n');
+                    const msg = encodeURIComponent(`Demand,\nDated: ${today}\n\n${lines}`);
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
                   }}
                 ><Phone size={13} /> <span>WhatsApp</span></button>

@@ -15,6 +15,7 @@ const deliveryItemSchema = new mongoose.Schema({
   final_stock: { type: Number, default: null },   // editable final stock (overrides quantity)
   label: { type: String, default: 'Goods' },      // Goods/Fruits/Vegetables/Hardware
   is_new_item: { type: Boolean, default: false }, // not in DB yet — create on delivery
+  is_loose: { type: Boolean, default: false },
 }, { _id: false });
 
 const deliverySchema = new mongoose.Schema({

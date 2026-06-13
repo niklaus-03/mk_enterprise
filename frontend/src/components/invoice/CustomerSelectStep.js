@@ -4,8 +4,10 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { customerApi } from '../../utils/api';
 import { formatCurrency } from '../../utils/helpers';
-import { ArrowLeft, Search, X, UserPlus, User, Phone, MapPin, Plus } from 'lucide-react';
+import { ArrowLeft, Search, X, UserPlus, User, Phone, MapPin, Plus, FolderOpen, PenTool } from 'lucide-react';
 import { parseCustomerName } from '../../utils/nameFormatter';
+import SignatureCanvas from 'react-signature-canvas';
+import Tesseract from 'tesseract.js';
 
 export default function CustomerSelectStep({
   customers = [],
@@ -16,11 +18,27 @@ export default function CustomerSelectStep({
   onWalkIn,
   onBack,
   onCustomerCreated,
+  draftsCount = 0,
+  onShowDrafts,
+  showDrafts = false,
+  draftsPanel = null,
 }) {
   const { t } = useApp();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showScribble, setShowScribble] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [recognizedName, setRecognizedName] = useState('');
+  const sigCanvasRef = React.useRef(null);
+  
+  // Handle resize for responsiveness
+  React.useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [loading, setLoading] = useState(false);
 
   // Form State
@@ -144,28 +162,26 @@ export default function CustomerSelectStep({
   };
 
   return (
-    <div className="cs-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' }}>
-      {/* Header */}
-      <div className="cs-header" style={{ display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
-        <button 
-          onClick={onBack}
-          className="btn btn-outline" 
-          style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Back"
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h1 className="page-title" style={{ margin: 0 }}>{t('Select Customer', 'ग्राहक चुनें')}</h1>
-          <p className="page-subtitle" style={{ margin: '2px 0 0 0' }}>{t('Choose a customer to initiate the invoice', 'बिल शुरू करने के लिए ग्राहक चुनें')}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' }}>
+      {/* Header & Search */}
+      <div className="cs-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={onBack}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <h1 className="page-title" style={{ margin: 0 }}>{t('Select Customer', 'ग्राहक चुनें')}</h1>
+            <p className="page-subtitle" style={{ margin: '2px 0 0 0' }}>{t('Choose a customer to initiate the invoice', 'बिल शुरू करने के लिए ग्राहक चुनें')}</p>
+          </div>
         </div>
-      </div>
 
-      {/* Action Buttons & Search */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {/* Search Input Box */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="cs-search-wrap" style={{ position: 'relative', width: '100%' }}>
+        <div className="cs-search-wrap" style={{ position: 'relative', flex: '1', minWidth: '280px', maxWidth: '500px', margin: '0 auto' }}>
           <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
             type="text"
@@ -176,8 +192,8 @@ export default function CustomerSelectStep({
             style={{
               paddingLeft: '44px',
               paddingRight: searchQuery ? '40px' : '14px',
-              height: '48px',
-              fontSize: '15px',
+              height: '42px',
+              fontSize: '14px',
               borderRadius: '12px',
               border: '1.5px solid var(--border)',
               width: '100%',
@@ -204,9 +220,41 @@ export default function CustomerSelectStep({
               <X size={16} />
             </button>
           )}
-          </div>
         </div>
 
+        {/* Drafts Button */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {draftsCount > 0 && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (onShowDrafts) onShowDrafts(); }}
+              type="button"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: showDrafts ? 'var(--primary)' : 'var(--primary-light)',
+                border: 'none',
+                borderRadius: 20, padding: '6px 14px', cursor: 'pointer',
+                fontSize: 13, fontWeight: 700,
+                color: showDrafts ? 'var(--bg-card)' : 'var(--primary)',
+                boxShadow: showDrafts ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
+                transition: 'all 0.15s',
+              }}
+            >
+              <FolderOpen size={14} /> Saved Drafts
+              <span style={{
+                background: showDrafts ? 'rgba(255,255,255,0.25)' : 'var(--primary)',
+                color: showDrafts ? 'var(--bg-card)' : 'white', borderRadius: 10, padding: '2px 8px', fontSize: 11, marginLeft: 4
+              }}>
+                {draftsCount}
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {draftsPanel}
+
+      {/* Action Buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {/* Action buttons side-by-side */}
         <div className="cs-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <button
@@ -388,7 +436,136 @@ export default function CustomerSelectStep({
         )}
       </div>
 
-      {/* Add Customer Modal */}
+      {/* Scribble Pad */}
+      {showScribble && (
+          <div
+            className="scribble-overlay"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: isMobile ? 0 : 'auto',
+              right: isMobile ? 'auto' : 0,
+              width: isMobile ? '100%' : '400px',
+              height: '100%',
+              background: 'var(--bg-card)',
+              zIndex: 10001,
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '20px',
+              boxShadow: '-4px 0 24px rgba(0,0,0,0.15)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>✍️ Write Customer Name</h2>
+              <button onClick={() => setShowScribble(false)} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>✖</button>
+            </div>
+            <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+              Write the name clearly in English or Hindi. Use BIG letters for best results.
+            </p>
+
+            {/* Drawing Canvas */}
+            <div
+              ref={(el) => {
+                if (el && sigCanvasRef.current) {
+                  const canvas = sigCanvasRef.current.getCanvas();
+                  const rect = el.getBoundingClientRect();
+                  canvas.width = rect.width;
+                  canvas.height = rect.height;
+                }
+              }}
+              style={{
+                flex: 1,
+                border: '2px dashed var(--border)',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                background: '#ffffff',
+                maxHeight: isMobile ? '300px' : '400px',
+              }}
+            >
+              <SignatureCanvas
+                ref={sigCanvasRef}
+                penColor="black"
+                minWidth={3}
+                maxWidth={6}
+                canvasProps={{
+                  className: 'scribble-canvas',
+                  style: { width: '100%', height: '100%', display: 'block', touchAction: 'none' },
+                }}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (sigCanvasRef.current) sigCanvasRef.current.clear();
+                }}
+                className="btn btn-outline"
+                style={{ flex: 1, height: '44px', borderRadius: '10px', fontWeight: 600 }}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!sigCanvasRef.current) return;
+                  if (sigCanvasRef.current.isEmpty()) {
+                    toast.error('Please write something first');
+                    return;
+                  }
+
+                  // Preprocess canvas for better OCR
+                  const srcCanvas = sigCanvasRef.current.getCanvas();
+                  const offscreen = document.createElement('canvas');
+                  const scale = 2;
+                  offscreen.width = srcCanvas.width * scale;
+                  offscreen.height = srcCanvas.height * scale;
+                  const ctx = offscreen.getContext('2d');
+                  ctx.fillStyle = '#ffffff';
+                  ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+                  ctx.drawImage(srcCanvas, 0, 0, offscreen.width, offscreen.height);
+                  // Increase contrast for cleaner OCR
+                  const imageData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
+                  const d = imageData.data;
+                  for (let i = 0; i < d.length; i += 4) {
+                    const avg = (d[i] + d[i+1] + d[i+2]) / 3;
+                    const val = avg < 180 ? 0 : 255;
+                    d[i] = val; d[i+1] = val; d[i+2] = val;
+                  }
+                  ctx.putImageData(imageData, 0, 0);
+                  const dataUrl = offscreen.toDataURL('image/png');
+
+                  setOcrLoading(true);
+                  try {
+                    const { data: { text } } = await Tesseract.recognize(dataUrl, 'hin+eng');
+                    const cleaned = text.replace(/[^\w\s\u0900-\u097F]/g, '').trim();
+                    if (cleaned) {
+                      setName(toTitleCase(cleaned));
+                      toast.success('Name filled in the form! Edit if needed.');
+                      setShowScribble(false);
+                      if (sigCanvasRef.current) sigCanvasRef.current.clear();
+                    } else {
+                      toast.error('Could not recognize. Please write more clearly.');
+                    }
+                  } catch (err) {
+                    toast.error('OCR failed');
+                    console.error(err);
+                  } finally {
+                    setOcrLoading(false);
+                  }
+                }}
+                className="btn btn-primary"
+                style={{ flex: 1, height: '44px', borderRadius: '10px', fontWeight: 600 }}
+                disabled={ocrLoading}
+              >
+                {ocrLoading ? '⏳ Reading...' : '✅ Done'}
+              </button>
+            </div>
+          </div>
+        )}
+
       {showAddModal && (
         <div
           className="cs-modal-overlay"
@@ -435,21 +612,30 @@ export default function CustomerSelectStep({
             </div>
             
             <form onSubmit={handleSaveCustomer} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      {t('Customer Name *', 'ग्राहक का नाम *')}
-                    </label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        {t('Customer Name *', 'ग्राहक का नाम *')}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowScribble(true)}
+                        className="btn btn-outline"
+                        style={{ height: '30px', borderRadius: '6px', padding: '0 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title="Write name"
+                      >
+                        <PenTool size={14} />
+                        Write
+                      </button>
+                    </div>
                     <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Enter name..."
-                    value={name}
-                    onChange={handleNameChange}
-                    required
-                    style={{ flex: 1, height: '42px', borderRadius: '8px' }}
-                  />
-                </div>
+                      type="text"
+                      className="form-control"
+                      placeholder="Enter name..."
+                      value={name}
+                      onChange={handleNameChange}
+                      required
+                      style={{ flex: 1, height: '42px', borderRadius: '8px' }}
+                    />
 
               {/* Phone */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

@@ -949,7 +949,7 @@ export default function DriverDashboard() {
     <div style={{ maxWidth: containerWidth, margin: '0 auto' }}>
       {/* Logout Confirmation Modal (Premium Design) */}
       {showLogoutConfirm && (
-        <div className="modal-overlay" style={{ zIndex: 2000, background: 'rgba(15, 23, 42, 0.75)' }}>
+        <div className="modal-overlay" style={{ zIndex: 2000, background: 'rgba(15, 23, 42, 0.60)', backdropFilter: 'blur(6px)' }}>
           <div className="modal premium-confirm-modal">
             <div className="premium-icon-container" style={{ color: '#ef4444' }}>
               <LogOut size={32} strokeWidth={2.5} />

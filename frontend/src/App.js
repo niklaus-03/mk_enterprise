@@ -4,6 +4,8 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from 'react-rou
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
+import { PullToRefreshProvider } from './context/PullToRefreshContext';
+import PullToRefresh from './components/PullToRefresh';
 import { hi } from './utils/helpers';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
@@ -35,7 +37,7 @@ import NotificationDropdown from './components/NotificationDropdown';
 import MobileGlobalSearch from './components/MobileGlobalSearch';
 import TopNavDateTime from './components/TopNavDateTime';
 import { ThemeProvider } from './context/ThemeContext';
-import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search, Home } from 'lucide-react';
+import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search, Home, ShoppingCart, Plus } from 'lucide-react';
 import { tripApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────
@@ -133,7 +135,7 @@ function Sidebar({ open, onClose, isFullscreen }) {
 
       {/* Logout Confirmation Modal (Premium Design) */}
       {showLogoutConfirm && (
-        <div className="modal-overlay" style={{ zIndex: 2000, background: 'rgba(15, 23, 42, 0.75)' }}>
+        <div className="modal-overlay" style={{ zIndex: 2000, background: 'rgba(15, 23, 42, 0.60)', backdropFilter: 'blur(6px)' }}>
           <div className="modal premium-confirm-modal">
             <div className="premium-icon-container" style={{ color: '#ef4444' }}>
               <LogOut size={32} strokeWidth={2.5} />
@@ -163,7 +165,43 @@ function Sidebar({ open, onClose, isFullscreen }) {
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <div style={{height: 72, flexShrink: 0}}></div><nav className="sidebar-nav">
+        <div className="sidebar-mobile-header">
+          <button
+            className="nav-hamburger-btn"
+            onClick={onClose}
+            aria-label="Toggle menu"
+          >
+            <span className={`ham-line ${open ? 'ham-open-1' : ''}`}></span>
+            <span className={`ham-line ham-line-mid ${open ? 'ham-open-2' : ''}`}></span>
+            <span className={`ham-line ${open ? 'ham-open-3' : ''}`}></span>
+          </button>
+          
+          <div className="top-navbar-brand">
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', background: '#F8F9FA',
+              boxShadow: '0 2px 8px rgba(197,160,89,0.3)',
+              border: '1.5px solid #C5A059'
+            }}>
+              <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%' }} fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="60" cy="60" r="48" stroke="#C5A059" strokeWidth="3.5" />
+                <circle cx="60" cy="60" r="41" stroke="#C5A059" strokeWidth="1" />
+                
+                <ellipse cx="60" cy="60" rx="17" ry="41" stroke="#C5A059" strokeWidth="1" />
+                <path d="M19 60 H101" stroke="#C5A059" strokeWidth="1" />
+                <path d="M60 19 V101" stroke="#C5A059" strokeWidth="1" />
+                
+                <circle cx="60" cy="60" r="26" fill="#F8F9FA" />
+                <circle cx="60" cy="60" r="26" stroke="#C5A059" strokeWidth="2" />
+                <text x="60" y="75" fontFamily="Georgia, 'Times New Roman', serif" fontSize="42" fontWeight="bold" textAnchor="middle" fill="#0B132B" letterSpacing="-2">MK</text>
+              </svg>
+            </div>
+            <span className="brand-text">MK Enterprise</span>
+          </div>
+        </div>
+        <div className="hide-on-mobile" style={{height: 72, flexShrink: 0}}></div>
+        <nav className="sidebar-nav">
           {navItems.map(item => (
             <NavLink
               key={item.to}
@@ -188,15 +226,15 @@ function Sidebar({ open, onClose, isFullscreen }) {
               else requestFullscreen();
             }}
             style={{
-              width: '100%', background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8,
-              color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: 600,
+              width: '100%', background: 'var(--bg)',
+              border: '1px solid var(--sidebar-border)', borderRadius: 8,
+              color: 'var(--sidebar-text)', fontSize: 12, fontWeight: 600,
               padding: '6px 12px', cursor: 'pointer', marginBottom: 8,
               display: 'flex', alignItems: 'center', gap: 8,
               transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--sidebar-text-hover)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.color = 'var(--sidebar-text)'; }}
           >
             <Maximize2 size={14} /> <span className="nav-label">{isCurrentlyFullscreen() ? (lang ? 'पूर्ण स्क्रीन से बाहर' : 'Exit Fullscreen') : (lang ? 'पूर्ण स्क्रीन' : 'Fullscreen')}</span>
           </button>
@@ -214,6 +252,21 @@ function Sidebar({ open, onClose, isFullscreen }) {
               <LogOut size={13} /> {lang ? hi.logout : 'Logout'}
             </button>
           </div>
+
+          {/* Signature */}
+          <div style={{ marginTop: '8px', textAlign: 'center', paddingBottom: '0px', display: 'flex', justifyContent: 'center', overflow: 'hidden' }}>
+            <span className="nav-label" style={{ 
+              fontFamily: '"Brush Script MT", "Great Vibes", "Dancing Script", cursive', 
+              fontSize: '15px', 
+              opacity: 0.5, 
+              letterSpacing: '0.5px',
+              transform: 'rotate(-4deg)',
+              pointerEvents: 'none',
+              userSelect: 'none'
+            }}>
+              mayankmehta_03
+            </span>
+          </div>
         </div>
       </aside>
     </>
@@ -221,7 +274,7 @@ function Sidebar({ open, onClose, isFullscreen }) {
 }
 
 // ── App Layout ─────────────────────────────────────────────────────────────────
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 
 
@@ -272,10 +325,16 @@ function isCurrentlyFullscreen() {
 
 function AppLayout() {
   const { isAdmin, user } = useAuth();
+  const { settings } = useApp();
+  const lang = settings?.language === 'hi';
   const isTempManager = user?.role === 'temp_manager';
   const isWalkinManager = user?.role === 'walkin_manager';
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const location = useLocation();
+  
+  const isDraftingState = location.pathname.endsWith('/invoices/new') || location.pathname.endsWith('/orders/new') || location.pathname.endsWith('/edit');
+  const hideTopNavActions = isDraftingState;
 
   // Track fullscreen state changes (user pressed Esc etc.)
   useEffect(() => {
@@ -390,7 +449,7 @@ function AppLayout() {
           {user && <TopNavDateTime />}
         </div>
 
-        {user && (
+        {user && !hideTopNavActions && (
           <div className="top-navbar-center hide-on-mobile">
             <div style={{ width: '100%', maxWidth: 600 }}>
               <MobileGlobalSearch desktop={true} />
@@ -398,12 +457,17 @@ function AppLayout() {
           </div>
         )}
 
+
+
         {user ? (
           <div className="top-navbar-right">
-            <div className="hide-on-desktop">
-              <MobileGlobalSearch />
-            </div>
-            <div className="hide-on-mobile" style={{ display: 'flex', gap: 10, marginRight: 15, alignItems: 'center' }}>
+            {!hideTopNavActions && (
+              <div className="hide-on-desktop">
+                <MobileGlobalSearch />
+              </div>
+            )}
+            {!hideTopNavActions && (
+              <div className="hide-on-mobile" style={{ display: 'flex', gap: 10, marginRight: 15, alignItems: 'center' }}>
               <Link 
                 to="/invoices/new" 
                 className="btn" 
@@ -436,6 +500,7 @@ function AppLayout() {
                 </Link>
               )}
             </div>
+            )}
             <NotificationDropdown 
               user={user} 
               iconColor="#0f172a" 
@@ -494,8 +559,43 @@ function AppLayout() {
           </div>
         )}
 
+        {/* YouTube Style Bottom Nav — Admin only, mobile only */}
+        {isAdmin && (
+          <div className="yt-bottom-nav hide-on-desktop">
+            <NavLink to="/dashboard" end className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <Home size={24} strokeWidth={isActive ? 2.5 : 2} />
+              )}
+            </NavLink>
+            <NavLink to="/orders/new" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <ShoppingCart size={24} strokeWidth={isActive ? 2.5 : 2} />
+              )}
+            </NavLink>
+            <NavLink to="/invoices/new" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <div className="yt-bottom-nav-add">
+                  <Plus size={28} strokeWidth={2.5} />
+                </div>
+              )}
+            </NavLink>
+            <NavLink to="/admin" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <Shield size={24} strokeWidth={isActive ? 2.5 : 2} />
+              )}
+            </NavLink>
+            <NavLink to="/settings" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <SettingsIcon size={24} strokeWidth={isActive ? 2.5 : 2} />
+              )}
+            </NavLink>
+          </div>
+        )}
+
         <div className="app-content">
-          <Outlet />
+          <PullToRefresh>
+            <Outlet />
+          </PullToRefresh>
         </div>
       </div>
     </>
@@ -538,7 +638,9 @@ function DriverLayout() {
         </div>
       </div>
       <div style={{ padding: 16 }}>
-        <Outlet />
+        <PullToRefresh>
+          <Outlet />
+        </PullToRefresh>
       </div>
     </div>
   );
@@ -634,7 +736,9 @@ export default function App() {
               }
             }} 
           />
-          <InnerApp />
+          <PullToRefreshProvider>
+            <InnerApp />
+          </PullToRefreshProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

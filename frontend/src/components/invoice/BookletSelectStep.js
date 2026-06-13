@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 export default function BookletSelectStep({ managers = [], onSelect, onBack }) {
   const { isAdmin } = useAuth();
   return (
-    <div className="cs-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '24px', padding: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '24px' }}>
       {/* Header */}
       <div className="cs-header" style={{ display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
         <button 

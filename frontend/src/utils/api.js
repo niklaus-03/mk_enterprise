@@ -110,6 +110,7 @@ export const productApi = {
   getCategories: () => api.get('/products/categories'),
   convert: (id, data) => api.post(`/products/${id}/convert`, data),
   packBulk: (id, data) => api.post(`/products/${id}/pack-bulk`, data),
+  openBox: (id, data) => api.post(`/products/${id}/open-box`, data),
   getChildren: (id) => api.get(`/products/${id}/children`),
 };
 
@@ -121,6 +122,7 @@ export const customerApi = {
   get: (id) => api.get(`/customers/${id}`),
   getInvoices: (id) => api.get(`/customers/${id}/invoices`),
   getBalanceBreakdown: (id, params) => api.get(`/customers/${id}/balance-breakdown`, { params }),
+  getTimelineSinceLastInvoice: (id, params) => api.get(`/customers/${id}/timeline-since-last-invoice`, { params }),
   create: (data) => api.post('/customers', data),
   update: (id, data) => api.put(`/customers/${id}`, data),
   delete: (id) => api.delete(`/customers/${id}`),

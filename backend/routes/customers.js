@@ -146,6 +146,45 @@ router.get('/:id/balance-breakdown', async (req, res) => {
   }
 });
 
+// GET /:id/timeline-since-last-invoice
+router.get('/:id/timeline-since-last-invoice', async (req, res) => {
+  try {
+    const customer = await Customer.findOne({ _id: req.params.id, ...ownerFilter(req) });
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+
+    const managerId = req.query.manager_id;
+    let currentBalance = customer.balance || 0;
+    if (managerId && customer.getManagerBalance && !customer.merged_by_admin) {
+      currentBalance = customer.getManagerBalance(managerId);
+    }
+
+    const Invoice = require('../models/Invoice');
+    const Payment = require('../models/Payment');
+
+    // Find the most recent invoice
+    const lastInvoice = await Invoice.findOne({ customer_id: customer._id, status: { $ne: 'cancelled' } }).sort({ date: -1 });
+    const lastInvoiceDate = lastInvoice ? (lastInvoice.createdAt || lastInvoice.date) : new Date(0);
+
+    // Find independent payments since the last invoice
+    const recentPayments = await Payment.find({
+      customer_id: customer._id,
+      date: { $gt: lastInvoiceDate }
+    }).sort({ date: 1 }).lean();
+
+    const sumRecentPayments = recentPayments.reduce((s, p) => s + (p.amount || 0), 0);
+    const startingBalance = currentBalance + sumRecentPayments;
+
+    res.json({
+      starting_balance: startingBalance,
+      recent_payments: recentPayments,
+      current_balance: currentBalance,
+      last_invoice_date: lastInvoiceDate
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const customer = await Customer.findOne({ _id: req.params.id, ...ownerFilter(req) }).populate('created_by', 'username display_name role');

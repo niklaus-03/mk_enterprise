@@ -220,33 +220,23 @@ export default function Invoices() {
         <div className={isMobile ? "card-body" : "card-body no-pad"}>
           {loading ? <div className="loading"><span className="spinner"></span></div> : (
             isMobile ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {invoices.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>
                     No invoices found. <Link to="/invoices/new" className="btn btn-outline btn-sm">Create one!</Link>
                   </div>
-                ) : invoices.map(inv => (
+                ) : invoices.map((inv, index) => (
                   <div id={`invoice-${inv._id}`} key={inv._id} style={{
                     background: highlightId === inv._id ? 'var(--warning-light)' : 'var(--bg-card)',
                     border: '1px solid',
-                    borderColor: highlightId === inv._id ? '#f59e0b' : '#e2e8f0',
-                    borderRadius: 14,
-                    padding: 16,
-                    boxShadow: '0 4px 6px -1px rgba(15,23,42,0.03), 0 2px 4px -1px rgba(15,23,42,0.01)',
+                    borderColor: highlightId === inv._id ? '#f59e0b' : 'var(--border)',
+                    borderRadius: 12,
+                    padding: '14px 16px',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 12,
-                    transition: 'all 0.5s ease',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.03)';
-                    e.currentTarget.style.borderColor = '#cbd5e1';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(15,23,42,0.03), 0 2px 4px -1px rgba(15,23,42,0.01)';
-                    e.currentTarget.style.borderColor = 'var(--border)';
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                    transition: 'all 0.3s ease',
                   }}
                   onTouchStart={() => handlePressStart(inv._id)}
                   onTouchEnd={handlePressEnd}
@@ -255,109 +245,99 @@ export default function Invoices() {
                   onMouseLeaveCapture={handlePressEnd}
                   onClick={() => handleRowClick(inv._id)}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {isSelectionMode && (
-                          <div onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                      {/* Left: Customer Info */}
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
+                        {isSelectionMode ? (
+                          <div onClick={e => e.stopPropagation()} style={{ paddingTop: 2, flexShrink: 0 }}>
                             <input 
                               type="checkbox" 
                               checked={selectedInvoices.includes(inv._id)}
                               onChange={() => handleToggleInvoice(inv._id)}
-                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
                             />
                           </div>
-                        )}
-                        <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 800, fontFamily: 'monospace', fontSize: 15 }}>
-                          {inv.invoice_number}
-                        </Link>
-                      </div>
-                      {getInvoiceStatusBadge(inv)}
-                    </div>
-
-                    <Link to={getCustomerLink(inv)} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                      <div style={{ fontSize: 13.5, color: 'var(--text)' }}>
-                        <div style={{ fontWeight: 700 }}>{inv.customer_name}</div>
-                        {inv.customer_phone && (
-                          <div style={{ color: 'var(--text-muted)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                            <Phone size={11} /> {inv.customer_phone}
+                        ) : (
+                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                            {inv.customer_name?.charAt(0).toUpperCase() || 'C'}
                           </div>
                         )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
+                          <Link to={getCustomerLink(inv)} style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-dark)', textDecoration: 'none', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {inv.customer_name}
+                          </Link>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Link to={`/invoices/${inv._id}`} style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace', textDecoration: 'none' }}>
+                              {inv.invoice_number}
+                            </Link>
+                            {getInvoiceStatusBadge(inv)}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '2px 6px', lineHeight: 1.3 }}>
+                            <span>{inv.ist_formatted || formatIST(inv.date)}</span>
+                            {inv.customer_phone && <span>· {inv.customer_phone}</span>}
+                          </div>
+                        </div>
                       </div>
-                    </Link>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
-                      <span>{inv.ist_formatted || formatIST(inv.date)}</span>
+                      {/* Right: Amounts & Status */}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-dark)', fontFamily: 'monospace' }}>
+                          {fc(inv.total)}
+                        </div>
+                        {((inv.total_with_prev_balance || inv.total) - inv.total) > 0.01 && (
+                          <div style={{ fontSize: 9.5, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                            Prev: +{fc((inv.total_with_prev_balance || inv.total) - inv.total)}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', marginTop: 2 }}>
+                           {getInvoiceDue(inv) > 0.01 ? (
+                             <span style={{ color: 'var(--danger)' }}>Due: {fc(getInvoiceDue(inv))}</span>
+                           ) : (
+                             <span style={{ color: 'var(--success)' }}>Paid</span>
+                           )}
+                        </div>
                         {isAdmin && (
-                          <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                            <User size={12} /> By: {inv.actual_creator?.display_name || inv.actual_creator?.username || inv.created_by?.display_name || inv.created_by?.username || 'Admin'}
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                            <User size={10} /> {inv.actual_creator?.display_name?.split(' ')[0] || inv.created_by?.username?.split(' ')[0] || 'Admin'}
                           </div>
                         )}
-                    </div>
-
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(4, 1fr)',
-                      gap: 4,
-                      background: 'var(--bg)',
-                      padding: '10px 8px',
-                      borderRadius: 10,
-                      textAlign: 'center'
-                    }}>
-                        <div>
-                          <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>{t('Total', 'कुल')}</div>
-                          <div style={{ fontSize: 11.5, fontWeight: 700, fontFamily: 'monospace' }}>{fc(inv.total)}</div>
-                          {((inv.total_with_prev_balance || inv.total) - inv.total) > 0.01 && (
-                            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'monospace' }}>
-                              Prev Due: +{fc((inv.total_with_prev_balance || inv.total) - inv.total)}
-                            </div>
-                          )}
-                        </div>
-                      <div>
-                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>Rec'd</div>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>{fc(inv.amount_received)}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>Due</div>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: getInvoiceDue(inv) > 0.01 ? 'var(--danger)' : 'var(--success)', fontFamily: 'monospace' }}>
-                          {getInvoiceDue(inv) > 0.01 ? fc(getInvoiceDue(inv)) : 'Paid'}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 9.5, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap' }}>Cust Bal</div>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, fontFamily: 'monospace' }}>
-                          {(() => {
-                            if (!inv.customer_id) return '—';
-                            let bal = getTrueBalance(inv);
-                            return <span style={{ color: bal > 0.01 ? 'var(--danger)' : 'var(--success)' }}>{fc(bal)}</span>;
-                          })()}
-                        </div>
                       </div>
                     </div>
 
-                    {inv.payments && inv.payments.length > 0 && (
-                      <div style={{ marginTop: 4, padding: '8px 12px', background: 'rgba(5, 150, 105, 0.04)', borderRadius: 8, border: '1px solid rgba(5, 150, 105, 0.1)' }}>
-                        <div style={{ fontSize: 10, color: 'var(--success)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Payment History</div>
-                        {inv.payments.map((p, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--text-dark)', marginBottom: i !== inv.payments.length - 1 ? 4 : 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <CheckCircle size={10} color="#059669" /> 
-                              <span style={{ textTransform: 'capitalize' }}>{p.mode}</span>
-                              {p.reference && <span style={{ color: 'var(--text-muted)' }}>({p.reference})</span>}
-                            </div>
-                            <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{fc(p.amount)}</div>
+                    {/* Bottom: Additional Info & Actions */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: 9, textTransform: 'uppercase', fontWeight: 700 }}>Rec'd</span>
+                            <span style={{ fontWeight: 800, color: 'var(--success)', fontFamily: 'monospace' }}>{fc(inv.amount_received)}</span>
                           </div>
-                        ))}
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: 9, textTransform: 'uppercase', fontWeight: 700 }}>Cust Bal</span>
+                            <span style={{ fontWeight: 800, color: getTrueBalance(inv) > 0.01 ? 'var(--danger)' : 'var(--success)', fontFamily: 'monospace' }}>
+                              {inv.customer_id ? fc(getTrueBalance(inv)) : '—'}
+                            </span>
+                          </div>
+                        </div>
+                        {/* Payment Badge */}
+                        {inv.payments && inv.payments.length > 0 && (
+                          <div style={{ fontSize: 10, color: 'var(--success)', fontWeight: 600 }}>
+                            via: {inv.payments.map(p => `${p.mode} ${fc(p.amount)}`).join(', ')}
+                          </div>
+                        )}
                       </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                      <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" onClick={e => e.stopPropagation()} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Eye size={12} /> View
-                      </Link>
-                      <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" onClick={e => e.stopPropagation()} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Edit size={12} />{t('Edit', 'संपादित करें')}</Link>
-                      <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(inv); }} style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Trash2 size={12} />{t('Cancel', 'रद्द करें')}</button>
+                      
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" onClick={e => e.stopPropagation()} style={{ padding: '6px', minWidth: '32px', display: 'flex', justifyContent: 'center' }}>
+                          <Eye size={14} />
+                        </Link>
+                        <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" onClick={e => e.stopPropagation()} style={{ padding: '6px', minWidth: '32px', display: 'flex', justifyContent: 'center' }}>
+                          <Edit size={14} />
+                        </Link>
+                        <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(inv); }} style={{ padding: '6px', minWidth: '32px', display: 'flex', justifyContent: 'center' }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

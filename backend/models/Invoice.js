@@ -15,6 +15,7 @@ const invoiceItemSchema = new mongoose.Schema({
   is_defective: { type: Boolean, default: false },
   adjustment: { type: Number, default: 0 },
   return_reason: { type: String, default: '' },
+  is_loose: { type: Boolean, default: false },
 });
 
 const paymentSchema = new mongoose.Schema({
@@ -41,8 +42,17 @@ const invoiceSchema = new mongoose.Schema({
   payments: [paymentSchema],
   amount_received: { type: Number, default: 0 },
   balance_due: { type: Number, default: 0 },
+  // Timeline feature
+  ledger_payments: [{
+    amount: { type: Number, default: 0 },
+    date: { type: Date },
+    ist_formatted: { type: String, default: '' },
+    mode: { type: String, default: '' }
+  }],
+  starting_balance: { type: Number, default: 0 },
   notes: { type: String, default: '' },
   concession_reason: { type: String, default: '' },
+  qr_for_current_bill: { type: Boolean, default: false },
   // Enhancement 2: driver & vehicle details on invoice
   driver_name: { type: String, default: '' },
   vehicle_number: { type: String, default: '' },

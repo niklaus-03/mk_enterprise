@@ -391,7 +391,7 @@
 }
 
 html {
-  overflow-x: hidden;
+  overscroll-behavior-y: auto;
 }
 
 body {
@@ -400,8 +400,8 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
   min-width: 320px;
+  overscroll-behavior-y: none !important;
 }
 
 a {
@@ -598,9 +598,16 @@ a {
   background: var(--sidebar-bg);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   .sidebar-mobile-header {
     display: flex !important;
+  }
+  .sidebar-mobile-header .top-navbar-brand {
+    flex-direction: row !important;
+    gap: 10px !important;
+  }
+  .sidebar-mobile-header .top-navbar-brand .brand-text {
+    font-size: 17px !important;
   }
 }
 
@@ -671,18 +678,23 @@ a {
 }
 
 .sidebar-nav {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   padding: 12px 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   overflow-y: auto;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  overflow-x: hidden;
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  display: none;
+  width: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
 }
 
 .nav-item {
@@ -1259,11 +1271,13 @@ tbody tr:hover {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(15, 23, 42, 0.60);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
   padding: 24px;
 }
 
@@ -2401,13 +2415,13 @@ tbody tr:hover {
 /* ── Sidebar responsive ─────────────────────────────── */
 
 /* Mobile: sidebar hidden off-screen by default */
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   .sidebar {
     position: fixed;
     top: 0;
     left: 0;
-    bottom: 0;
-    z-index: 999;
+    height: 100dvh;
+    z-index: 10001;
     transform: translateX(-100%);
     transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.22);
@@ -2519,11 +2533,11 @@ tbody tr:hover {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
-  z-index: 997;
+  z-index: 10000;
 }
 
 /* ── Responsive breakpoints ────────────────────────── */
-@media (max-width: 767px) {
+@media (max-width: 768px) {
 
   /* Show mobile topbar */
   .mobile-topbar {
@@ -2541,7 +2555,7 @@ tbody tr:hover {
     top: 0 !important;
     left: 0 !important;
     bottom: 0 !important;
-    z-index: 1002 !important;
+    z-index: 10001 !important;
     transform: translateX(-100%) !important;
     transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
     width: 250px !important;
@@ -2594,7 +2608,6 @@ tbody tr:hover {
   .table-wrap,
   .card-body table {
     overflow-x: auto !important;
-    display: block !important;
   }
 
   /* Fix form rows */
@@ -2864,7 +2877,10 @@ tbody tr:hover {
 }
 
 /* ─── MOBILE (<768px) ────────────────────────────── */
-@media (max-width: 767px) {
+@media (max-width: 768px) {
+  .top-navbar {
+    position: absolute;
+  }
   .top-navbar-left {
     min-width: auto;
     gap: 4px !important;
@@ -3169,7 +3185,7 @@ tbody tr:hover {
 /* ════════════════════════════════════════
    MOBILE (< 768px)
 ════════════════════════════════════════ */
-@media (max-width: 767px) {
+@media (max-width: 768px) {
 
   /* Show topbar */
   .mobile-topbar {
@@ -3183,6 +3199,20 @@ tbody tr:hover {
 
   .app-content {
     padding: 16px !important;
+  }
+
+  /* Stretch cards and stats grid edge-to-edge on mobile */
+  .card, .stats-grid, .feature-card {
+    margin-left: -16px !important;
+    margin-right: -16px !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    width: auto !important;
+  }
+
+  .card-header {
+    border-radius: 0 !important;
   }
 
   /* Sidebar: hidden off-screen by default */
@@ -3335,7 +3365,7 @@ tbody tr:hover {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: 1fr 1fr !important;
     gap: 10px !important;
@@ -3521,6 +3551,51 @@ tbody tr:hover {
 /* Hide browser's clear button on search inputs */
 input[type="search"]::-webkit-search-cancel-button {
   display: none;
+}
+
+.yt-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  z-index: 9999;
+  height: 54px;
+  justify-content: space-around;
+  align-items: center;
+  padding: 0 4px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.yt-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  text-decoration: none;
+  flex: 1;
+  height: 100%;
+  transition: color 0.2s;
+  position: relative;
+}
+
+.yt-bottom-nav-item.active {
+  color: var(--text);
+}
+
+.yt-bottom-nav-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
 }
 
 /* Items table qty column — never collapse */
@@ -3776,6 +3851,51 @@ input[type="search"]::-webkit-search-cancel-button {
   line-height: 1.4;
 }
 
+.yt-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  z-index: 9999;
+  height: 54px;
+  justify-content: space-around;
+  align-items: center;
+  padding: 0 4px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.yt-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  text-decoration: none;
+  flex: 1;
+  height: 100%;
+  transition: color 0.2s;
+  position: relative;
+}
+
+.yt-bottom-nav-item.active {
+  color: var(--text);
+}
+
+.yt-bottom-nav-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
+}
+
 @media (max-width: 768px) {
   .settings-container {
     flex-direction: column;
@@ -3985,6 +4105,72 @@ input[type="search"]::-webkit-search-cancel-button {
 @media (min-width: 769px) {
   .hide-on-desktop {
     display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   YOUTUBE STYLE BOTTOM NAV — Admin only, mobile only
+═══════════════════════════════════════════════════════════════ */
+.yt-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  z-index: 9999;
+  height: 60px;
+  justify-content: space-around;
+  align-items: center;
+  padding: 0 4px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.yt-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  text-decoration: none;
+  flex: 1;
+  height: 100%;
+  transition: color 0.2s;
+  position: relative;
+}
+
+.yt-bottom-nav-item.active {
+  color: var(--text);
+}
+
+.yt-bottom-nav-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
+}
+
+[data-theme="dark"] .yt-bottom-nav-item.active {
+  color: #fff;
+}
+
+[data-theme="dark"] .yt-bottom-nav-add {
+  border-color: #fff;
+  color: #fff;
+}
+
+@media (max-width: 768px) {
+  .yt-bottom-nav {
+    display: flex;
+  }
+  .app-main {
+    padding-bottom: 70px;
   }
 }
 
@@ -4221,6 +4407,7 @@ input[type="search"]::-webkit-search-cancel-button {
   background-color: var(--bg-hover) !important;
 }
 
+
 [data-theme="dark"] .inv-words {
   background-color: var(--bg) !important;
   border-color: var(--border) !important;
@@ -4351,6 +4538,14 @@ input[type="search"]::-webkit-search-cancel-button {
   border-right: 1px solid var(--border);
   padding-right: 12px;
 }
+
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* --- Modal Open Header Hide removed so navbar is correctly blurred by modals --- */
 .pg-product-grid {
   flex: 1;
   overflow-y: auto;
@@ -4521,3 +4716,62 @@ input[type="search"]::-webkit-search-cancel-button {
 
 .responsive-2col-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
 @media (max-width: 768px) { .responsive-2col-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+
+
+/* Responsive Card Table for Mobile */
+@media (max-width: 768px) {
+  .responsive-card-table table {
+    display: block;
+    width: 100%;
+  }
+  .responsive-card-table thead {
+    display: none;
+  }
+  .responsive-card-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .responsive-card-table tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .responsive-card-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 6px 0 !important;
+    border: none !important;
+    text-align: right;
+    white-space: normal !important;
+  }
+  .responsive-card-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-right: 12px;
+    text-align: left;
+    white-space: nowrap;
+    opacity: 0.8;
+  }
+  .responsive-card-table td > * {
+    max-width: 100%;
+  }
+  /* Optional: make the actions row span full width */
+  .responsive-card-table td:last-child {
+    margin-top: 8px;
+    padding-top: 12px !important;
+    border-top: 1px dashed var(--border) !important;
+    justify-content: flex-end;
+  }
+  .responsive-card-table td:last-child::before {
+    display: none; /* Hide 'Actions' label */
+  }
+}

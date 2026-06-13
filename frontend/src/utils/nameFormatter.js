@@ -43,7 +43,20 @@ export const parseCustomerNameFull = (fullName) => {
 };
 
 export const FormattedName = ({ fullName, style = {}, className = "" }) => {
-  const { prefix, name, suffix } = parseCustomerNameFull(fullName);
+  let { prefix, name, suffix } = parseCustomerNameFull(fullName);
+  
+  const isH = isHindi(name || fullName);
+
+  if (!prefix || prefix === 'Mr.') {
+    prefix = isH ? 'श्री' : 'Shree';
+  } else if (prefix === 'Mrs.' || prefix === 'Ms.' || prefix === 'Miss') {
+    prefix = isH ? 'श्रीमती' : 'Shreemati';
+  }
+
+  if (!suffix) {
+    suffix = isH ? 'जी' : 'jii';
+  }
+
   return (
     <span className={className} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '4px', ...style }}>
       {prefix && <span style={{ fontWeight: 400, opacity: 0.85 }}>{prefix}</span>}

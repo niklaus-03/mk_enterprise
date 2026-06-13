@@ -143,7 +143,7 @@ router.get('/', async (req, res) => {
         .populate('created_by', 'display_name username')
         .populate('actual_creator', 'display_name username')
         .populate('customer_id', 'balance manager_balances')
-        .sort({ date: -1 }).skip(skip).limit(parseInt(limit)),
+        .sort({ date: -1 }).skip(skip).limit(parseInt(limit)).lean(),
       Invoice.countDocuments(query),
     ]);
     res.json({ invoices, total, pages: Math.ceil(total / parseInt(limit)) });
@@ -153,7 +153,7 @@ router.get('/', async (req, res) => {
 // ── GET single invoice ─────────────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {
-    const invoice = await Invoice.findById(req.params.id);
+    const invoice = await Invoice.findById(req.params.id).lean();
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     res.json(invoice);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -288,7 +288,8 @@ router.post('/', async (req, res) => {
       items, payments = [], discount = 0, notes = '', concession_reason = '',
       gst_enabled = true, discount_enabled = false,
       driver_name, vehicle_number, total_weight, vehicle_charge, labour_charge, bill_date, is_manual_bill, manual_bill_ref, signature, override_creator_id,
-      override_previous_balance
+      override_previous_balance, qr_for_current_bill,
+      ledger_payments = [], starting_balance = 0
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -320,6 +321,7 @@ router.post('/', async (req, res) => {
     }
 
     // 2. Auto-create new products & validate stock
+    console.log('DEBUG: Incoming items:', JSON.stringify(items, null, 2));
     for (const item of items) {
       // Clean up empty product_id strings to null
       if (!item.product_id || item.product_id === '') {
@@ -353,7 +355,7 @@ router.post('/', async (req, res) => {
           return res.status(400).json({ error: `Product not found: ${item.product_name}` });
         }
         
-        let stockToUse = product.stock;
+        let stockToUse = item.is_loose ? product.loose_stock : product.stock;
         
         // Handle list override if provided
         if (req.body.product_list_id) {
@@ -371,60 +373,52 @@ router.post('/', async (req, res) => {
         }
         
         if (stockToUse < parseFloat(item.qty)) {
-          // Auto-convert from bulk parent if this is a loose item
-          if (product.is_loose_item && product.parent_product) {
-            const parentProduct = await Product.findById(product.parent_product);
-            if (parentProduct) {
-              const deficit = parseFloat(item.qty) - stockToUse;
-              const factor = product.conversion_factor || 1;
-              const bulkUnitsNeeded = Math.ceil(deficit / factor);
+          // Auto-convert from bulk if this is a loose item
+          if (item.is_loose && product.has_loose) {
+            const deficit = parseFloat(item.qty) - stockToUse;
+            const factor = product.loose_conversion_factor || 1;
+            const bulkUnitsNeeded = Math.ceil(deficit / factor);
 
-              if (parentProduct.stock >= bulkUnitsNeeded) {
-                // Execute auto-conversion
-                const looseQtyToAdd = bulkUnitsNeeded * factor;
-                const parentBefore = parentProduct.stock;
-                parentProduct.stock -= bulkUnitsNeeded;
-                await parentProduct.save();
+            if (product.stock >= bulkUnitsNeeded) {
+              // Execute auto-conversion
+              const looseQtyToAdd = bulkUnitsNeeded * factor;
+              const bulkBefore = product.stock;
+              const looseBefore = product.loose_stock;
+              
+              product.stock -= bulkUnitsNeeded;
+              product.loose_stock += looseQtyToAdd;
+              await product.save();
+              // Update stockToUse for the subsequent deduction
+              stockToUse = product.loose_stock;
 
-                const childBefore = product.stock;
-                product.stock += looseQtyToAdd;
-                await product.save();
-                // Update stockToUse for the subsequent deduction
-                stockToUse = product.stock;
+              await StockMovement.create({
+                product_id: product._id, product_name: product.name,
+                type: 'outgoing', qty: bulkUnitsNeeded, qty_unit: product.unit || 'pcs',
+                stock_before: bulkBefore, stock_after: product.stock,
+                source: 'conversion', notes: `Auto-converted for invoice: ${bulkUnitsNeeded} ${product.unit} → ${looseQtyToAdd} ${product.loose_unit}`,
+                ist_formatted: formatIST(new Date()), created_by: invoiceCreatorId,
+              });
+              await StockMovement.create({
+                product_id: product._id, product_name: product.name,
+                type: 'incoming', qty: looseQtyToAdd, qty_unit: product.loose_unit || 'pcs',
+                stock_before: looseBefore, stock_after: product.loose_stock,
+                source: 'conversion', notes: `Auto-converted from ${bulkUnitsNeeded} ${product.unit}`,
+                ist_formatted: formatIST(new Date()), created_by: invoiceCreatorId,
+              });
 
-                await StockMovement.create({
-                  product_id: parentProduct._id, product_name: parentProduct.name,
-                  type: 'outgoing', qty: bulkUnitsNeeded, qty_unit: parentProduct.unit || 'pcs',
-                  stock_before: parentBefore, stock_after: parentProduct.stock,
-                  source: 'conversion', notes: `Auto-converted for invoice: ${bulkUnitsNeeded} ${parentProduct.unit} → ${looseQtyToAdd} ${product.unit} of ${product.name}`,
-                  ist_formatted: formatIST(new Date()), created_by: invoiceCreatorId,
-                });
-                await StockMovement.create({
-                  product_id: product._id, product_name: product.name,
-                  type: 'incoming', qty: looseQtyToAdd, qty_unit: product.unit || 'pcs',
-                  stock_before: childBefore, stock_after: product.stock,
-                  source: 'conversion', notes: `Auto-converted from ${bulkUnitsNeeded} ${parentProduct.unit} of ${parentProduct.name}`,
-                  ist_formatted: formatIST(new Date()), created_by: invoiceCreatorId,
-                });
-
-                // Track for response notification
-                if (!req._autoConversions) req._autoConversions = [];
-                req._autoConversions.push({
-                  parent_name: parentProduct.name,
-                  parent_qty: bulkUnitsNeeded,
-                  parent_unit: parentProduct.unit,
-                  child_name: product.name,
-                  child_qty: looseQtyToAdd,
-                  child_unit: product.unit,
-                });
-              } else {
-                return res.status(400).json({
-                  error: `Insufficient stock for "${product.name}". Available: ${stockToUse} (+ ${parentProduct.stock} ${parentProduct.unit} bulk). Not enough to auto-convert.`,
-                });
-              }
+              // Track for response notification
+              if (!req._autoConversions) req._autoConversions = [];
+              req._autoConversions.push({
+                parent_name: product.name,
+                parent_qty: bulkUnitsNeeded,
+                parent_unit: product.unit,
+                child_name: product.loose_name || product.name,
+                child_qty: looseQtyToAdd,
+                child_unit: product.loose_unit,
+              });
             } else {
               return res.status(400).json({
-                error: `Insufficient stock for "${product.name}". Available: ${stockToUse}, Requested: ${item.qty}`,
+                error: `Insufficient stock for "${product.name}". Available: ${stockToUse} ${product.loose_unit} (+ ${product.stock} ${product.unit} bulk). Not enough to auto-convert.`,
               });
             }
           } else {
@@ -550,9 +544,12 @@ router.post('/', async (req, res) => {
       discount_enabled,
       is_manual_bill,
       manual_bill_ref,
+      ledger_payments,
+      starting_balance,
       driver_name,
       vehicle_number,
       total_weight: parseFloat(total_weight) || 0,
+      qr_for_current_bill: !!qr_for_current_bill,
       date: invoiceDate,
       ist_formatted: formatIST(invoiceDate),
       signature: req.body.signature || '',
@@ -562,13 +559,16 @@ router.post('/', async (req, res) => {
     });
     await invoice.save();
 
-    // Bypass Mongoose strict schema to ensure company_details saves even if server isn't restarted
+    // Bypass Mongoose strict schema to ensure new fields save even if server isn't restarted
+    const updateFields = { qr_for_current_bill: !!qr_for_current_bill };
     if (company_details) {
-      await Invoice.collection.updateOne(
-        { _id: invoice._id }, 
-        { $set: { company_details: company_details } }
-      );
+      updateFields.company_details = company_details;
     }
+    
+    await Invoice.collection.updateOne(
+      { _id: invoice._id }, 
+      { $set: updateFields }
+    );
 
     // 5. Deduct stock and log movements sequentially
     for (const item of processedItems) {
@@ -576,43 +576,64 @@ router.post('/', async (req, res) => {
         const pFilter = await getProductOwnerFilter(req);
         const product = await Product.findOne({ _id: item.product_id, ...pFilter });
         if (product) {
-          const stock_before = product.stock;
-          product.stock = Math.max(0, product.stock - item.qty);
-          await product.save();
-          
-          // Deduct from list override custom_stock if applicable
-          if (req.body.product_list_id) {
-            const ProductList = require('../models/ProductList');
-            const list = await ProductList.findById(req.body.product_list_id);
-            if (list) {
-              const share = list.shares.find(s => s.manager_id.toString() === (req.user ? req.user.id : ''));
-              if (share) {
-                 const override = share.overrides.find(o => o.product_id.toString() === product._id.toString());
-                 if (override && override.custom_stock !== null) {
-                    override.custom_stock = Math.max(0, override.custom_stock - item.qty);
-                    // Mongoose needs markModified for deep nested arrays sometimes
-                    list.markModified('shares');
-                    await list.save();
-                 }
+          if (item.is_loose) {
+            const stock_before = product.loose_stock;
+            product.loose_stock = Math.max(0, product.loose_stock - item.qty);
+            await product.save();
+            
+            await StockMovement.create({
+              product_id: product._id,
+              product_name: product.loose_name || product.name,
+              type: 'outgoing',
+              qty: item.qty,
+              qty_unit: product.loose_unit || 'pcs',
+              stock_before,
+              stock_after: product.loose_stock,
+              reference: invoice._id.toString(),
+              source: 'invoice',
+              vehicle_number: vehicle_number || '',
+              driver_name: driver_name || '',
+              ist_formatted: formatIST(invoiceDate),
+              created_by: invoiceCreatorId,
+            });
+          } else {
+            const stock_before = product.stock;
+            product.stock = Math.max(0, product.stock - item.qty);
+            await product.save();
+            
+            // Deduct from list override custom_stock if applicable
+            if (req.body.product_list_id) {
+              const ProductList = require('../models/ProductList');
+              const list = await ProductList.findById(req.body.product_list_id);
+              if (list) {
+                const share = list.shares.find(s => s.manager_id.toString() === (req.user ? req.user.id : ''));
+                if (share) {
+                   const override = share.overrides.find(o => o.product_id.toString() === product._id.toString());
+                   if (override && override.custom_stock !== null) {
+                      override.custom_stock = Math.max(0, override.custom_stock - item.qty);
+                      list.markModified('shares');
+                      await list.save();
+                   }
+                }
               }
             }
-          }
 
-          await StockMovement.create({
-            product_id: product._id,
-            product_name: product.name,
-            type: 'outgoing',
-            qty: item.qty,
-            qty_unit: product.unit || 'pcs',
-            stock_before,
-            stock_after: product.stock,
-            reference: invoice._id.toString(),
-            source: 'invoice',
-            vehicle_number: vehicle_number || '',
-            driver_name: driver_name || '',
-            ist_formatted: formatIST(invoiceDate),
-            created_by: invoiceCreatorId,
-          });
+            await StockMovement.create({
+              product_id: product._id,
+              product_name: product.name,
+              type: 'outgoing',
+              qty: item.qty,
+              qty_unit: product.unit || 'pcs',
+              stock_before,
+              stock_after: product.stock,
+              reference: invoice._id.toString(),
+              source: 'invoice',
+              vehicle_number: vehicle_number || '',
+              driver_name: driver_name || '',
+              ist_formatted: formatIST(invoiceDate),
+              created_by: invoiceCreatorId,
+            });
+          }
         }
       }
     }
@@ -729,15 +750,27 @@ router.put('/:id', async (req, res) => {
         if (product) {
           const netDeducted = old.qty - (old.returned_qty || 0);
           if (netDeducted > 0) {
-            const stock_before = product.stock;
-            product.stock += netDeducted;
-            await product.save();
-            await StockMovement.create({
-              product_id: product._id, product_name: product.name, type: 'incoming', qty: netDeducted,
-              stock_before, stock_after: product.stock, reference: original._id.toString(),
-              source: 'return', notes: 'Invoice edit - restoring stock', ist_formatted: formatIST(new Date()),
-              created_by: req.user ? req.user.id : null,
-            });
+            if (old.is_loose) {
+              const stock_before = product.loose_stock;
+              product.loose_stock += netDeducted;
+              await product.save();
+              await StockMovement.create({
+                product_id: product._id, product_name: product.loose_name || product.name, type: 'incoming', qty: netDeducted, qty_unit: product.loose_unit || 'pcs',
+                stock_before, stock_after: product.loose_stock, reference: original._id.toString(),
+                source: 'return', notes: 'Invoice edit - restoring stock', ist_formatted: formatIST(new Date()),
+                created_by: req.user ? req.user.id : null,
+              });
+            } else {
+              const stock_before = product.stock;
+              product.stock += netDeducted;
+              await product.save();
+              await StockMovement.create({
+                product_id: product._id, product_name: product.name, type: 'incoming', qty: netDeducted, qty_unit: product.unit || 'pcs',
+                stock_before, stock_after: product.stock, reference: original._id.toString(),
+                source: 'return', notes: 'Invoice edit - restoring stock', ist_formatted: formatIST(new Date()),
+                created_by: req.user ? req.user.id : null,
+              });
+            }
           }
         }
       }
@@ -750,8 +783,19 @@ router.put('/:id', async (req, res) => {
         const product = await Product.findOne({ _id: item.product_id, ...pFilter });
         if (!product) return res.status(400).json({ error: `Product not found: ${item.product_name}` });
         const netQty = (parseFloat(item.qty) || 0) - (parseFloat(item.returned_qty) || 0);
-        if (netQty > 0 && product.stock < netQty) {
-          return res.status(400).json({ error: `Insufficient stock for "${product.name}". Available: ${product.stock}` });
+        let stockToUse = item.is_loose ? product.loose_stock : product.stock;
+
+        if (netQty > 0 && stockToUse < netQty) {
+          if (item.is_loose && product.has_loose) {
+            const deficit = netQty - stockToUse;
+            const factor = product.loose_conversion_factor || 1;
+            const bulkUnitsNeeded = Math.ceil(deficit / factor);
+            if (product.stock < bulkUnitsNeeded) {
+              return res.status(400).json({ error: `Insufficient stock for "${product.name}". Available: ${stockToUse} ${product.loose_unit} (+ ${product.stock} ${product.unit} bulk)` });
+            }
+          } else {
+            return res.status(400).json({ error: `Insufficient stock for "${product.name}". Available: ${stockToUse}` });
+          }
         }
       }
     }
@@ -764,15 +808,55 @@ router.put('/:id', async (req, res) => {
         if (product) {
           const netQty = (parseFloat(item.qty) || 0) - (parseFloat(item.returned_qty) || 0);
           if (netQty > 0) {
-            const stock_before = product.stock;
-            product.stock -= netQty;
-            await product.save();
-            await StockMovement.create({
-              product_id: product._id, product_name: product.name, type: 'outgoing', qty: netQty,
-              stock_before, stock_after: product.stock, reference: original._id.toString(),
-              source: 'invoice', notes: 'Invoice edited', ist_formatted: formatIST(new Date()),
-              created_by: req.user ? req.user.id : null,
-            });
+            if (item.is_loose && product.has_loose) {
+              if (product.loose_stock < netQty) {
+                const deficit = netQty - product.loose_stock;
+                const factor = product.loose_conversion_factor || 1;
+                const bulkUnitsNeeded = Math.ceil(deficit / factor);
+                const looseQtyToAdd = bulkUnitsNeeded * factor;
+
+                const bulkBefore = product.stock;
+                const looseBefore = product.loose_stock;
+                product.stock -= bulkUnitsNeeded;
+                product.loose_stock += looseQtyToAdd;
+                await product.save();
+
+                await StockMovement.create({
+                  product_id: product._id, product_name: product.name,
+                  type: 'outgoing', qty: bulkUnitsNeeded, qty_unit: product.unit || 'pcs',
+                  stock_before: bulkBefore, stock_after: product.stock,
+                  source: 'conversion', notes: `Auto-converted on edit: ${bulkUnitsNeeded} ${product.unit} → ${looseQtyToAdd} ${product.loose_unit}`,
+                  ist_formatted: formatIST(new Date()), created_by: req.user ? req.user.id : null,
+                });
+                await StockMovement.create({
+                  product_id: product._id, product_name: product.name,
+                  type: 'incoming', qty: looseQtyToAdd, qty_unit: product.loose_unit || 'pcs',
+                  stock_before: looseBefore, stock_after: product.loose_stock,
+                  source: 'conversion', notes: `Auto-converted from ${bulkUnitsNeeded} ${product.unit}`,
+                  ist_formatted: formatIST(new Date()), created_by: req.user ? req.user.id : null,
+                });
+              }
+
+              const stock_before = product.loose_stock;
+              product.loose_stock -= netQty;
+              await product.save();
+              await StockMovement.create({
+                product_id: product._id, product_name: product.loose_name || product.name, type: 'outgoing', qty: netQty, qty_unit: product.loose_unit || 'pcs',
+                stock_before, stock_after: product.loose_stock, reference: original._id.toString(),
+                source: 'invoice', notes: 'Invoice edited', ist_formatted: formatIST(new Date()),
+                created_by: req.user ? req.user.id : null,
+              });
+            } else {
+              const stock_before = product.stock;
+              product.stock -= netQty;
+              await product.save();
+              await StockMovement.create({
+                product_id: product._id, product_name: product.name, type: 'outgoing', qty: netQty, qty_unit: product.unit || 'pcs',
+                stock_before, stock_after: product.stock, reference: original._id.toString(),
+                source: 'invoice', notes: 'Invoice edited', ist_formatted: formatIST(new Date()),
+                created_by: req.user ? req.user.id : null,
+              });
+            }
           }
         }
       }

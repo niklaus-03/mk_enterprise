@@ -1,6 +1,5 @@
 {
-  "name": "shopbill-pro-backend",
-  "version": "2.0.0",
+  "name": "mk-enterprise-backend",
   "description": "ShopBill Pro — Cloud Billing Backend with Auth",
   "main": "server.js",
   "scripts": {

@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { orderApi, productApi, settlementApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/helpers';
-import { FileSpreadsheet, ArrowLeft, User, Trash2, CreditCard, Wallet, Smartphone, Globe, CheckCircle, Info, Save } from 'lucide-react';
+import { FileSpreadsheet, ArrowLeft, User, Trash2, CreditCard, Wallet, Smartphone, Globe, CheckCircle, Info, Save, FileText } from 'lucide-react';
 
 // Title-case helper — first letter of each word capitalized
 const titleCase = (str) =>
@@ -171,19 +171,58 @@ export default function NewOrder() {
 
   // ── Render ─────────────────────────────────────────────────
   return (
-    <div>
-      {/* Page Header */}
-      <div className="page-header">
-        <div>
-          <div className="page-title d-flex align-items-center gap-2"><FileSpreadsheet size={22} className="text-primary" /> New Order</div>
-          <div className="page-subtitle">Create a new customer order</div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '24px', paddingBottom: '40px' }}>
+      {/* Header */}
+      <div className="cs-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div>
+              <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileSpreadsheet size={22} className="text-primary" /> New Order
+              </h1>
+              <p className="page-subtitle" style={{ margin: '2px 0 0 0' }}>Create a new customer order</p>
+            </div>
+            
+            <div style={{ width: '1px', height: '30px', background: 'var(--border)', margin: '0 4px' }}></div>
+            
+            <button
+              type="button"
+              onClick={() => navigate('/orders')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'var(--bg-hover)',
+                border: '1.5px solid var(--border)',
+                borderRadius: 20, padding: '6px 16px', cursor: 'pointer',
+                fontSize: 13, fontWeight: 700,
+                color: 'var(--text-muted)',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+            >
+              <FileText size={14} /> Orders
+            </button>
+          </div>
         </div>
-        <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => navigate(-1)}>
-          <ArrowLeft size={14} /> Back
-        </button>
+
+        <div>
+          <button className="btn btn-outline-danger" onClick={() => navigate('/orders')} style={{ fontWeight: 600 }}>{t('Cancel Order', 'ऑर्डर रद्द करें')}</button>
+        </div>
       </div>
 
-      <div style={{ maxWidth: 860, margin: '0 auto' }}>
+      <div style={{ width: '100%' }}>
+        <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+          
+          {/* ── LEFT COLUMN ── */}
+          <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
         {/* ── Customer Info ─────────────────────────────── */}
         <div className="card" style={{ marginBottom: 16, border: '1.5px solid #e5e7eb', borderRadius: 12 }}>
@@ -380,6 +419,11 @@ export default function NewOrder() {
             )}
           </div>
         </div>
+        </div>
+        {/* END LEFT COLUMN */}
+
+        {/* ── RIGHT COLUMN ── */}
+          <div style={{ flex: '1 1 35%', minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
         {/* ── Advance Payment ───────────────────────────── */}
         <div className="card" style={{ marginBottom: 20, border: '1.5px solid #e5e7eb', borderRadius: 12 }}>
@@ -453,18 +497,22 @@ export default function NewOrder() {
           </div>
         </div>
 
-        {/* ── Action Buttons ────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginBottom: 40 }}>
-          <button className="btn btn-outline" onClick={() => navigate('/orders')}>{t('Cancel', 'रद्द करें')}</button>
+        {/* ── Action Buttons Moved to Bottom ────────────────────────────── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', marginBottom: 40 }}>
           <button
             className="btn btn-primary btn-lg d-inline-flex align-items-center gap-2"
             onClick={handleSubmit}
             disabled={saving}
+            style={{ width: '100%', justifyContent: 'center', fontSize: 16, padding: '12px 20px' }}
           >
             {saving
               ? <><span className="spinner"></span> Saving...</>
-              : <><Save size={16} /> Create Order</>}
+              : <><Save size={18} /> Create Order</>}
           </button>
+        </div>
+        </div>
+        {/* END RIGHT COLUMN */}
+
         </div>
       </div>
     </div>

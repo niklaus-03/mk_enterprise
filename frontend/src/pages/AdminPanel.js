@@ -950,9 +950,9 @@ export default function AdminPanel() {
       )}
 
       {/* Add / Edit Manager Modal */}
-      {(showAddManager || showEditManager) && (
-        <div className="modal-overlay" onClick={() => { setShowAddManager(false); setShowEditManager(null); }} style={{ padding: '16px', backdropFilter: 'blur(5px)' }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450, padding: 0, borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', maxHeight: '90vh', overflowY: 'auto' }}>
+      {showAddManager && (
+        <div className="modal-overlay" onMouseDown={() => { setShowAddManager(false); setShowEditManager(null); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(15, 23, 42, 0.60)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '20px' }}>
+          <div className="modal" onMouseDown={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', margin: 'auto' }}>
             <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {showAddManager ? <Plus size={20} /> : <Edit2 size={20} />}

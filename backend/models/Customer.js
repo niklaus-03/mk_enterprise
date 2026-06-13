@@ -41,6 +41,10 @@ customerSchema.methods.setManagerBalance = function (managerId, newBalance) {
   } else {
     this.manager_balances.push({ manager_id: managerId, balance: newBalance });
   }
+  
+  // Explicitly tell Mongoose that the array of subdocuments has changed
+  this.markModified('manager_balances');
+  
   // Recalculate global aggregate balance
   this.balance = this.manager_balances.reduce((sum, mb) => sum + mb.balance, 0);
 };
