@@ -128,6 +128,9 @@ export default function AdminDashboard() {
   const [showMoreSales, setShowMoreSales] = useState(false);
   const [showMoreTopProducts, setShowMoreTopProducts] = useState(false);
   const [editableLowStock, setEditableLowStock] = useState([]);
+  const [modalSearchQuery, setModalSearchQuery] = useState('');
+  const [modalSort, setModalSort] = useState('');
+  const [modalSortOpen, setModalSortOpen] = useState(false);
   const [focusedItemIdx, setFocusedItemIdx] = useState(null);
   const [productLists, setProductLists] = useState([]);
   const [activeListFilter, setActiveListFilter] = useState(null);
@@ -207,7 +210,7 @@ export default function AdminDashboard() {
     }, 80);
   };
 
-  const { globalDate: selectedDate, setGlobalDate: setSelectedDate } = useApp();
+  const { globalDate: selectedDate, setGlobalDate: setSelectedDate, t, settings } = useApp();
   // Reactive — recalculates on every render when selectedDate changes
   const isToday = selectedDate === getTodayIST();
 
@@ -292,8 +295,8 @@ export default function AdminDashboard() {
     expected_arrival: getNowDateTimeLocal(), // default = today now
     notes: '',
     items: [
-      { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
-      { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
     ],
   });
   const [deliverySaving, setDeliverySaving] = useState(false);
@@ -357,7 +360,7 @@ export default function AdminDashboard() {
   const checkAutoAddRow = (items) => {
     const last = items[items.length - 1];
     if (last && last.item_name.trim()) {
-      return [...items, { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' }];
+      return [...items, { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }];
     }
     return items;
   };
@@ -417,7 +420,7 @@ export default function AdminDashboard() {
         await deliveryApi.create(payload);
         toast.success('Delivery entry saved');
       }
-      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' }, { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' }] });
+      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }, { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }] });
       setShowDeliveryForm(false);
       setEditDeliveryId(null);
       loadDeliveries(getTodayIST());
@@ -466,14 +469,14 @@ export default function AdminDashboard() {
       supplier: d.supplier || '',
       expected_arrival: localStr,
       notes: d.notes || '',
-      items: d.items.length ? d.items.map(i => ({ item_name: i.item_name, quantity: i.quantity, unit: i.unit, product_id: i.product_id || '' })) : [{ item_name: '', quantity: '', unit: 'pcs', product_id: '' }],
+      items: d.items.length ? d.items.map(i => ({ item_name: i.item_name, quantity: i.quantity, unit: i.unit, product_id: i.product_id || '' })) : [{ item_name: '', quantity: '', unit: 'unit', product_id: '' }],
     });
     setShowDeliveryForm(true);
     setShowDeparture(true);
   };
 
   const addDeliveryItem = () =>
-    setDeliveryForm(f => ({ ...f, items: [...f.items, { item_name: '', quantity: '', unit: 'pcs', product_id: '' }] }));
+    setDeliveryForm(f => ({ ...f, items: [...f.items, { item_name: '', quantity: '', unit: 'unit', product_id: '' }] }));
 
   const removeDeliveryItem = (idx) =>
     setDeliveryForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
@@ -619,7 +622,7 @@ export default function AdminDashboard() {
   const [payModal, setPayModal] = useState(null); // { invoice_id, customer_id, name, balance, type }
   const [payForm, setPayForm] = useState({ amount: '', mode: 'cash', reference: '' });
   const [paying, setPaying] = useState(false);
-  const { settings, t } = useApp();
+
 
   const handleRecordPayment = async () => {
     if (!payForm.amount || parseFloat(payForm.amount) <= 0) return toast.error('Enter a valid amount');
@@ -873,40 +876,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Orders Notification */}
-      {orders.length > 0 && (
-        <div style={{
-          background: '#eff6ff',
-          border: '1.5px solid #3b82f6',
-          borderRadius: 8,
-          padding: '10px 16px',
-          marginBottom: 14
-        }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            <Package size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Orders Due Today: {orders.length}
-          </div>
-
-          {orders.map(o => (
-            <div key={o._id} style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: 6,
-              fontSize: 13
-            }}>
-              <div>
-                {o.customer_name} — {o.items?.[0]?.product_name} ({o.items?.[0]?.qty})
-              </div>
-
-              <Link
-                to={`/invoices/new?orderId=${o._id}`}
-                className="btn btn-primary btn-sm"
-              >
-                Generate Invoice
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Orders Notification Removed */}
 
       {/* Stats — all driven by selectedDate via global calendar */}
 
@@ -1437,6 +1407,13 @@ export default function AdminDashboard() {
                 )}
               </div>
               <button
+                className="btn btn-sm"
+                style={{ background: '#d97706', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                onClick={() => setShowWalkinModal(true)}
+              >
+                <UserCheck size={14} /> Walk-in Delivery
+              </button>
+              <button
                 className="btn btn-primary btn-sm"
                 onClick={() => {
                   setEditDeliveryId(null);
@@ -1445,8 +1422,8 @@ export default function AdminDashboard() {
                     expected_arrival: getNowDateTimeLocal(), // always default to now
                     notes: '',
                     items: [
-                      { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
-                      { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
+                      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+                      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
                     ]
                   });
                   setShowDeliveryForm(d => !d);
@@ -1489,7 +1466,7 @@ export default function AdminDashboard() {
                       <X size={20} />
                     </button>
                   </div>
-                  <div style={{ padding: '20px 22px', overflowY: 'auto' }}>
+                  <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
 
                 <div className="form-row">
                   {/* Fix 4: Vehicle number — auto uppercase */}
@@ -1598,28 +1575,41 @@ export default function AdminDashboard() {
                         return;
                       }
 
-                      const mapped = lowItems.map(p => {
+                      const mapped = lowItems.filter(p => p.saved_order_qty !== -1).map(p => {
                         const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
                           ? p.custom_low_stock : threshold;
-                        const neededQty = Math.max(1, minStock - p.stock);
+                        const neededQty = p.saved_order_qty > 0
+                          ? p.saved_order_qty
+                          : Math.max(1, minStock - p.stock);
                         return {
                           item_name: p.name,
                           quantity: String(neededQty),
-                          unit: p.unit || 'bag',
+                          unit: p.unit || 'unit',
                           product_id: p._id,
                           label: 'Goods',
                           is_new_item: false,
                         };
                       });
 
+                      const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                      const mappedCustom = customSaved.map(c => ({
+                        item_name: c.name,
+                        quantity: String(c.orderQty),
+                        unit: c.unit || 'unit',
+                        product_id: '',
+                        label: 'Goods',
+                        is_new_item: true,
+                      }));
+
                       setDeliveryForm(f => ({
                         ...f,
                         items: [
                           ...mapped,
-                          { item_name: '', quantity: '0', unit: 'bag', product_id: '', label: 'Goods' },
+                          ...mappedCustom,
+                          { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
                         ],
                       }));
-                      toast.success(`${mapped.length} low stock item${mapped.length !== 1 ? 's' : ''} imported`);
+                      toast.success(`${mapped.length + mappedCustom.length} low stock item${(mapped.length + mappedCustom.length) !== 1 ? 's' : ''} imported`);
                     }}
                   >
                     Fetch from Low Stock
@@ -1657,7 +1647,14 @@ export default function AdminDashboard() {
                           searchProducts(val);
                         }}
                         onBlur={() => setTimeout(() => { setProductSuggestions([]); setProductSuggestIdx(null); }, 200)}
+                        style={item.is_new_item && item.item_name ? { paddingRight: 40 } : undefined}
                       />
+                      {/* New Item Badge Inside Input */}
+                      {item.is_new_item && item.item_name && (
+                        <div style={{ position: 'absolute', bottom: 7, right: 7, fontSize: 9, color: '#92400e', background: '#fffbeb', padding: '2px 5px', borderRadius: 4, fontWeight: 700, pointerEvents: 'none' }}>
+                          NEW
+                        </div>
+                      )}
                       {/* Dropdown: always shown when typing — products + add-new */}
                       {productSuggestIdx === idx && item.item_name.trim() && (
                         <div style={{
@@ -1676,7 +1673,7 @@ export default function AdminDashboard() {
                                     ...updated[idx],
                                     item_name: p.name,
                                     quantity: '1', // auto set to 1 on product select
-                                    unit: p.unit || 'bag',
+                                    unit: p.unit || 'unit',
                                     product_id: p._id,
                                     is_new_item: false,
                                   };
@@ -1720,12 +1717,6 @@ export default function AdminDashboard() {
                           >
                             + Use "{item.item_name}" as new product (created on delivery)
                           </div>
-                        </div>
-                      )}
-                      {/* New item badge */}
-                      {item.is_new_item && item.item_name && (
-                        <div style={{ fontSize: 10, color: '#92400e', background: '#fffbeb', padding: '1px 6px', borderRadius: 6, marginTop: 3, display: 'inline-block' }}>
-                          New — will be created on delivery
                         </div>
                       )}
                     </div>
@@ -1811,12 +1802,13 @@ export default function AdminDashboard() {
                     placeholder="Optional notes" />
                 </div>
 
-                <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
-                  <button className="btn btn-outline" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>Cancel</button>
-                  <button className="btn btn-primary" onClick={handleSaveDelivery} disabled={deliverySaving}>
-                    {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? 'Update' : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
-                  </button>
-                </div>
+                  </div>
+                  {/* Modal Footer */}
+                  <div style={{ padding: '16px 22px', borderTop: '1px solid #f1f5f9', background: '#fff', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button className="btn btn-outline" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleSaveDelivery} disabled={deliverySaving}>
+                      {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? 'Update' : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -3383,12 +3375,18 @@ export default function AdminDashboard() {
                     : data.lowStockProducts;
                   const initialItems = source.map(p => ({
                     ...p,
-                    selected: true,
+                    selected: p.saved_order_qty !== -1,
                     orderQty: p.saved_order_qty > 0
                       ? p.saved_order_qty
                       : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
                   }));
-                  initialItems.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1, selected: false });
+
+                  const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                  customSaved.forEach(c => {
+                    initialItems.push({ _id: `custom-${Date.now()}-${Math.random()}`, name: c.name, stock: 0, unit: c.unit, orderQty: c.orderQty, selected: true });
+                  });
+
+                  initialItems.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1, selected: false });
                   setEditableLowStock(initialItems);
                   setShowLowStockEditor(true);
                 }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
@@ -3402,7 +3400,9 @@ export default function AdminDashboard() {
             <div className="hide-scrollbar" style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', gap: 6, overflowX: 'auto', whiteSpace: 'nowrap', alignItems: 'center' }}>
               <button
                 onClick={() => setActiveListFilter(null)}
-                style={{ flexShrink: 0, padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#fff' : 'var(--text-muted)' }}
+                style={{ height: 28, flexShrink: 0, padding: '0 14px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#ffffff' : '#64748b' }}
+                onMouseEnter={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#e2e8f0'; }}
+                onMouseLeave={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#f1f5f9'; }}
               >
                 All Items
               </button>
@@ -3410,15 +3410,17 @@ export default function AdminDashboard() {
                 const listProductIds = (list.products || []).map(p => p._id || p);
                 const lowInList = data.lowStockProducts.filter(p => listProductIds.includes(p._id)).length;
                 if (lowInList === 0) return null;
+                const isActive = activeListFilter === list._id;
                 return (
                   <button
                     key={list._id}
-                    onClick={() => setActiveListFilter(list._id === activeListFilter ? null : list._id)}
-                    style={{ flexShrink: 0, padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5, background: activeListFilter === list._id ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === list._id ? '#fff' : 'var(--text-muted)' }}
+                    onClick={() => setActiveListFilter(isActive ? null : list._id)}
+                    style={{ height: 28, flexShrink: 0, padding: '0 6px 0 12px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 6, background: isActive ? 'var(--primary)' : '#f1f5f9', color: isActive ? '#ffffff' : '#64748b' }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#e2e8f0'; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = '#f1f5f9'; }}
                   >
-                    <List size={11} />
                     {list.name}
-                    <span style={{ background: activeListFilter === list._id ? 'rgba(255,255,255,0.25)' : '#e2e8f0', padding: '0 5px', borderRadius: 10, fontSize: 10, color: activeListFilter === list._id ? '#fff' : '#64748b' }}>{lowInList}</span>
+                    <span style={{ minWidth: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(255,255,255,0.25)' : '#cbd5e1', borderRadius: 9, fontSize: 10, fontWeight: 700, color: isActive ? '#ffffff' : '#475569' }}>{lowInList}</span>
                   </button>
                 );
               })}
@@ -3427,12 +3429,30 @@ export default function AdminDashboard() {
 
           <div className="card-body no-pad">
             {(() => {
-              const filteredLowStock = activeListFilter
+              let filteredLowStock = activeListFilter
                 ? data.lowStockProducts?.filter(p => {
                     const lst = productLists.find(l => l._id === activeListFilter);
                     return lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
                   })
                 : (data.lowStockProducts || []);
+
+              if (!activeListFilter) {
+                const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                if (customSaved.length > 0) {
+                  filteredLowStock = [
+                    ...filteredLowStock,
+                    ...customSaved.map((c, i) => ({
+                      _id: `custom-grid-${i}`,
+                      name: c.name,
+                      stock: 0,
+                      unit: c.unit,
+                      saved_order_qty: c.orderQty,
+                      is_custom: true
+                    }))
+                  ];
+                }
+              }
+
               if (!filteredLowStock?.length) return (
                 <div style={{ padding: '32px 20px', textAlign: 'center' }}>
                   <div style={{ color: '#d1d5db', marginBottom: 8 }}><Package size={36} /></div>
@@ -3465,10 +3485,16 @@ export default function AdminDashboard() {
                           <span style={{
                             display: 'inline-block', marginTop: 3,
                             fontSize: 11, fontWeight: 600,
-                            color: isOut ? 'var(--danger)' : 'var(--text-muted)',
+                            color: (p.is_custom || p.created_from_order) ? '#d97706' : (isOut ? 'var(--danger)' : 'var(--text-muted)'),
                             whiteSpace: 'nowrap'
                           }}>
-                            {isOut ? '⚠ Out of Stock' : `${p.stock} ${p.unit} left`}
+                            {p.is_custom ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> New Item</span>
+                            ) : p.created_from_order ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> Order from Customer</span>
+                            ) : isOut ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><AlertTriangle size={11} strokeWidth={2.5} /> Out of Stock</span>
+                            ) : `${p.stock} ${p.unit} left`}
                           </span>
                           {p.last_updated_by && (
                             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -3679,12 +3705,41 @@ export default function AdminDashboard() {
               >✕</button>
             </div>
 
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', background: '#fff', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: 9, color: '#94a3b8' }} />
+                <input 
+                  type="text" 
+                  placeholder={t('Search items...', 'आइटम खोजें...')} 
+                  value={modalSearchQuery}
+                  onChange={e => setModalSearchQuery(e.target.value)}
+                  style={{ width: '100%', height: 32, paddingLeft: 30, borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', transition: 'border-color 0.2s' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
+              </div>
+              <SortDropdown 
+                options={[
+                  { key: 'all', label: t('All (A-Z)', 'सभी (A-Z)') },
+                  { key: 'new', label: t('New Item', 'नया आइटम') },
+                  { key: 'order', label: t('Order from Customer', 'ग्राहक द्वारा ऑर्डर') },
+                  { key: 'low', label: t('Low Stock', 'कम स्टॉक') }
+                ]}
+                value={modalSort}
+                onChange={val => { setModalSort(modalSort === val ? '' : val); setModalSortOpen(false); }}
+                open={modalSortOpen}
+                onToggle={() => setModalSortOpen(!modalSortOpen)}
+              />
+            </div>
+
             {/* List filters inside modal */}
             {productLists.length > 0 && data.lowStockProducts?.length > 0 && (
             <div className="hide-scrollbar" style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#fafbff', display: 'flex', gap: 6, overflowX: 'auto', whiteSpace: 'nowrap', alignItems: 'center', flexShrink: 0 }}>
               <button
                 onClick={() => setActiveListFilter(null)}
-                style={{ flexShrink: 0, padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#fff' : 'var(--text-muted)' }}
+                style={{ height: 28, flexShrink: 0, padding: '0 14px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#ffffff' : '#64748b' }}
+                onMouseEnter={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#e2e8f0'; }}
+                onMouseLeave={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#f1f5f9'; }}
               >
                 All Items
               </button>
@@ -3692,13 +3747,15 @@ export default function AdminDashboard() {
                   const listProductIds = (list.products || []).map(p => p._id || p);
                   const lowInList = data.lowStockProducts.filter(p => listProductIds.includes(p._id)).length;
                   if (lowInList === 0) return null;
+                  const isActive = activeListFilter === list._id;
                   return (
                     <button
                       key={list._id}
-                      onClick={() => setActiveListFilter(list._id === activeListFilter ? null : list._id)}
-                      style={{ flexShrink: 0, padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5, background: activeListFilter === list._id ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === list._id ? '#fff' : 'var(--text-muted)' }}
+                      onClick={() => setActiveListFilter(isActive ? null : list._id)}
+                      style={{ height: 28, flexShrink: 0, padding: '0 12px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 6, background: isActive ? 'var(--primary)' : '#f1f5f9', color: isActive ? '#ffffff' : '#64748b' }}
+                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#e2e8f0'; }}
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = '#f1f5f9'; }}
                     >
-                      <List size={11} />
                       {list.name}
                     </button>
                   );
@@ -3707,30 +3764,9 @@ export default function AdminDashboard() {
             )}
 
             {/* Table header */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 130px', gap: 12, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 96px', gap: 12, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)', alignItems: 'center', flexShrink: 0 }}>
                 <div style={{ width: 24, display: 'flex', justifyContent: 'center' }}>
-                  <input type="checkbox"
-                    checked={editableLowStock.filter(p => {
-                      if (activeListFilter && !p._id?.startsWith('custom-')) {
-                        const lst = productLists.find(l => l._id === activeListFilter);
-                        return lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
-                      }
-                      return true;
-                    }).every(p => p.selected !== false)}
-                    onChange={e => {
-                      const checked = e.target.checked;
-                      setEditableLowStock(prev => prev.map(p => {
-                        let inView = true;
-                        if (activeListFilter && !p._id?.startsWith('custom-')) {
-                          const lst = productLists.find(l => l._id === activeListFilter);
-                          inView = lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
-                        }
-                        const isEmptyCustom = p._id?.startsWith('custom-') && (!p.name || p.name.trim() === '');
-                        return (inView && !isEmptyCustom) ? { ...p, selected: checked } : p;
-                      }));
-                    }}
-                    style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }}
-                  />
+                  {/* Header checkbox removed as per request */}
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Item Name</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right', paddingRight: 4 }}>Order Qty</span>
@@ -3739,24 +3775,71 @@ export default function AdminDashboard() {
               {/* List body — scrollable */}
               <div style={{ overflowY: 'auto', flex: 1, padding: '0 0 8px 0' }}>
 
-              {editableLowStock.map((p, idx) => {
-                if (activeListFilter && !p._id?.startsWith('custom-')) {
-                  const lst = productLists.find(l => l._id === activeListFilter);
-                  const inList = lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
-                  if (!inList) return null;
-                }
-                return (
-                <div
-                  key={p._id || idx}
-                  style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 130px', gap: 12, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafbff', opacity: p.selected === false ? 0.6 : 1 }}
-                >
-                  <div style={{ width: 24, display: 'flex', justifyContent: 'center' }}>
+              {(() => {
+                let indices = editableLowStock.map((_, i) => i);
+                indices = indices.filter(i => {
+                  const p = editableLowStock[i];
+                  if (activeListFilter && !p._id?.startsWith('custom-')) {
+                    const lst = productLists.find(l => l._id === activeListFilter);
+                    const inList = lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
+                    if (!inList) return false;
+                  }
+                  if (modalSearchQuery) {
+                    const q = modalSearchQuery.toLowerCase();
+                    if (!p.name?.toLowerCase().includes(q)) return false;
+                  }
+                  return true;
+                });
+
+                // ALWAYS sort. Groups go to top based on filter, everything else falls back to A-Z
+                indices.sort((i, j) => {
+                  const a = editableLowStock[i];
+                  const b = editableLowStock[j];
+                  
+                  const aEmpty = a._id?.startsWith('custom-') && (!a.name || a.name.trim() === '');
+                  const bEmpty = b._id?.startsWith('custom-') && (!b.name || b.name.trim() === '');
+                  if (aEmpty && !bEmpty) return 1;
+                  if (!aEmpty && bEmpty) return -1;
+
+                  if (modalSort === 'new') {
+                    const aIsCustom = a._id?.startsWith('custom-') && !aEmpty;
+                    const bIsCustom = b._id?.startsWith('custom-') && !bEmpty;
+                    if (aIsCustom && !bIsCustom) return -1;
+                    if (!aIsCustom && bIsCustom) return 1;
+                  } else if (modalSort === 'order') {
+                    if (a.created_from_order && !b.created_from_order) return -1;
+                    if (!a.created_from_order && b.created_from_order) return 1;
+                  } else if (modalSort === 'low') {
+                    const aIsOOS = a.stock === 0 && !a.created_from_order && !a.is_custom;
+                    const bIsOOS = b.stock === 0 && !b.created_from_order && !b.is_custom;
+                    const aIsOrder = a.created_from_order;
+                    const bIsOrder = b.created_from_order;
+
+                    if (aIsOOS && !bIsOOS) return -1;
+                    if (!aIsOOS && bIsOOS) return 1;
+                    if (aIsOrder && !bIsOrder) return -1;
+                    if (!aIsOrder && bIsOrder) return 1;
+                  }
+
+                  // Fallback for everything (and for 'all' / 'az'): Alphabetical Ascending
+                  return (a.name || '').localeCompare(b.name || '', 'hi', { numeric: true });
+                });
+
+                return indices.map((idx, renderedIndex) => {
+                  const p = editableLowStock[idx];
+                  return (
+                    <div
+                      key={p._id || idx}
+                      style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 96px', gap: 12, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: renderedIndex % 2 === 0 ? '#fff' : '#fafbff', opacity: p.selected === false ? 0.6 : 1 }}
+                    >
+                      <div style={{ width: 24, display: 'flex', justifyContent: 'center' }}>
                     <input type="checkbox" checked={p.selected !== false} onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], selected: e.target.checked }; return u; })} style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }} />
                   </div>
                   {/* Item Info / Autocomplete */}
                   <div style={{ position: 'relative' }}>
                     {p._id?.startsWith('custom-') ? (
                       <>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input
                           value={p.name}
                           onChange={e => {
@@ -3766,19 +3849,20 @@ export default function AdminDashboard() {
                               u[idx] = { ...u[idx], name: val }; 
                               if (idx === u.length - 1 && val.trim() !== '') {
                                 u[idx].selected = true;
-                                u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1, selected: false });
+                                u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1, selected: false });
                               }
                               return u; 
                             });
                           }}
                           placeholder="Item name"
-                          style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                          style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', boxSizing: 'border-box', fontFamily: 'inherit' }}
                           onFocus={e => { e.target.style.borderColor = 'var(--primary)'; setFocusedItemIdx(idx); }}
                           onBlur={e => {
                             e.target.style.borderColor = 'var(--border)';
                             setTimeout(() => setFocusedItemIdx(null), 200);
                           }}
                         />
+                      </div>
                         {focusedItemIdx === idx && p.name && (
                           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', zIndex: 50, maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginTop: 4 }}>
                             {data.allProducts?.filter(prod => prod.name.toLowerCase().includes(p.name.toLowerCase()) && !editableLowStock.some(ep => ep._id === prod._id)).map(prod => (
@@ -3789,7 +3873,7 @@ export default function AdminDashboard() {
                                         u[idx] = { _id: prod._id, name: prod.name, stock: prod.stock, unit: prod.unit, orderQty: prod.saved_order_qty > 0 ? prod.saved_order_qty : 1 };
                                         if (idx === u.length - 1) {
                                           u[idx].selected = true;
-                                          u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1, selected: false });
+                                          u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1, selected: false });
                                         }
                                         return u;
                                      });
@@ -3808,8 +3892,16 @@ export default function AdminDashboard() {
                     ) : (
                       <div style={{ paddingLeft: 4 }}>
                         <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap' }}>
-                          {p.stock} {p.unit} left
+                        <div style={{ fontSize: 11, color: (p.is_custom || p.created_from_order) ? '#d97706' : (p.stock === 0 ? 'var(--danger)' : 'var(--text-muted)'), fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap' }}>
+                          {p.is_custom ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> New Item</span>
+                          ) : p.created_from_order ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> {t('Order from Customer', 'ग्राहक द्वारा ऑर्डर')}</span>
+                          ) : p.stock === 0 ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><AlertTriangle size={11} strokeWidth={2.5} /> {t('Out of Stock', 'स्टॉक खत्म')}</span>
+                          ) : (
+                            `${p.stock} ${p.unit} left`
+                          )}
                         </div>
                         {p.last_updated_by && (
                           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -3820,10 +3912,10 @@ export default function AdminDashboard() {
                     )}
                   </div>
                   {/* Stepper */}
-                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', width: 120, justifySelf: 'end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', width: 96, justifySelf: 'end' }}>
                     <button
                       onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, u[idx].orderQty - 1) }; return u; })}
-                      style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
                       onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
                       onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
                     ><Minus size={12} /></button>
@@ -3831,18 +3923,19 @@ export default function AdminDashboard() {
                       type="number" min="0"
                       value={p.orderQty}
                       onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, parseInt(e.target.value) || 0) }; return u; })}
-                      style={{ flex: 1, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 14, background: '#fff', padding: '0 4px', minWidth: 0 }}
+                      style={{ flex: 1, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13, background: '#fff', padding: '0 2px', minWidth: 0 }}
                     />
                     <button
                       onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: u[idx].orderQty + 1 }; return u; })}
-                      style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
                       onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
                       onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
                     ><Plus size={12} /></button>
                   </div>
                 </div>
                 );
-              })}
+              });
+              })()}
 
             </div>
 
@@ -3859,7 +3952,14 @@ export default function AdminDashboard() {
                   style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--primary)' }}
                   onClick={async () => {
                     try {
-                      const updates = editableLowStock.filter(p => p.selected !== false && p.name && p.name.trim() !== '').map(p => ({ _id: p._id, saved_order_qty: p.orderQty }));
+                      const customToSave = editableLowStock.filter(p => p._id?.startsWith('custom-') && p.name && p.name.trim() !== '' && p.selected !== false).map(p => ({
+                        name: p.name.trim(),
+                        orderQty: p.orderQty,
+                        unit: p.unit || 'unit'
+                      }));
+                      localStorage.setItem('mk_custom_low_stock', JSON.stringify(customToSave));
+
+                      const updates = editableLowStock.filter(p => p.name && p.name.trim() !== '' && !p._id?.startsWith('custom-')).map(p => ({ _id: p._id, saved_order_qty: p.selected === false ? -1 : p.orderQty }));
                       await productApi.bulkOrderQty(updates);
                       setShowLowStockEditor(false);
                       dashboardApi.get(selectedDate).then(d => {

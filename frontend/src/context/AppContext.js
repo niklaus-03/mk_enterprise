@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   language: 'en',
   gst_enabled: true,
   discount_enabled: false,
+  discount_type: 'amount',
   currency_symbol: '₹',
 };
 

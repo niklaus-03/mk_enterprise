@@ -150,24 +150,29 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
   const totalBase = form.items.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)', zIndex: 9999, backdropFilter: 'blur(6px)', padding: 16 }}>
-      <div className="walkin-delivery-modal" onClick={e => e.stopPropagation()} style={{ background: '#ffffff', borderRadius: 20, width: '100%', maxWidth: 750, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', animation: 'slideUp 0.3s ease-out forwards', position: 'relative' }}>
+    <div className="modal-overlay" onClick={onClose} style={{ padding: '12px', zIndex: 9999 }}>
+      <div 
+        className="walkin-delivery-modal"
+        onClick={e => e.stopPropagation()} 
+        style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 650, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden', margin: '5vh auto 0' }}
+      >
         
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', background: '#2563eb', color: 'white', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, fontSize: '18px' }}>
-            <div style={{ background: 'rgba(255,255,255,0.15)', padding: 6, borderRadius: 8, display: 'flex' }}><UserCheck size={18} color="white" /></div> 
-            Record Walk-in Delivery
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center' }}>
+            <UserCheck size={18} style={{ marginRight: 8, color: 'var(--primary)' }} /> Record Walk-in Delivery
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', padding: 6, borderRadius: '50%', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}><X size={18} /></button>
+          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }} onClick={onClose}>
+            <X size={20} />
+          </button>
         </div>
 
         {/* Body */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: 24, minHeight: 0, scrollBehavior: 'smooth', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', willChange: 'scroll-position' }}>
+        <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
           <form id="walkin-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
               <div className="form-group" style={{ position: 'relative' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Supplier / Party Name *</label>
+                <label className="form-label">Supplier / Party Name *</label>
                 <input className="form-control"
                   value={form.supplier}
                   onChange={e => {
@@ -175,7 +180,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                     searchSuppliers(e.target.value);
                   }}
                   onBlur={() => setTimeout(() => setSupplierSuggestions([]), 200)}
-                  placeholder="e.g. Ramesh Traders" autoFocus style={{ borderRadius: 8 }} required />
+                  placeholder="e.g. Ramesh Traders" autoFocus required />
                 
                 {/* Supplier Suggestions */}
                 {form.supplier && supplierSuggestions.length > 0 && (
@@ -203,19 +208,19 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                 )}
               </div>
               <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Date & Time *</label>
-                <input type="datetime-local" className="form-control" value={form.expected_arrival} onChange={e => setForm(f => ({ ...f, expected_arrival: e.target.value }))} required style={{ borderRadius: 8, fontSize: 13 }} />
+                <label className="form-label">Date & Time *</label>
+                <input type="datetime-local" className="form-control" value={form.expected_arrival} onChange={e => setForm(f => ({ ...f, expected_arrival: e.target.value }))} required />
               </div>
             </div>
 
             <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Notes</label>
-              <input className="form-control" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any remarks..." style={{ borderRadius: 8 }} />
+              <label className="form-label">Notes</label>
+              <input className="form-control" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any remarks..." />
             </div>
 
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid #e2e8f0' }}>
-                <label style={{ fontWeight: 800, color: '#1e293b', fontSize: 14, margin: 0 }}>Order Items <span style={{ color: '#ef4444' }}>*</span></label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Order Items <span style={{ color: '#ef4444' }}>*</span></div>
               </div>
               <div className="hide-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
                 {form.items.map((item, idx) => (
@@ -380,16 +385,14 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
           </div> {/* End Scrollable Body */}
 
           {/* Footer Actions */}
-          <div style={{ display: 'flex', gap: 14, justifyContent: 'flex-end', alignItems: 'center', padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#ffffff', flexShrink: 0 }}>
-            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ borderRadius: 10, padding: '10px 20px', fontWeight: 600 }}>{t('Cancel', 'रद्द करें')}</button>
-            
-            <button type="submit" form="walkin-form" className="btn" onClick={() => setSubmitAction('save')} disabled={saving} style={{ borderRadius: 10, padding: '10px 24px', fontWeight: 700, background: 'linear-gradient(to right, #f59e0b, #d97706)', color: 'white', border: 'none', boxShadow: '0 4px 6px rgba(217, 119, 6, 0.2)' }}>
-              {saving && submitAction === 'save' ? <><span className="spinner" style={{ marginRight: 6 }}></span> Saving...</> : 'Save Delivery'}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center', padding: '16px 22px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', flexShrink: 0 }}>
+            <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+            <button type="submit" form="walkin-form" className="btn btn-primary" onClick={() => setSubmitAction('save')} disabled={saving}>
+              {saving && submitAction === 'save' ? 'Saving...' : '✓ Save Entry'}
             </button>
-            
             {(userRole === 'manager' || userRole === 'admin') && (
-              <button type="submit" form="walkin-form" className="btn" onClick={() => setSubmitAction('send')} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: '10px 24px', fontWeight: 700, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', border: 'none', boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)' }}>
-                <CheckCircle size={16} /> {saving && submitAction === 'send' ? 'Sending...' : 'Send to Admin'}
+              <button type="submit" form="walkin-form" className="btn btn-primary" onClick={() => setSubmitAction('send')} disabled={saving}>
+                {saving && submitAction === 'send' ? 'Sending...' : '✓ Send to Admin'}
               </button>
             )}
           </div>

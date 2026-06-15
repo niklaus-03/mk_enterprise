@@ -173,12 +173,8 @@ export default function PullToRefresh({ children }) {
         </div>
       </div>
 
-      {/* Content wrapper — slight push-down while pulling */}
-      <div style={
-        phase === 'pulling' 
-          ? { transform: `translateY(${pullDistance * 0.3}px)`, transition: 'none' }
-          : { transform: 'none', transition: 'none' }
-      }>
+      {/* Content wrapper */}
+      <div>
         {children}
       </div>
 

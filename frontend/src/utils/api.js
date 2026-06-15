@@ -162,6 +162,7 @@ export const invoiceApi = {
   sendEmail: (id, email) => api.post(`/invoices/${id}/send-email`, { email }),
   share: (id, staffIds) => api.post(`/invoices/${id}/share`, { staffIds }),
   batchShare: (data) => api.post(`/invoices/batch-share`, data),
+  consolidate: (data) => api.post(`/invoices/consolidate`, data),
 };
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const dashboardApi = {

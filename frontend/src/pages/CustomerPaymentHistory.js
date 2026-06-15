@@ -3,9 +3,9 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { customerApi } from '../utils/api';
+import { customerApi, invoiceApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
-import { ArrowLeft, Calendar, CreditCard, Users, Wallet, Printer, IndianRupee, ArrowDownLeft, ArrowUpRight, Clock, Receipt, FileText, X, Plus } from 'lucide-react';
+import { ArrowLeft, Calendar, CreditCard, Users, Wallet, Printer, IndianRupee, ArrowDownLeft, ArrowUpRight, Clock, Receipt, FileText, X, Plus, Edit3 } from 'lucide-react';
 
 const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer'];
 
@@ -31,6 +31,45 @@ export default function CustomerPaymentHistory() {
   const [showCollectModal, setShowCollectModal] = useState(false);
   const [collectForm, setCollectForm] = useState({ amount: '', mode: 'cash', reference: '', notes: '', selectedInvoices: [] });
   const [collecting, setCollecting] = useState(false);
+
+  const [selectedEntries, setSelectedEntries] = useState([]);
+  const [consolidating, setConsolidating] = useState(false);
+
+  const longPressTimer = React.useRef(null);
+
+  const handleTouchStart = (item) => {
+    if (item.type !== 'invoice' || !item.is_ledger_entry) return;
+    longPressTimer.current = setTimeout(() => {
+      toggleEntry(null, item._id);
+      if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
+    }, 600);
+  };
+
+  const handleTouchEndOrMove = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  };
+
+  const toggleEntry = (e, itemId) => {
+    if (e) e.stopPropagation();
+    setSelectedEntries(prev => prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]);
+  };
+
+  const handleConsolidate = async () => {
+    if (!selectedEntries.length) return;
+    if (!window.confirm(`Consolidate ${selectedEntries.length} entries into a single Invoice?`)) return;
+    
+    setConsolidating(true);
+    try {
+      await invoiceApi.consolidate({ customer_id: id, entryIds: selectedEntries });
+      toast.success('Invoices consolidated successfully!');
+      setSelectedEntries([]);
+      loadData();
+    } catch (e) {
+      toast.error(e.response?.data?.error || e.message || 'Consolidation failed');
+    } finally {
+      setConsolidating(false);
+    }
+  };
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -94,6 +133,7 @@ export default function CustomerPaymentHistory() {
 
     if (ledgerView === 'all' || ledgerView === 'invoices') {
       invoices.forEach(i => {
+        if (i.status === 'consolidated') return;
         items.push({
           type: 'invoice',
           date: i.date,
@@ -101,6 +141,7 @@ export default function CustomerPaymentHistory() {
           invoice_number: i.invoice_number,
           balance_due: i.balance_due,
           ist_formatted: i.ist_formatted,
+          is_ledger_entry: !!i.is_ledger_entry,
           _id: i._id,
         });
       });
@@ -336,8 +377,30 @@ export default function CustomerPaymentHistory() {
             ))}
           </div>
 
-          {/* Date filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Date filter & Consolidate */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                const unbilledIds = ledger.filter(i => i.type === 'invoice' && i.is_ledger_entry).map(i => i._id);
+                if (unbilledIds.length === 0) return toast('No unbilled entries to select');
+                const allSelected = unbilledIds.every(id => selectedEntries.includes(id));
+                setSelectedEntries(allSelected ? [] : unbilledIds);
+              }}
+              className="btn btn-outline btn-sm"
+              style={{ borderRadius: 8, fontWeight: 700, padding: '6px 12px' }}
+            >
+              Select All Unbilled
+            </button>
+            {selectedEntries.length > 0 && (
+              <button
+                onClick={handleConsolidate}
+                disabled={consolidating}
+                className="btn btn-primary btn-sm"
+                style={{ borderRadius: 8, fontWeight: 700, padding: '6px 12px' }}
+              >
+                {consolidating ? 'Consolidating...' : `Consolidate (${selectedEntries.length})`}
+              </button>
+            )}
             {!isFullHistory ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 12px' }}>
@@ -369,16 +432,35 @@ export default function CustomerPaymentHistory() {
             /* ── MOBILE CARD VIEW ── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {ledger.map((item, idx) => (
-                <div key={item._id} style={{
+                <div key={item._id} 
+                  onTouchStart={() => handleTouchStart(item)}
+                  onTouchEnd={handleTouchEndOrMove}
+                  onTouchMove={handleTouchEndOrMove}
+                  onTouchCancel={handleTouchEndOrMove}
+                  style={{
                   padding: '14px 16px', borderBottom: '1px solid #f1f5f9',
-                  background: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)',
+                  background: selectedEntries.includes(item._id) ? '#eff6ff' : (idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg)'),
+                  transition: 'background 0.2s',
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
-                        {formatDate(item.date)}
-                        <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>{formatTime(item.date)}</span>
-                      </div>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      {item.type === 'invoice' && item.is_ledger_entry && (
+                        <div style={{ paddingTop: '2px' }} onClick={(e) => toggleEntry(e, item._id)}>
+                          <input 
+                            type="checkbox" 
+                            checked={selectedEntries.includes(item._id)} 
+                            onChange={(e) => toggleEntry(e, item._id)} 
+                            style={{ width: 18, height: 18, cursor: 'pointer' }}
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {formatDate(item.date)}
+                          <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>{formatTime(item.date)}</span>
+                        </div>
                       {item.type === 'payment' ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', marginTop: 4 }}>
                           <ArrowDownLeft size={10} /> Payment Received
@@ -388,6 +470,7 @@ export default function CustomerPaymentHistory() {
                           <ArrowUpRight size={10} /> Invoice
                         </span>
                       )}
+                      </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 17, fontWeight: 900, color: item.type === 'payment' ? '#16a34a' : '#dc2626', letterSpacing: '-0.5px' }}>
@@ -435,6 +518,7 @@ export default function CustomerPaymentHistory() {
               <table style={{ width: '100%', fontSize: 14 }}>
                 <thead>
                   <tr>
+                    <th style={{ padding: '14px 20px', width: 40 }}></th>
                     <th style={{ padding: '14px 20px' }}>Date & Time</th>
                     <th style={{ padding: '14px 20px' }}>Type</th>
                     <th style={{ padding: '14px 20px' }}>Details</th>
@@ -444,7 +528,27 @@ export default function CustomerPaymentHistory() {
                 </thead>
                 <tbody>
                   {ledger.map((item, idx) => (
-                    <tr key={item._id} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <tr key={item._id} 
+                      onDoubleClick={() => { if (item.type === 'invoice' && item.is_ledger_entry) toggleEntry(null, item._id); }}
+                      style={{ 
+                        borderBottom: '1px solid #f1f5f9', 
+                        background: selectedEntries.includes(item._id) ? '#eff6ff' : (idx % 2 === 0 ? '#fff' : '#fafafa'),
+                        transition: 'background 0.2s',
+                        cursor: item.type === 'invoice' && item.is_ledger_entry ? 'pointer' : 'default',
+                        userSelect: 'none'
+                      }}>
+                      <td style={{ padding: '14px 20px' }}>
+                        {item.type === 'invoice' && item.is_ledger_entry && (
+                          <div onClick={(e) => toggleEntry(e, item._id)} style={{ display: 'inline-block' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedEntries.includes(item._id)} 
+                              onChange={(e) => toggleEntry(e, item._id)} 
+                              style={{ width: 18, height: 18, cursor: 'pointer', pointerEvents: 'none' }}
+                            />
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '14px 20px' }}>
                         <div style={{ fontWeight: 700, color: 'var(--text)' }}>{formatDate(item.date)}</div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -456,11 +560,15 @@ export default function CustomerPaymentHistory() {
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
                             <ArrowDownLeft size={12} /> Payment
                           </span>
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-                            <ArrowUpRight size={12} /> Invoice
-                          </span>
-                        )}
+                        ) : item.type === 'invoice' ? (
+                          item.is_ledger_entry ? (
+                            <span className="badge badge-warning" style={{ fontSize: 11, fontWeight: 600 }}>📝 Khata Entry</span>
+                          ) : item.source_entries && item.source_entries.length > 0 ? (
+                            <span className="badge" style={{ fontSize: 11, fontWeight: 600, background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe' }}>📦 Consolidated</span>
+                          ) : (
+                            <span className="badge badge-danger" style={{ fontSize: 11, fontWeight: 600 }}>↗ Invoice</span>
+                          )
+                        ) : null}
                       </td>
                       <td style={{ padding: '14px 20px' }}>
                         {item.type === 'payment' ? (

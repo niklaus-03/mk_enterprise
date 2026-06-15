@@ -175,7 +175,33 @@ export default function CustomerSelectStep({
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 className="page-title" style={{ margin: 0 }}>{t('Select Customer', 'ग्राहक चुनें')}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h1 className="page-title" style={{ margin: 0 }}>{t('Select Customer', 'ग्राहक चुनें')}</h1>
+              {draftsCount > 0 && (
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (onShowDrafts) onShowDrafts(); }}
+                  type="button"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: showDrafts ? 'var(--primary)' : 'var(--primary-light)',
+                    border: 'none',
+                    borderRadius: 20, padding: '4px 12px', cursor: 'pointer',
+                    fontSize: 12, fontWeight: 700,
+                    color: showDrafts ? 'var(--bg-card)' : 'var(--primary)',
+                    boxShadow: showDrafts ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <FolderOpen size={14} /> Saved Drafts
+                  <span style={{
+                    background: showDrafts ? 'rgba(255,255,255,0.25)' : 'var(--primary)',
+                    color: showDrafts ? 'var(--bg-card)' : 'white', borderRadius: 10, padding: '2px 8px', fontSize: 11, marginLeft: 4
+                  }}>
+                    {draftsCount}
+                  </span>
+                </button>
+              )}
+            </div>
             <p className="page-subtitle" style={{ margin: '2px 0 0 0' }}>{t('Choose a customer to initiate the invoice', 'बिल शुरू करने के लिए ग्राहक चुनें')}</p>
           </div>
         </div>
@@ -218,34 +244,6 @@ export default function CustomerSelectStep({
               }}
             >
               <X size={16} />
-            </button>
-          )}
-        </div>
-
-        {/* Drafts Button */}
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          {draftsCount > 0 && (
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (onShowDrafts) onShowDrafts(); }}
-              type="button"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: showDrafts ? 'var(--primary)' : 'var(--primary-light)',
-                border: 'none',
-                borderRadius: 20, padding: '6px 14px', cursor: 'pointer',
-                fontSize: 13, fontWeight: 700,
-                color: showDrafts ? 'var(--bg-card)' : 'var(--primary)',
-                boxShadow: showDrafts ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
-                transition: 'all 0.15s',
-              }}
-            >
-              <FolderOpen size={14} /> Saved Drafts
-              <span style={{
-                background: showDrafts ? 'rgba(255,255,255,0.25)' : 'var(--primary)',
-                color: showDrafts ? 'var(--bg-card)' : 'white', borderRadius: 10, padding: '2px 8px', fontSize: 11, marginLeft: 4
-              }}>
-                {draftsCount}
-              </span>
             </button>
           )}
         </div>

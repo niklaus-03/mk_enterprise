@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Bell, Heart, Package, FileText, AlertTriangle, Clock, Truck, ChevronLeft } from 'lucide-react';
-import { notificationApi } from '../utils/api';
-import { useNavigate } from 'react-router-dom';
+import { notificationApi, orderApi } from '../utils/api';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
@@ -77,14 +77,19 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [filter, setFilter] = useState('all');
+  const [orders, setOrders] = useState([]);
 
   const fetchNotifications = async () => {
     try {
-      const res = await notificationApi.getAll({ limit: 100 });
-      setNotifications(res.notifications || []);
-      setUnreadCount(res.unreadCount || 0);
+      const [notifRes, orderRes] = await Promise.all([
+        notificationApi.getAll({ limit: 100 }),
+        orderApi.getAll({ status: 'pending' })
+      ]);
+      setNotifications(notifRes.notifications || []);
+      setUnreadCount(notifRes.unreadCount || 0);
+      setOrders(Array.isArray(orderRes) ? orderRes : (orderRes.orders || []));
     } catch (e) {
-      console.error('Failed to fetch notifications', e);
+      console.error('Failed to fetch data', e);
     }
   };
 
@@ -192,6 +197,70 @@ export default function NotificationsPage() {
       </div>
 
       <div style={{ paddingBottom: 40 }}>
+        {filter === 'all' && orders.length > 0 && (
+          <div>
+            <div style={{ padding: '16px 16px 8px', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>
+              {lang ? `आज के ऑर्डर (${orders.length})` : `Orders Due Today (${orders.length})`}
+            </div>
+            {orders.map(o => (
+              <div 
+                key={o._id}
+                style={{
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  background: 'transparent',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                {/* Avatar */}
+                <div style={{ 
+                  width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                  background: '#3b82f6',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <Package size={20} color="#fff" />
+                </div>
+
+                {/* Content */}
+                <div style={{ flex: 1, minWidth: 0, lineHeight: 1.4 }}>
+                  <span style={{ fontSize: 14, color: 'var(--text)' }}>
+                    <span style={{ fontWeight: 600 }}>{o.customer_name}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {' '}ordered {o.items?.[0]?.product_name} x {o.items?.[0]?.qty} {o.items?.[0]?.unit || 'units'}
+                      {o.items?.length > 1 && ` and ${o.items.length - 1} more item${o.items.length - 1 > 1 ? 's' : ''}`}
+                    </span>
+                  </span>
+                </div>
+
+                {/* Right side action button */}
+                <div style={{ flexShrink: 0 }}>
+                  <Link
+                    to={`/invoices/new?orderId=${o._id}`}
+                    style={{
+                      background: 'var(--primary-light)',
+                      color: 'var(--primary)',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      padding: '6px 12px',
+                      borderRadius: 6,
+                      textDecoration: 'none',
+                      display: 'inline-block',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#dbeafe'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--primary-light)'}
+                  >
+                    {lang ? 'बिल बनाएँ' : 'Generate'}
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {groupedNotifs.length === 0 ? (
           <div style={{ padding: '80px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <div style={{ width: 64, height: 64, borderRadius: '50%', border: '2px solid var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>

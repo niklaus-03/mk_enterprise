@@ -3,8 +3,9 @@ import { orderApi } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { formatCurrency } from '../utils/helpers';
-import { FileSpreadsheet, Phone, AlertTriangle, Calendar, CreditCard, Trash2, Plus, FileText, Inbox } from 'lucide-react';
+import { FileSpreadsheet, Phone, AlertTriangle, Calendar, CreditCard, Trash2, Plus, FileText, Inbox, ArrowLeft } from 'lucide-react';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
+import { useApp } from '../context/AppContext';
 
 const fc = formatCurrency;
 
@@ -12,6 +13,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('today');
   const [loading, setLoading] = useState(true);
+  const { t } = useApp();
   const navigate = useNavigate();
 
   const getToday = () =>
@@ -74,12 +76,22 @@ export default function OrdersPage() {
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 20, flexWrap: 'wrap', gap: 12,
+        marginBottom: 20, flexWrap: 'nowrap', gap: 12, overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px'
       }}>
-        <div>
-          <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 6 }}><FileSpreadsheet size={22} className="text-primary" /> Orders</div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-            Track and manage customer orders
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: 6 }}><FileSpreadsheet size={22} className="text-primary" /> Orders</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
+              Track and manage customer orders
+            </div>
           </div>
         </div>
         <button

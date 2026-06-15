@@ -61,7 +61,11 @@ const invoiceSchema = new mongoose.Schema({
   is_manual_bill: { type: Boolean, default: false },
   manual_bill_ref: { type: String, default: '' },
   is_report: { type: Boolean, default: false },
-  status: { type: String, enum: ['active', 'edited', 'partially_returned', 'cancelled'], default: 'active' },
+  status: { type: String, enum: ['active', 'edited', 'partially_returned', 'cancelled', 'consolidated'], default: 'active' },
+  // Khata/Ledger fields
+  is_ledger_entry: { type: Boolean, default: false },
+  consolidated_into: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', default: null },
+  source_entries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Invoice' }],
   gst_enabled: { type: Boolean, default: true },
   discount_enabled: { type: Boolean, default: false },
   date: { type: Date, default: Date.now },
@@ -79,7 +83,9 @@ invoiceSchema.pre('save', async function (next) {
       const Admin = mongoose.model('Admin');
       let prefix = 'INV-';
 
-      if (this.created_by) {
+      if (this.is_ledger_entry) {
+        prefix = 'CH-';
+      } else if (this.created_by) {
         const creator = await Admin.findById(this.created_by);
         if (creator) {
           if (creator.role === 'supervisor') {
@@ -96,19 +102,35 @@ invoiceSchema.pre('save', async function (next) {
         prefix = `REPORT${prefix}`;
       }
 
-      // Count existing invoices with the same prefix
+      // Find the latest invoice with the same prefix
       const InvoiceModel = mongoose.model('Invoice');
-      const count = await InvoiceModel.countDocuments({
-        invoice_number: { $regex: `^${prefix}` },
-      });
+      const lastInvoice = await InvoiceModel.findOne({
+        invoice_number: { $regex: `^${prefix}` }
+      }).collation({ locale: "en_US", numericOrdering: true }).sort({ invoice_number: -1 });
 
-      // Format as 6-digit: e.g. MINV-000001, INV-000001
-      const sequence = count + 1;
+      let sequence = 1;
+      if (lastInvoice && lastInvoice.invoice_number) {
+        const match = lastInvoice.invoice_number.match(/\d+$/);
+        if (match) {
+          sequence = parseInt(match[0], 10) + 1;
+        } else {
+          sequence = (await InvoiceModel.countDocuments({ invoice_number: { $regex: `^${prefix}` } })) + 1;
+        }
+      } else {
+        sequence = (await InvoiceModel.countDocuments({ invoice_number: { $regex: `^${prefix}` } })) + 1;
+      }
+
       this.invoice_number = `${prefix}${String(sequence).padStart(6, '0')}`;
     } catch (err) {
       // Fallback: global count-based
-      const count = await mongoose.model('Invoice').countDocuments();
-      this.invoice_number = `INV-${String(count + 1).padStart(6, '0')}`;
+      const lastInvoice = await mongoose.model('Invoice').findOne().collation({ locale: "en_US", numericOrdering: true }).sort({ invoice_number: -1 });
+      let sequence = 1;
+      if (lastInvoice && lastInvoice.invoice_number) {
+         const match = lastInvoice.invoice_number.match(/\d+$/);
+         if (match) sequence = parseInt(match[0], 10) + 1;
+         else sequence = (await mongoose.model('Invoice').countDocuments()) + 1;
+      }
+      this.invoice_number = `INV-${String(sequence).padStart(6, '0')}`;
     }
   }
   next();

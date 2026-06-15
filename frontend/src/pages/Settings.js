@@ -188,12 +188,6 @@ export default function Settings() {
             <SettingsIcon size={22} className="text-secondary" /> 
             {t('Settings', 'सेटिंग्स')}
           </div>
-          <div className="page-subtitle" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span>{t('Configure business details, billing, and system preferences', 'व्यवसाय विवरण, बिलिंग और सिस्टम प्राथमिकताओं को कॉन्फ़िगर करें')}</span>
-            <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-              <CheckCircle2 size={14} /> {t('All settings auto-save instantly when you click outside a box', 'जब आप बॉक्स के बाहर क्लिक करते हैं तो सभी सेटिंग्स तुरंत ऑटो-सेव हो जाती हैं')}
-            </span>
-          </div>
         </div>
       </div>
 
@@ -265,6 +259,15 @@ export default function Settings() {
                     { value: true, title: '✅ Show Discount', desc: 'Enable overall discount field during billing.' },
                     { value: false, title: '❌ Hide Discount', desc: 'Keep billing simplified without discount fields.' }
                   ], 'Discount Field')}
+
+                  {form.discount_enabled && (
+                    <div style={{ paddingLeft: '16px', marginTop: '-12px', marginBottom: '24px', borderLeft: '2px solid var(--primary)' }}>
+                      {radioGroup('discount_type', [
+                        { value: 'amount', title: '₹ Amount (Flat)', desc: 'Enter a fixed discount amount (e.g. ₹50)' },
+                        { value: 'percentage', title: '% Percentage', desc: 'Enter a percentage of the total (e.g. 5%)' }
+                      ], 'Discount Type')}
+                    </div>
+                  )}
 
                   {radioGroup('vehicle_charge_enabled', [
                     { value: true, title: '✅ Show Vehicle Charge', desc: 'Add a field for transportation/delivery costs.' },

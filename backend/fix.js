@@ -1,26 +1,26 @@
-const mongoose=require('mongoose'); 
-const Invoice=require('./models/Invoice'); 
+const mongoose = require('mongoose');
+require('dotenv').config();
+mongoose.connect('mongodb://127.0.0.1:27017/mk_enterprise').then(async () => {
+  const db = mongoose.connection.db;
+  const result = await db.collection('invoices').updateMany(
+    { invoice_number: { $in: ['INV-000133', 'INV-000134', 'INV-000135', 'INV-000136', 'INV-000137'] } },
+    { $set: { is_ledger_entry: true } }
+  );
+  
+  // also change invoice_number to CH-
+  for (let i = 133; i <= 137; i++) {
+    await db.collection('invoices').updateOne(
+      { invoice_number: `INV-00013${i - 130}` }, // Wait, I'll just write them out explicitly
+      { $set: { is_ledger_entry: true } }
+    );
+  }
 
-mongoose.connect('mongodb://localhost:27017/mk_enterprise').then(async () => { 
-  const invoices = await Invoice.find({ amount_received: { $gt: 0 } }); 
-  for(let inv of invoices) { 
-    if (inv.amount_received > inv.total) { 
-      const overpayment = inv.amount_received - inv.total; 
-      inv.amount_received = inv.total; 
-      inv.balance_due = 0;
-      await inv.save(); 
-      const older = await Invoice.find({ customer_id: inv.customer_id, _id: { $ne: inv._id }, balance_due: { $gt: 0 } }).sort({ date: 1 }); 
-      let remaining = overpayment; 
-      for (let old of older) { 
-        if (remaining <= 0) break; 
-        const apply = Math.min(remaining, old.balance_due); 
-        old.amount_received += apply; 
-        old.balance_due = Math.max(0, old.total - old.amount_received); 
-        await old.save(); 
-        remaining -= apply; 
-      } 
-    } 
-  } 
-  console.log('Done!'); 
-  process.exit(); 
+  await db.collection('invoices').updateOne({ invoice_number: 'INV-000133' }, { $set: { invoice_number: 'CH-000001', is_ledger_entry: true } });
+  await db.collection('invoices').updateOne({ invoice_number: 'INV-000134' }, { $set: { invoice_number: 'CH-000002', is_ledger_entry: true } });
+  await db.collection('invoices').updateOne({ invoice_number: 'INV-000135' }, { $set: { invoice_number: 'CH-000003', is_ledger_entry: true } });
+  await db.collection('invoices').updateOne({ invoice_number: 'INV-000136' }, { $set: { invoice_number: 'CH-000004', is_ledger_entry: true } });
+  await db.collection('invoices').updateOne({ invoice_number: 'INV-000137' }, { $set: { invoice_number: 'CH-000005', is_ledger_entry: true } });
+  
+  console.log('Modified:', result.modifiedCount);
+  process.exit(0);
 });

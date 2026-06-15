@@ -107,7 +107,7 @@ router.get('/', async (req, res) => {
   try {
     const { limit = 50, page = 1, customer_id, search } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    let query = ownerFilter(req, { status: { $ne: 'cancelled' } });
+    let query = ownerFilter(req, { status: { $ne: 'cancelled' }, is_ledger_entry: { $ne: true } });
     if (customer_id) {
       const Customer = require('../models/Customer');
       const cust = await Customer.findById(customer_id);
@@ -116,7 +116,7 @@ router.get('/', async (req, res) => {
                           (cust.created_by && cust.created_by.toString() === req.user.id) || 
                           (cust.allowed_managers && cust.allowed_managers.some(m => m.toString() === req.user.id));
         if (hasAccess) {
-          query = { status: { $ne: 'cancelled' }, customer_id }; // bypass invoice owner filter
+          query = { status: { $ne: 'cancelled' }, is_ledger_entry: { $ne: true }, customer_id }; // bypass invoice owner filter
         } else {
           query.customer_id = customer_id;
         }
@@ -289,7 +289,7 @@ router.post('/', async (req, res) => {
       gst_enabled = true, discount_enabled = false,
       driver_name, vehicle_number, total_weight, vehicle_charge, labour_charge, bill_date, is_manual_bill, manual_bill_ref, signature, override_creator_id,
       override_previous_balance, qr_for_current_bill,
-      ledger_payments = [], starting_balance = 0
+      ledger_payments = [], starting_balance = 0, is_ledger_entry = false
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -430,14 +430,16 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // 3. Calculate totals (vehicle charge added to grand total)
-    const { processedItems, subtotal, gst_total, total: itemsTotal, total_with_prev_balance: baseTotal } =
-      buildTotals(items, discount, prevBalance, gst_enabled);
+    // 3. Calculate totals (vehicle charge added to grand total, discount offsets everything)
+    const { processedItems, subtotal, gst_total } = buildTotals(items, 0, 0, gst_enabled); // pass 0 for discount and prevBalance here so we can calculate it manually below
 
     const vc = parseFloat(vehicle_charge) || 0;
     const lc = parseFloat(labour_charge) || 0;
-    const total = itemsTotal + vc + lc;
-    const total_with_prev_balance = baseTotal + vc + lc;
+    const dis = parseFloat(discount) || 0;
+    
+    const itemsSubtotal = subtotal + gst_total;
+    const total = Math.max(0, itemsSubtotal + vc + lc - dis);
+    const total_with_prev_balance = total + (parseFloat(prevBalance) || 0);
 
     let amount_received = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
     
@@ -490,7 +492,9 @@ router.post('/', async (req, res) => {
     let generatedInvoiceNumber = null;
     try {
       let prefix = 'INV-';
-      if (req.user) {
+      if (is_ledger_entry) {
+        prefix = 'CH-';
+      } else if (req.user) {
         const Admin = require('../models/Admin');
         const actualUser = await Admin.findById(req.user.id);
         if (actualUser) {
@@ -512,8 +516,16 @@ router.post('/', async (req, res) => {
           }
         }
       }
-      const count = await Invoice.countDocuments({ invoice_number: { $regex: `^${prefix}` } });
-      generatedInvoiceNumber = `${prefix}${String(count + 1).padStart(6, '0')}`;
+      const lastInvoice = await Invoice.findOne({ invoice_number: { $regex: `^${prefix}` } }).collation({ locale: "en_US", numericOrdering: true }).sort({ invoice_number: -1 });
+      let sequence = 1;
+      if (lastInvoice && lastInvoice.invoice_number) {
+        const match = lastInvoice.invoice_number.match(/\d+$/);
+        if (match) sequence = parseInt(match[0], 10) + 1;
+        else sequence = (await Invoice.countDocuments({ invoice_number: { $regex: `^${prefix}` } })) + 1;
+      } else {
+        sequence = (await Invoice.countDocuments({ invoice_number: { $regex: `^${prefix}` } })) + 1;
+      }
+      generatedInvoiceNumber = `${prefix}${String(sequence).padStart(6, '0')}`;
     } catch (err) {
       const count = await Invoice.countDocuments();
       generatedInvoiceNumber = `INV-${String(count + 1).padStart(6, '0')}`;
@@ -521,6 +533,7 @@ router.post('/', async (req, res) => {
 
     // 4. Create invoice
     const invoice = new Invoice({
+      is_ledger_entry: !!is_ledger_entry,
       invoice_number: generatedInvoiceNumber,
       customer_id: customer_id || null,
       customer_name: customer_name || 'Walk-in Customer',
@@ -560,7 +573,10 @@ router.post('/', async (req, res) => {
     await invoice.save();
 
     // Bypass Mongoose strict schema to ensure new fields save even if server isn't restarted
-    const updateFields = { qr_for_current_bill: !!qr_for_current_bill };
+    const updateFields = { 
+      qr_for_current_bill: !!qr_for_current_bill,
+      is_ledger_entry: !!is_ledger_entry
+    };
     if (company_details) {
       updateFields.company_details = company_details;
     }
@@ -729,7 +745,7 @@ router.put('/:id', async (req, res) => {
     if (original.status === 'cancelled') return res.status(400).json({ error: 'Cannot edit a cancelled invoice' });
 
     const { items, payments, discount, notes, concession_reason, gst_enabled,
-      customer_id, customer_name, customer_phone, customer_address, total_weight } = req.body;
+      customer_id, customer_name, customer_phone, customer_address, total_weight, vehicle_charge, labour_charge } = req.body;
 
     if (!items) {
       // Partial update (e.g. just updating customer_name)
@@ -863,8 +879,15 @@ router.put('/:id', async (req, res) => {
     }
 
     // 4. Recalculate totals
-    const { processedItems, subtotal, gst_total, total, total_with_prev_balance } =
-      buildTotals(items, discount, original.previous_balance, gst_enabled);
+    const { processedItems, subtotal, gst_total } = buildTotals(items, 0, 0, gst_enabled);
+    
+    const vc = parseFloat(vehicle_charge !== undefined ? vehicle_charge : original.vehicle_charge) || 0;
+    const lc = parseFloat(labour_charge !== undefined ? labour_charge : original.labour_charge) || 0;
+    const dis = parseFloat(discount) || 0;
+
+    const itemsSubtotal = subtotal + gst_total;
+    const total = Math.max(0, itemsSubtotal + vc + lc - dis);
+    const total_with_prev_balance = total + (parseFloat(original.previous_balance) || 0);
     let amount_received = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
     // Note: Since this is an edit, we don't automatically pull more advance credit.
     // If they want to use advance credit on edit, they should add a payment manually.
@@ -883,7 +906,8 @@ router.put('/:id', async (req, res) => {
       customer_phone: customer_phone !== undefined ? customer_phone : original.customer_phone,
       customer_address: customer_address !== undefined ? customer_address : original.customer_address,
       total_weight: total_weight !== undefined ? parseFloat(total_weight) || 0 : original.total_weight,
-      items: processedItems, subtotal, discount: parseFloat(discount) || 0,
+      vehicle_charge: vc, labour_charge: lc,
+      items: processedItems, subtotal, discount: dis,
       gst_total, total, total_with_prev_balance, payments, amount_received,
       balance_due, notes, gst_enabled,
       status: hasReturns ? 'partially_returned' : 'edited',
@@ -1026,6 +1050,142 @@ router.delete('/:id', async (req, res) => {
     });
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── POST consolidate ledger entries ────────────────────────────────────────────
+router.post('/consolidate', async (req, res) => {
+  try {
+    const { customer_id, entryIds } = req.body;
+    if (!customer_id || !entryIds || !entryIds.length) {
+      return res.status(400).json({ error: 'customer_id and entryIds are required' });
+    }
+
+    const entries = await Invoice.find({
+      _id: { $in: entryIds },
+      customer_id,
+      is_ledger_entry: true,
+      status: { $ne: 'consolidated' }
+    });
+
+    if (entries.length !== entryIds.length) {
+      return res.status(400).json({ error: 'Some entries are invalid, already consolidated, or do not belong to this customer.' });
+    }
+
+    let combinedItems = [];
+    let combinedPayments = [];
+    let totalVehicle = 0;
+    let totalLabour = 0;
+    let totalDiscount = 0;
+
+    for (const entry of entries) {
+      const entryDateStr = new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+      const entryItems = entry.items.map(item => ({
+        ...item.toObject(),
+        product_name: `${item.product_name} (${entryDateStr})`
+      }));
+      combinedItems = combinedItems.concat(entryItems);
+      combinedPayments = combinedPayments.concat(entry.payments || []);
+      totalVehicle += (entry.vehicle_charge || 0);
+      totalLabour += (entry.labour_charge || 0);
+      totalDiscount += (entry.discount || 0);
+    }
+
+    const { processedItems, subtotal, gst_total, total: itemsTotal } = buildTotals(combinedItems, totalDiscount, 0, true);
+
+    const total = itemsTotal + totalVehicle + totalLabour;
+    const amount_received = combinedPayments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    const balance_due = Math.max(0, total - amount_received);
+
+    let prefix = is_ledger_entry ? 'CH-' : 'INV-';
+    try {
+      if (req.user && !is_ledger_entry) {
+        const Admin = require('../models/Admin');
+        const actualUser = await Admin.findById(req.user.id);
+        if (actualUser && actualUser.role === 'manager') {
+          const initials = (actualUser.display_name || actualUser.username || 'M').split(' ').filter(n => n).map(n => n.charAt(0).toUpperCase()).join('');
+          prefix = `${initials}INV-`;
+        }
+      }
+      const lastInvoice = await Invoice.findOne({ invoice_number: { $regex: `^${prefix}` } }).collation({ locale: "en_US", numericOrdering: true }).sort({ invoice_number: -1 });
+      let sequence = 1;
+      if (lastInvoice && lastInvoice.invoice_number) {
+        const match = lastInvoice.invoice_number.match(/\d+$/);
+        if (match) sequence = parseInt(match[0], 10) + 1;
+        else sequence = (await Invoice.countDocuments({ invoice_number: { $regex: `^${prefix}` } })) + 1;
+      } else {
+        sequence = (await Invoice.countDocuments({ invoice_number: { $regex: `^${prefix}` } })) + 1;
+      }
+      prefix = `${prefix}${String(sequence).padStart(6, '0')}`;
+    } catch (err) {
+      const count = await Invoice.countDocuments();
+      prefix = `INV-${String(count + 1).padStart(6, '0')}`;
+    }
+
+    const customer = await Customer.findById(customer_id);
+
+    const invoice = new Invoice({
+      invoice_number: prefix,
+      customer_id,
+      customer_name: customer ? customer.name : 'Customer',
+      customer_phone: customer ? customer.phone : '',
+      customer_address: customer ? customer.address : '',
+      items: processedItems,
+      subtotal,
+      discount: totalDiscount,
+      gst_total,
+      vehicle_charge: totalVehicle,
+      labour_charge: totalLabour,
+      total,
+      total_with_prev_balance: total + (customer ? customer.balance : 0),
+      payments: combinedPayments,
+      amount_received,
+      balance_due,
+      notes: `Consolidated from ${entries.length} entries`,
+      source_entries: entryIds,
+      created_by: req.user ? req.user.id : null,
+      actual_creator: req.user ? req.user.id : null,
+    });
+
+    await invoice.save();
+
+    let oldTotalImpact = 0;
+    let oldPaymentImpact = 0;
+    for (const entry of entries) {
+      entry.status = 'consolidated';
+      entry.consolidated_into = invoice._id;
+      await entry.save();
+      oldTotalImpact += entry.total;
+      oldPaymentImpact += entry.amount_received;
+    }
+
+    if (customer) {
+      const differenceToRevert = oldTotalImpact - oldPaymentImpact;
+      const differenceToAdd = total - amount_received;
+      const netChange = differenceToAdd - differenceToRevert;
+
+      if (Math.abs(netChange) > 0.01) {
+        if (customer.setManagerBalance && req.user) {
+          const currentBal = customer.getManagerBalance(req.user.id) || 0;
+          customer.setManagerBalance(req.user.id, currentBal + netChange);
+        } else {
+          customer.balance = (customer.balance || 0) + netChange;
+        }
+        await customer.save();
+      }
+    }
+
+    logActivity(req, {
+      action: 'create',
+      entity_type: 'invoice',
+      entity_id: invoice._id,
+      entity_name: invoice.invoice_number,
+      description: `Consolidated Invoice created. Total: ₹${invoice.total}`,
+    });
+
+    res.status(201).json(invoice);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

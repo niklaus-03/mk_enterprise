@@ -17,6 +17,7 @@ const productSchema = new mongoose.Schema({
   custom_low_stock: { type: Number, default: null },
   // Phase 2: Visibility — which managers can see this product
   allowed_managers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }],
+  created_from_order: { type: Boolean, default: false }, // True if auto-created from New Order
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   last_updated_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   // Single-Product Loose Item Tracking

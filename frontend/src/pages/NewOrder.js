@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { orderApi, productApi, settlementApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { formatCurrency } from '../utils/helpers';
-import { FileSpreadsheet, ArrowLeft, User, Trash2, CreditCard, Wallet, Smartphone, Globe, CheckCircle, Info, Save, FileText } from 'lucide-react';
+import { FileSpreadsheet, ArrowLeft, User, Trash2, CreditCard, Wallet, Smartphone, Globe, CheckCircle, Info, Save, FileText, Calendar } from 'lucide-react';
 
 // Title-case helper — first letter of each word capitalized
 const titleCase = (str) =>
@@ -171,9 +171,9 @@ export default function NewOrder() {
 
   // ── Render ─────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '24px', paddingBottom: '40px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingBottom: '40px', marginTop: '8px' }}>
       {/* Header */}
-      <div className="cs-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '16px' }}>
+      <div className="cs-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '16px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button 
             onClick={() => navigate(-1)}
@@ -183,43 +183,37 @@ export default function NewOrder() {
           >
             <ArrowLeft size={18} />
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div>
-              <h1 className="page-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <FileSpreadsheet size={22} className="text-primary" /> New Order
-              </h1>
-              <p className="page-subtitle" style={{ margin: '2px 0 0 0' }}>Create a new customer order</p>
-            </div>
-            
-            <div style={{ width: '1px', height: '30px', background: 'var(--border)', margin: '0 4px' }}></div>
-            
-            <button
-              type="button"
-              onClick={() => navigate('/orders')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'var(--bg-hover)',
-                border: '1.5px solid var(--border)',
-                borderRadius: 20, padding: '6px 16px', cursor: 'pointer',
-                fontSize: 13, fontWeight: 700,
-                color: 'var(--text-muted)',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
-              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-            >
-              <FileText size={14} /> Orders
-            </button>
+          <div>
+            <h1 className="page-title" style={{ margin: 0, marginTop: '4px', fontSize: '22px', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+              New Order
+            </h1>
           </div>
         </div>
 
-        <div>
-          <button className="btn btn-outline-danger" onClick={() => navigate('/orders')} style={{ fontWeight: 600 }}>{t('Cancel Order', 'ऑर्डर रद्द करें')}</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
+          <button className="btn btn-outline-danger" onClick={() => navigate('/orders')} style={{ fontWeight: 600, borderRadius: 20, padding: '6px 12px', whiteSpace: 'nowrap' }}>{t('Cancel Order', 'ऑर्डर रद्द करें')}</button>
+          <button
+            type="button"
+            onClick={() => navigate('/orders')}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: 'var(--bg-hover)',
+              border: '1.5px solid var(--border)',
+              borderRadius: 20, padding: '6px 16px', cursor: 'pointer',
+              fontSize: 13, fontWeight: 700,
+              color: 'var(--text-muted)',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+          >
+            <FileText size={14} /> Orders
+          </button>
         </div>
       </div>
 
-      <div style={{ width: '100%' }}>
-        <div className="row g-4 mt-1" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+      <div style={{ width: '100%', marginTop: '20px' }}>
+        <div className="row" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
           
           {/* ── LEFT COLUMN ── */}
           <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -230,10 +224,10 @@ export default function NewOrder() {
             <div className="card-title d-flex align-items-center gap-2"><User size={18} className="text-secondary" /> Customer Details</div>
           </div>
           <div className="card-body">
-            <div className="form-row">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
               {/* Name */}
-              <div className="form-group">
-                <label className="form-label">Customer Name *</label>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}><User size={13} /> Customer Name *</label>
                 <input
                   className="form-control"
                   value={customerName}
@@ -244,8 +238,8 @@ export default function NewOrder() {
               </div>
 
               {/* Phone — +91 prefix, 10 digits only */}
-              <div className="form-group">
-                <label className="form-label">Phone Number *</label>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}><Smartphone size={13} /> Phone Number *</label>
                 <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-card)' }}>
                   <span style={{
                     padding: '9px 10px', background: 'var(--bg)', borderRight: '1.5px solid var(--border)',
@@ -268,8 +262,8 @@ export default function NewOrder() {
               </div>
 
               {/* Delivery Date */}
-              <div className="form-group">
-                <label className="form-label">Delivery Date *</label>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}><Calendar size={13} /> Delivery Date *</label>
                 <input
                   type="date"
                   className="form-control"
@@ -279,8 +273,8 @@ export default function NewOrder() {
               </div>
 
               {/* Notes */}
-              <div className="form-group">
-                <label className="form-label">Notes (optional)</label>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}><FileText size={13} /> Notes (optional)</label>
                 <input
                   className="form-control"
                   value={notes}
@@ -294,23 +288,21 @@ export default function NewOrder() {
 
         {/* ── Items ─────────────────────────────────────── */}
         <div className="card" style={{ marginBottom: 16, border: '1.5px solid #e5e7eb', borderRadius: 12 }}>
-          <div className="card-header" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 14 }}>
+          <div className="card-header" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="card-title d-flex align-items-center gap-2"><FileSpreadsheet size={18} className="text-secondary" /> Order Items</div>
-            <button
-              className="btn btn-outline btn-sm"
-              onClick={() => setItems(prev => [...prev, emptyItem()])}
-            >+ Add Row</button>
           </div>
-          <div className="card-body">
-            {/* Column headers */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 0.8fr 1fr auto', gap: 8, marginBottom: 6 }}>
-              {['Item / Product *', 'Qty', 'Price ₹', ''].map(h => (
-                <div key={h} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</div>
-              ))}
-            </div>
+          <div className="card-body" style={{ padding: '16px 8px' }}>
+            <div style={{ overflowX: 'auto', margin: '0 -4px' }}>
+              <div style={{ minWidth: '480px', padding: '0 4px', paddingBottom: '16px' }}>
+                {/* Column headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px 32px', gap: 12, marginBottom: 8, padding: '0 4px' }}>
+                  {['Item / Product *', 'Qty', 'Price ₹', ''].map((h, i) => (
+                    <div key={h} style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: i === 1 ? 'center' : i === 2 ? 'right' : 'left' }}>{h}</div>
+                  ))}
+                </div>
 
             {items.map((item, idx) => (
-              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2.5fr 0.8fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
+              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px 32px', gap: 12, marginBottom: 10, alignItems: 'flex-start' }}>
 
                 {/* Item name with live search */}
                 <div style={{ position: 'relative' }}>
@@ -333,7 +325,7 @@ export default function NewOrder() {
                     <div style={{
                       position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
                       background: 'var(--bg-card)', border: '1.5px solid var(--border)', borderRadius: 7,
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', minWidth: '220px'
                     }}>
                       {suggestions.length > 0 && suggestions.map(p => (
                         <div
@@ -354,15 +346,15 @@ export default function NewOrder() {
                       ))}
                       {/* Add new item option */}
                       <div
-                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: 'var(--primary-light)' }}
+                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: '#d97706', fontWeight: 600, background: '#fffbeb' }}
                         onMouseDown={() => {
                           updateItem(idx, 'product_id', '');
                           setSuggestions([]);
                           setActiveSuggestIdx(null);
-                          toast('New item will be added to the order', { icon: '✓', duration: 1500 });
+                          toast('Item will be added as Order', { icon: '📦', duration: 1500 });
                         }}
                       >
-                        + Add "{item.product_name}" as new item
+                        + Add "{item.product_name}" as Order
                       </div>
                     </div>
                   )}
@@ -397,15 +389,14 @@ export default function NewOrder() {
                   onClick={() => removeItem(idx)}
                   title="Remove row"
                   style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: '#d1d5db', fontSize: 15, padding: '8px 4px',
-                    transition: 'color 0.15s', lineHeight: 1,
-                    marginLeft: 2,
+                    background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 8, cursor: 'pointer',
+                    color: '#ef4444', height: '100%', width: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#d1d5db'}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#dc2626'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#ef4444'; }}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={15} />
                 </button>
               </div>
             ))}
@@ -417,6 +408,8 @@ export default function NewOrder() {
                 <span style={{ fontSize: 17, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text)' }}>{fc(itemTotal)}</span>
               </div>
             )}
+            </div>
+          </div>
           </div>
         </div>
         </div>
@@ -434,7 +427,7 @@ export default function NewOrder() {
           <div className="card-body">
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Advance Amount ₹</label>
+                <label className="form-label d-inline-flex align-items-center gap-1" style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}><CreditCard size={13} /> Advance Amount ₹</label>
                 <input
                   className="form-control"
                   type="number"
@@ -447,21 +440,31 @@ export default function NewOrder() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Payment Mode</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {['cash', 'upi', 'online', 'others'].map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`btn btn-sm ${advanceMode === m ? 'btn-primary' : 'btn-outline'}`}
-                      onClick={() => setAdvanceMode(m)}
-                    >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        {m === 'cash' ? <Wallet size={13} /> : m === 'upi' ? <Smartphone size={13} /> : m === 'online' ? <Globe size={13} /> : <CreditCard size={13} />}
+                <label className="form-label" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Payment Mode</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                  {['cash', 'upi', 'online', 'others'].map(m => {
+                    const isActive = advanceMode === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setAdvanceMode(m)}
+                        style={{
+                          width: '100%', justifyContent: 'center', padding: '10px', borderRadius: 8,
+                          border: isActive ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0',
+                          background: isActive ? '#eff6ff' : '#f8fafc',
+                          color: isActive ? '#2563eb' : '#64748b',
+                          fontSize: 12.5, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
+                          display: 'flex', alignItems: 'center', gap: 6
+                        }}
+                        onMouseEnter={e => { if(!isActive) e.currentTarget.style.background = '#f1f5f9'; }}
+                        onMouseLeave={e => { if(!isActive) e.currentTarget.style.background = '#f8fafc'; }}
+                      >
+                        {m === 'cash' ? <Wallet size={14} /> : m === 'upi' ? <Smartphone size={14} /> : m === 'online' ? <Globe size={14} /> : <CreditCard size={14} />}
                         {m.toUpperCase()}
-                      </span>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -500,10 +503,9 @@ export default function NewOrder() {
         {/* ── Action Buttons Moved to Bottom ────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto', marginBottom: 40 }}>
           <button
-            className="btn btn-primary btn-lg d-inline-flex align-items-center gap-2"
+            className="action-glow-btn action-glow-btn-primary"
             onClick={handleSubmit}
             disabled={saving}
-            style={{ width: '100%', justifyContent: 'center', fontSize: 16, padding: '12px 20px' }}
           >
             {saving
               ? <><span className="spinner"></span> Saving...</>

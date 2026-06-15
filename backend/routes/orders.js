@@ -3,6 +3,7 @@ const router = express.Router();
 const { logActivity } = require('./activityLogs');
 const Order = require('../models/Order');
 const Settlement = require('../models/Settlement');
+const Product = require('../models/Product');
 const auth = require('../middleware/auth');
 const { todayUTCRange } = require('../utils/timeUtils');
 
@@ -59,6 +60,37 @@ router.post('/', async (req, res) => {
     const date = new Date(delivery_date);
     const advanceAmount = parseFloat(advance_paid) || 0;
     const advanceMode = req.body.advance_mode || 'cash';
+
+    // Auto-create products for new items & update saved_order_qty
+    for (const item of items) {
+      const qty = parseFloat(item.qty) || 1;
+      if (!item.product_id && item.product_name) {
+        // New product — create it with ordered qty
+        try {
+          const newProd = await Product.create({
+            name: item.product_name,
+            price: item.price || 0,
+            stock: 0,
+            gst: 0,
+            created_from_order: true,
+            saved_order_qty: qty,
+            created_by: req.user ? req.user.id : null
+          });
+          item.product_id = newProd._id;
+        } catch (e) {
+          console.error('Failed to create product for order item:', e.message);
+        }
+      } else if (item.product_id) {
+        // Existing product — accumulate ordered qty so it shows in Low Stock
+        try {
+          await Product.findByIdAndUpdate(item.product_id, {
+            $inc: { saved_order_qty: qty }
+          });
+        } catch (e) {
+          console.error('Failed to update saved_order_qty:', e.message);
+        }
+      }
+    }
 
     const order = await Order.create({
       customer_name,

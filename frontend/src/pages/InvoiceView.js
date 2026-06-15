@@ -670,7 +670,11 @@ Thank you! 🙏`
             {settings.business_state && <div style={{ fontSize: 11.5, color: '#6b7280' }}>State: {settings.business_state}</div>}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="inv-tag">{invoice.is_manual_bill ? 'MANUAL BILL' : 'INVOICE'}</div>
+            <div className="inv-tag">
+              {invoice.is_manual_bill ? 'MANUAL BILL' : 
+               (invoice.source_entries && invoice.source_entries.length > 0) ? 'CONSOLIDATED INVOICE' : 
+               'INVOICE'}
+            </div>
             <table className="inv-meta-table" style={{ marginTop: 10, marginLeft: 'auto' }}>
               <tbody>
                 <tr><td className="label">Invoice No.</td><td className="value" style={{ fontFamily: 'monospace' }}>{invoice.invoice_number}</td></tr>

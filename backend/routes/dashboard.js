@@ -125,7 +125,7 @@ router.get('/', async (req, res) => {
       // 5. Product count
       Product.countDocuments({ is_active: true, ...(await getProductOwnerFilter(req)) }),
       // 6. All active products — used for both allProducts dropdown AND low stock filtering
-      Product.find({ is_active: true, ...(await getProductOwnerFilter(req)) }).populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role').select('name price stock unit gst is_active custom_low_stock weight_per_unit created_by saved_order_qty last_updated_by updatedAt').sort({ name: 1 }),
+      Product.find({ is_active: true, ...(await getProductOwnerFilter(req)) }).populate('created_by', 'username display_name role').populate('last_updated_by', 'username display_name role').select('name price stock unit gst is_active custom_low_stock weight_per_unit created_by saved_order_qty created_from_order is_custom last_updated_by createdAt updatedAt').sort({ name: 1 }),
       // 7. Recent invoices (sidebar widget)
       Invoice.find(notCancelled).sort({ date: -1 }).limit(5),
       // 9. All invoices on selected date (Today's Sale drill-down)
@@ -176,8 +176,12 @@ router.get('/', async (req, res) => {
         ? p.custom_low_stock
         : globalThreshold;
       // Unit-independent: just compare raw stock number against threshold
-      return p.stock <= minStock;
-    }).sort((a, b) => a.stock - b.stock); // lowest stock first
+      return p.stock <= minStock || (p.saved_order_qty && p.saved_order_qty > 0);
+    }).sort((a, b) => {
+      if (a.created_from_order && !b.created_from_order) return -1;
+      if (!a.created_from_order && b.created_from_order) return 1;
+      return a.stock - b.stock;
+    });
     // All-time pending dues (registered + walk-in merged)
     // Fix 3: For registered customers, find their latest unpaid invoice to use as invoice reference
     const registeredPending = await Promise.all(
@@ -302,6 +306,8 @@ router.get('/', async (req, res) => {
         custom_low_stock: p.custom_low_stock != null ? p.custom_low_stock : null,
         weight_per_unit: p.weight_per_unit || 0,
         saved_order_qty: p.saved_order_qty || 0,
+        created_from_order: p.created_from_order || false,
+        is_custom: p.is_custom || false,
         last_updated_by: p.last_updated_by || null,
       })),
       customersWithDues: registeredPending,

@@ -20,6 +20,7 @@ const DEFAULTS = {
   language: 'en',
   gst_enabled: true,
   discount_enabled: false,
+  discount_type: 'amount',
   currency_symbol: '₹',
   // Enhancement 5: bank details for invoice
   bank_name: '',

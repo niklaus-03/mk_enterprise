@@ -271,7 +271,7 @@ router.get('/categories', async (req, res) => {
       const lowStock = products.filter(p => {
         const threshold = (p.custom_low_stock !== null && p.custom_low_stock !== undefined)
           ? p.custom_low_stock : globalThreshold;
-        return p.stock <= threshold;
+        return p.stock <= threshold || (p.saved_order_qty && p.saved_order_qty > 0);
       }).sort((a, b) => a.stock - b.stock);
       res.json(lowStock);
     } catch (err) { res.status(500).json({ error: err.message }); }

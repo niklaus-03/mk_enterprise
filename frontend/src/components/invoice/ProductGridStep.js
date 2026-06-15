@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import toast from 'react-hot-toast';
 import { productApi, productListApi } from '../../utils/api';
 import { formatCurrency } from '../../utils/helpers';
-import { ArrowLeft, Search, X, Plus, Minus, Package, ShoppingCart, Check, PenTool, Scale, Sparkles, AlertTriangle, Trash2, FolderOpen } from 'lucide-react';
+import { ArrowLeft, Search, X, Plus, Minus, Package, ShoppingCart, Check, PenTool, Scale, Sparkles, AlertTriangle, Trash2, FolderOpen, ChevronDown, Save } from 'lucide-react';
 import UnitInput from '../shared/UnitInput';
 import { useAuth } from '../../context/AuthContext';
 import { notificationApi } from '../../utils/api';
@@ -30,6 +30,7 @@ export default function ProductGridStep({
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [showMobileCategoryMenu, setShowMobileCategoryMenu] = useState(false);
   const [itemLists, setItemLists] = useState([]);
 
   // Map of product_id -> item details
@@ -50,6 +51,11 @@ export default function ProductGridStep({
 
   // Load products and categories on mount
   useEffect(() => {
+    document.body.classList.add('hide-bottom-nav');
+    return () => document.body.classList.remove('hide-bottom-nav');
+  }, []);
+
+  useEffect(() => {
     productApi.getAll({ limit: 500 }).then(res => {
       const list = Array.isArray(res) ? res : (res?.products || res?.data || []);
       setProducts(list);
@@ -65,6 +71,15 @@ export default function ProductGridStep({
       setItemLists(Array.isArray(lists) ? lists : []);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (showMobileCategoryMenu) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [showMobileCategoryMenu]);
 
   // Initialize selectedItems from initialItems prop
   useEffect(() => {
@@ -492,8 +507,8 @@ export default function ProductGridStep({
     <div className="pg-container">
       
       {/* Header */}
-      <div className="pg-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #242b3d', paddingBottom: '16px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div className="pg-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #242b3d', paddingBottom: '16px', flexShrink: 0, overflowX: 'auto', overflowY: 'hidden', gap: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
           <button 
             onClick={onBack}
             className="btn btn-outline" 
@@ -502,32 +517,11 @@ export default function ProductGridStep({
           >
             <ArrowLeft size={18} />
           </button>
-          <div>
-            <h1 className="page-title" style={{ margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ minWidth: 'max-content' }}>
+            <h1 className="page-title" style={{ margin: 0, color: 'var(--text)', whiteSpace: 'nowrap', fontSize: '17px', fontWeight: 800, letterSpacing: '-0.3px' }}>
               {t('Select Items', 'सामान चुनें')}
-              {draftsCount > 0 && (
-                <button
-                  type="button"
-                  onClick={onShowDrafts}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    background: 'var(--border)', border: '1.5px solid var(--border)',
-                    borderRadius: 20, padding: '4px 12px', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
-                    transition: 'all 0.15s', height: 'fit-content',
-                  }}
-                >
-                  <FolderOpen size={12} /> Drafts
-                  <span style={{
-                    background: 'var(--primary)', color: 'var(--bg-card)',
-                    borderRadius: 10, padding: '1px 6px', fontSize: 10,
-                  }}>
-                    {draftsCount}
-                  </span>
-                </button>
-              )}
             </h1>
-            <p className="page-subtitle" style={{ margin: '2px 0 0 0', color: 'var(--text-muted)' }}>
+            <p className="page-subtitle" style={{ margin: '1px 0 0 0', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: '12px' }}>
               Customer: <strong style={{ color: 'var(--primary)' }}>{getCustomerDisplayName()}</strong>
             </p>
           </div>
@@ -583,53 +577,89 @@ export default function ProductGridStep({
         </div>
 
         {/* Action Buttons Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+        <div className="pg-action-buttons" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap' }}>
 
           <button
             onClick={() => setShowAddProductModal(true)}
-            className="btn"
             style={{
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              color: '#ffffff',
-              borderRadius: '10px',
-              fontWeight: '800',
-              padding: '10px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: '1px solid rgba(255,255,255,0.1)',
-              boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 8px 20px rgba(16, 185, 129, 0.4)';
-              e.currentTarget.style.background = 'linear-gradient(135deg, #34d399 0%, #10b981 100%)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.3)';
-              e.currentTarget.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: '#10b981',
+                border: '1.5px solid #059669',
+                borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+                color: '#ffffff',
+                transition: 'all 0.15s',
+                whiteSpace: 'nowrap'
             }}
           >
-            <span style={{ fontSize: '18px', fontWeight: '900', lineHeight: 1 }}>+</span> 
-            <span style={{ letterSpacing: '0.3px' }}>Item</span>
+            <span style={{ fontSize: '14px', fontWeight: '900', lineHeight: 1 }}>+</span> 
+            Item
           </button>
 
           {onConvertToOrder && (
             <button
               onClick={onConvertToOrder}
-              className="btn"
               style={{
+                display: 'flex', alignItems: 'center', gap: 4,
                 background: 'var(--info)',
+                border: '1.5px solid var(--info)',
+                borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
                 color: 'var(--bg-card)',
-                borderRadius: '12px',
-                fontWeight: '700',
-                padding: '10px 16px',
+                transition: 'all 0.15s',
+                whiteSpace: 'nowrap'
               }}
             >
               CREATE ORDER
+            </button>
+          )}
+
+          <button
+            onClick={handleSaveDraftClick}
+            style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: '#dcfce7',
+                border: '1.5px solid #bbf7d0',
+                borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+                color: '#166534',
+                transition: 'all 0.15s',
+                whiteSpace: 'nowrap'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#bbf7d0';
+              e.currentTarget.style.border = '1.5px solid #86efac';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = '#dcfce7';
+              e.currentTarget.style.border = '1.5px solid #bbf7d0';
+            }}
+          >
+            <Save size={13} /> Save Draft
+          </button>
+
+          {draftsCount > 0 && (
+            <button
+              type="button"
+              onClick={onShowDrafts}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: 'var(--bg-hover)',
+                border: '1.5px solid var(--border)',
+                borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+                color: 'var(--text-muted)',
+                transition: 'all 0.15s',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <FolderOpen size={13} /> Drafts
+              <span style={{
+                background: 'var(--primary)', color: 'var(--bg-card)',
+                borderRadius: 10, padding: '1px 6px', fontSize: 11,
+              }}>
+                {draftsCount}
+              </span>
             </button>
           )}
 
@@ -638,74 +668,64 @@ export default function ProductGridStep({
               type="button"
               onClick={onCancel}
               style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '9px 16px', borderRadius: 10, cursor: 'pointer',
-                fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
-                background: 'var(--danger-light)', border: '1.5px solid #fecaca',
-                color: '#dc2626', transition: 'all 0.15s', height: 'fit-content',
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: 'var(--danger-light)',
+                border: '1.5px solid #fecaca',
+                borderRadius: 6, padding: '5px 12px', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+                color: '#dc2626',
+                transition: 'all 0.15s',
+                whiteSpace: 'nowrap'
               }}
             >
-              <Trash2 size={14} />{t('Cancel Bill', 'बिल रद्द करें')}
+              <Trash2 size={13} />{t('Cancel Bill', 'बिल रद्द करें')}
             </button>
           )}
 
-          <button
-            onClick={handleSaveDraftClick}
-            className="btn"
-            style={{
-              background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
-              color: '#ffffff',
-              borderRadius: '10px',
-              fontWeight: '800',
-              padding: '10px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              border: '1px solid rgba(255,255,255,0.05)',
-              boxShadow: '0 4px 15px rgba(100, 116, 139, 0.3)',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              cursor: 'pointer',
-              letterSpacing: '0.5px',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 8px 20px rgba(100, 116, 139, 0.4)';
-              e.currentTarget.style.background = 'linear-gradient(135deg, #94a3b8 0%, #64748b 100%)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 15px rgba(100, 116, 139, 0.3)';
-              e.currentTarget.style.background = 'linear-gradient(135deg, #64748b 0%, #475569 100%)';
-            }}
-          >
-            SAVE DRAFT
-          </button>
         </div>
       </div>
 
-        {/* Mobile Search (Collapsible) */}
-        <div className="hide-on-desktop" style={{ width: '100%', marginTop: '12px', position: 'relative' }}>
-          <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            placeholder="Search products..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              height: '44px',
-              background: 'var(--bg-hover)',
-              border: '1.5px solid var(--border)',
-              borderRadius: '10px',
-              paddingLeft: '44px',
-              paddingRight: '40px',
-              color: 'var(--text)',
-              fontSize: '14px',
-              outline: 'none'
-            }}
-          />
-        </div>
+        {/* Mobile Search & Category Row */}
+        <div className="hide-on-desktop" style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '12px', position: 'relative', zIndex: 10 }}>
+          <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0 }}>
+            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                height: '44px',
+                background: 'var(--bg-hover)',
+                border: '1.5px solid var(--border)',
+                borderRadius: '10px',
+                paddingLeft: '44px',
+                paddingRight: '12px',
+                color: 'var(--text)',
+                fontSize: '14px',
+                outline: 'none'
+              }}
+            />
+          </div>
 
+          {/* Mobile Dropdown */}
+          <div className="pg-mobile-category-select-container" style={{ margin: 0, width: 'auto', flexShrink: 0 }}>
+            <button 
+              className="pg-mobile-category-btn"
+              onClick={() => setShowMobileCategoryMenu(true)}
+              style={{ height: '44px', padding: '0 12px', width: 'auto', minWidth: '110px', maxWidth: '140px' }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{
+                selectedCategory === 'all' ? t('All Items', 'सभी सामान') :
+                selectedCategory === 'unmarked' ? t('Unmarked Items', 'बिना कैटेगरी के सामान') :
+                selectedCategory.startsWith('list_') ? itemLists.find(l => `list_${l._id}` === selectedCategory)?.name :
+                selectedCategory
+              }</span>
+              <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            </button>
+          </div>
+        </div>
       {/* Main Grid Workspace */}
       <div className="pg-workspace">
         
@@ -1622,6 +1642,59 @@ export default function ProductGridStep({
             </div>
           </div>
         </div>
+      )}
+
+      {showMobileCategoryMenu && (
+        <>
+          <div 
+            className="pg-mobile-category-backdrop" 
+            onClick={() => setShowMobileCategoryMenu(false)}
+          />
+          <div className="pg-mobile-category-menu">
+            <div style={{ padding: '0 8px 12px 8px', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Select Category
+            </div>
+            
+            <button 
+              className="pg-mobile-category-option"
+              onClick={() => { setSelectedCategory('all'); setShowMobileCategoryMenu(false); }}
+              style={{ color: selectedCategory === 'all' ? 'var(--primary)' : 'var(--text)' }}
+            >
+              <span>{t('All Items', 'सभी सामान')}</span>
+              <span style={{ fontSize: '12px', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: '10px', color: 'var(--text-muted)' }}>{products.length}</span>
+            </button>
+
+            {itemLists.length > 0 && (
+              <div style={{ marginTop: '16px', marginBottom: '8px', padding: '0 8px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>
+                Item Lists
+              </div>
+            )}
+            {itemLists.map(list => {
+              const isActive = selectedCategory === `list_${list._id}`;
+              const count = itemListCounts[list._id] || 0;
+              return (
+                <button 
+                  key={list._id}
+                  className="pg-mobile-category-option"
+                  onClick={() => { setSelectedCategory(`list_${list._id}`); setShowMobileCategoryMenu(false); }}
+                  style={{ color: isActive ? 'var(--primary)' : 'var(--text)' }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>{list.name}</span>
+                  <span style={{ fontSize: '12px', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: '10px', color: 'var(--text-muted)' }}>{count}</span>
+                </button>
+              );
+            })}
+
+            <button 
+              className="pg-mobile-category-option"
+              onClick={() => { setSelectedCategory('unmarked'); setShowMobileCategoryMenu(false); }}
+              style={{ color: selectedCategory === 'unmarked' ? 'var(--primary)' : 'var(--text)' }}
+            >
+              <span>{t('Unmarked Items', 'बिना कैटेगरी के सामान')}</span>
+              <span style={{ fontSize: '12px', background: 'var(--bg-hover)', padding: '2px 8px', borderRadius: '10px', color: 'var(--text-muted)' }}>{categoryCounts.unmarked || 0}</span>
+            </button>
+          </div>
+        </>
       )}
 
     </div>

@@ -131,6 +131,9 @@ export default function ManagerDashboard() {
   const [showMoreSales, setShowMoreSales] = useState(false);
   const [showMoreTopProducts, setShowMoreTopProducts] = useState(false);
   const [editableLowStock, setEditableLowStock] = useState([]);
+  const [modalSearchQuery, setModalSearchQuery] = useState('');
+  const [modalSort, setModalSort] = useState('');
+  const [modalSortOpen, setModalSortOpen] = useState(false);
   const [productLists, setProductLists] = useState([]);
   const [activeListFilter, setActiveListFilter] = useState(null);
   const [showListFilter, setShowListFilter] = useState(false);
@@ -207,7 +210,7 @@ export default function ManagerDashboard() {
   };
 
   // Global selected date — drives full dashboard refresh
-  const { globalDate: selectedDate, setGlobalDate: setSelectedDate } = useApp();
+  const { globalDate: selectedDate, setGlobalDate: setSelectedDate, t, settings } = useApp();
   // Reactive — recalculates on every render when selectedDate changes
   const isToday = selectedDate === getTodayIST();
 
@@ -293,8 +296,8 @@ export default function ManagerDashboard() {
     expected_arrival: getNowDateTimeLocal(), // default = today now
     notes: '',
     items: [
-      { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' },
-      { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' },
     ],
   });
   const [deliverySaving, setDeliverySaving] = useState(false);
@@ -358,7 +361,7 @@ export default function ManagerDashboard() {
   const checkAutoAddRow = (items) => {
     const last = items[items.length - 1];
     if (last && last.item_name.trim()) {
-      return [...items, { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' }];
+      return [...items, { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' }];
     }
     return items;
   };
@@ -416,7 +419,7 @@ export default function ManagerDashboard() {
         await deliveryApi.create(payload);
         toast.success('Delivery entry saved');
       }
-      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' }, { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' }] });
+      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' }, { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' }] });
       setShowDeliveryForm(false);
       setEditDeliveryId(null);
       loadDeliveries(getTodayIST());
@@ -465,14 +468,14 @@ export default function ManagerDashboard() {
       supplier: d.supplier || '',
       expected_arrival: localStr,
       notes: d.notes || '',
-      items: d.items.length ? d.items.map(i => ({ item_name: i.item_name, quantity: i.quantity, unit: i.unit, product_id: i.product_id || '' })) : [{ item_name: '', quantity: '', unit: 'pcs', product_id: '' }],
+      items: d.items.length ? d.items.map(i => ({ item_name: i.item_name, quantity: i.quantity, unit: i.unit, product_id: i.product_id || '' })) : [{ item_name: '', quantity: '', unit: 'unit', product_id: '' }],
     });
     setShowDeliveryForm(true);
     setShowDeparture(true);
   };
 
   const addDeliveryItem = () =>
-    setDeliveryForm(f => ({ ...f, items: [...f.items, { item_name: '', quantity: '', unit: 'pcs', product_id: '' }] }));
+    setDeliveryForm(f => ({ ...f, items: [...f.items, { item_name: '', quantity: '', unit: 'unit', product_id: '' }] }));
 
   const removeDeliveryItem = (idx) =>
     setDeliveryForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
@@ -618,7 +621,7 @@ export default function ManagerDashboard() {
   const [payModal, setPayModal] = useState(null); // { invoice_id, customer_id, name, balance, type }
   const [payForm, setPayForm] = useState({ amount: '', mode: 'cash', reference: '' });
   const [paying, setPaying] = useState(false);
-  const { settings, t } = useApp();
+
 
   const handleRecordPayment = async () => {
     if (!payForm.amount || parseFloat(payForm.amount) <= 0) return toast.error('Enter a valid amount');
@@ -665,6 +668,7 @@ export default function ManagerDashboard() {
   // Returns the order quantity for a product (defaults to "needed" amount)
   const getOrderQty = (p) => {
     if (orderQty[p._id] !== undefined) return orderQty[p._id];
+    if (p.saved_order_qty > 0) return p.saved_order_qty;
     const threshold = parseInt(settings?.low_stock_threshold) || 10;
     // Use custom_low_stock if defined and >= 0, otherwise global threshold
     const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
@@ -865,40 +869,7 @@ export default function ManagerDashboard() {
         </div>
       )}
 
-      {/* Orders Notification */}
-      {orders.length > 0 && (
-        <div style={{
-          background: '#eff6ff',
-          border: '1.5px solid #3b82f6',
-          borderRadius: 8,
-          padding: '10px 16px',
-          marginBottom: 14
-        }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            <Package size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Orders Due Today: {orders.length}
-          </div>
-
-          {orders.map(o => (
-            <div key={o._id} style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: 6,
-              fontSize: 13
-            }}>
-              <div>
-                {o.customer_name} — {o.items?.[0]?.product_name} ({o.items?.[0]?.qty})
-              </div>
-
-              <Link
-                to={`/invoices/new?orderId=${o._id}`}
-                className="btn btn-primary btn-sm"
-              >
-                Generate Invoice
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Orders Notification Removed */}
 
       {/* Stats — all driven by selectedDate via global calendar */}
 
@@ -1451,7 +1422,7 @@ export default function ManagerDashboard() {
                       <X size={20} />
                     </button>
                   </div>
-                  <div style={{ padding: '20px 22px', overflowY: 'auto' }}>
+                  <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
 
                 <div className="form-row">
                   {/* Fix 4: Vehicle number — auto uppercase */}
@@ -1560,14 +1531,16 @@ export default function ManagerDashboard() {
                         return;
                       }
 
-                      const mapped = lowItems.map(p => {
+                      const mapped = lowItems.filter(p => p.saved_order_qty !== -1).map(p => {
                         const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
                           ? p.custom_low_stock : threshold;
-                        const neededQty = Math.max(1, minStock - p.stock);
+                        const neededQty = p.saved_order_qty > 0
+                          ? p.saved_order_qty
+                          : Math.max(1, minStock - p.stock);
                         return {
                           item_name: p.name,
-                          quantity: '',
-                          unit: p.unit || 'bag',
+                          quantity: String(neededQty),
+                          unit: p.unit || 'unit',
                           product_id: p._id,
                           label: 'Goods',
                           is_new_item: false,
@@ -1578,7 +1551,7 @@ export default function ManagerDashboard() {
                         ...f,
                         items: [
                           ...mapped,
-                          { item_name: '', quantity: '', unit: 'bag', product_id: '', label: 'Goods' },
+                          { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' },
                         ],
                       }));
                       toast.success(`${mapped.length} low stock item${mapped.length !== 1 ? 's' : ''} imported`);
@@ -1619,7 +1592,14 @@ export default function ManagerDashboard() {
                           searchProducts(val);
                         }}
                         onBlur={() => setTimeout(() => { setProductSuggestions([]); setProductSuggestIdx(null); }, 200)}
+                        style={item.is_new_item && item.item_name ? { paddingRight: 40 } : undefined}
                       />
+                      {/* New Item Badge Inside Input */}
+                      {item.is_new_item && item.item_name && (
+                        <div style={{ position: 'absolute', bottom: 7, right: 7, fontSize: 9, color: '#92400e', background: '#fffbeb', padding: '2px 5px', borderRadius: 4, fontWeight: 700, pointerEvents: 'none' }}>
+                          NEW
+                        </div>
+                      )}
                       {/* Dropdown: always shown when typing — products + add-new */}
                       {productSuggestIdx === idx && item.item_name.trim() && (
                         <div style={{
@@ -1638,7 +1618,7 @@ export default function ManagerDashboard() {
                                     ...updated[idx],
                                     item_name: p.name,
                                     quantity: '1', // auto set to 1 on product select
-                                    unit: p.unit || 'bag',
+                                    unit: p.unit || 'unit',
                                     product_id: p._id,
                                     is_new_item: false,
                                   };
@@ -1682,12 +1662,6 @@ export default function ManagerDashboard() {
                           >
                             + Use "{item.item_name}" as new product (created on delivery)
                           </div>
-                        </div>
-                      )}
-                      {/* New item badge */}
-                      {item.is_new_item && item.item_name && (
-                        <div style={{ fontSize: 10, color: '#92400e', background: '#fffbeb', padding: '1px 6px', borderRadius: 6, marginTop: 3, display: 'inline-block' }}>
-                          New — will be created on delivery
                         </div>
                       )}
                     </div>
@@ -1773,12 +1747,13 @@ export default function ManagerDashboard() {
                     placeholder="Optional notes" />
                 </div>
 
-                <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
-                  <button className="btn btn-outline" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>Cancel</button>
-                  <button className="btn btn-primary" onClick={handleSaveDelivery} disabled={deliverySaving}>
-                    {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? 'Update' : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
-                  </button>
-                </div>
+                  </div>
+                  {/* Modal Footer */}
+                  <div style={{ padding: '16px 22px', borderTop: '1px solid #f1f5f9', background: '#fff', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button className="btn btn-outline" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleSaveDelivery} disabled={deliverySaving}>
+                      {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? 'Update' : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -3171,12 +3146,18 @@ export default function ManagerDashboard() {
                           return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
                         })
                       : data.lowStockProducts;
-                    setEditableLowStock(source.map(p => ({
+                    const initialItems = source.map(p => ({
                       ...p,
                       orderQty: orderQty[p._id] !== undefined
                         ? orderQty[p._id]
                         : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
-                    })));
+                    }));
+                    const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                    customSaved.forEach(c => {
+                      initialItems.push({ _id: `custom-${Date.now()}-${Math.random()}`, name: c.name, stock: 0, unit: c.unit, orderQty: c.orderQty });
+                    });
+                    initialItems.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1 });
+                    setEditableLowStock(initialItems);
                     setShowLowStockEditor(true);
                   }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
                   <button className="btn btn-success btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
@@ -3202,7 +3183,9 @@ export default function ManagerDashboard() {
             <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 onClick={() => setActiveListFilter(null)}
-                style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#fff' : 'var(--text-muted)' }}
+                style={{ height: 28, flexShrink: 0, padding: '0 14px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#ffffff' : '#64748b' }}
+                onMouseEnter={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#e2e8f0'; }}
+                onMouseLeave={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#f1f5f9'; }}
               >
                 All Items
               </button>
@@ -3210,15 +3193,17 @@ export default function ManagerDashboard() {
                 const listProductIds = (list.products || []).map(p => p._id || p);
                 const lowInList = data.lowStockProducts.filter(p => listProductIds.includes(p._id)).length;
                 if (lowInList === 0) return null;
+                const isActive = activeListFilter === list._id;
                 return (
                   <button
                     key={list._id}
-                    onClick={() => setActiveListFilter(list._id === activeListFilter ? null : list._id)}
-                    style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5, background: activeListFilter === list._id ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === list._id ? '#fff' : 'var(--text-muted)' }}
+                    onClick={() => setActiveListFilter(isActive ? null : list._id)}
+                    style={{ height: 28, flexShrink: 0, padding: '0 6px 0 12px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 6, background: isActive ? 'var(--primary)' : '#f1f5f9', color: isActive ? '#ffffff' : '#64748b' }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#e2e8f0'; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = '#f1f5f9'; }}
                   >
-                    <List size={11} />
                     {list.name}
-                    <span style={{ background: activeListFilter === list._id ? 'rgba(255,255,255,0.25)' : '#e2e8f0', padding: '0 5px', borderRadius: 10, fontSize: 10, color: activeListFilter === list._id ? '#fff' : '#64748b' }}>{lowInList}</span>
+                    <span style={{ minWidth: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(255,255,255,0.25)' : '#cbd5e1', borderRadius: 9, fontSize: 10, fontWeight: 700, color: isActive ? '#ffffff' : '#475569' }}>{lowInList}</span>
                   </button>
                 );
               })}
@@ -3227,12 +3212,29 @@ export default function ManagerDashboard() {
 
           <div className="card-body no-pad">
             {(() => {
-              const filteredLowStock = activeListFilter
+              let filteredLowStock = activeListFilter
                 ? data.lowStockProducts?.filter(p => {
                     const lst = productLists.find(l => l._id === activeListFilter);
                     return lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
                   })
                 : (data.lowStockProducts || []);
+
+              if (!activeListFilter) {
+                const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                if (customSaved.length > 0) {
+                  filteredLowStock = [
+                    ...filteredLowStock,
+                    ...customSaved.map((c, i) => ({
+                      _id: `custom-grid-${i}`,
+                      name: c.name,
+                      stock: 0,
+                      unit: c.unit,
+                      saved_order_qty: c.orderQty,
+                      is_custom: true
+                    }))
+                  ];
+                }
+              }
               if (!filteredLowStock?.length) return (
                 <div style={{ padding: '32px 20px', textAlign: 'center' }}>
                   <div style={{ color: '#d1d5db', marginBottom: 8 }}><Package size={36} /></div>
@@ -3265,10 +3267,16 @@ export default function ManagerDashboard() {
                           <span style={{
                             display: 'inline-block', marginTop: 3,
                             fontSize: 11, fontWeight: 600,
-                            color: isOut ? 'var(--danger)' : 'var(--text-muted)',
+                            color: (p.is_custom || p.created_from_order) ? '#d97706' : (isOut ? 'var(--danger)' : 'var(--text-muted)'),
                             whiteSpace: 'nowrap'
                           }}>
-                            {isOut ? '⚠ Out of Stock' : `${p.stock} ${p.unit} left`}
+                            {p.is_custom ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> New Item</span>
+                            ) : p.created_from_order ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> Order from Customer</span>
+                            ) : isOut ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><AlertTriangle size={11} strokeWidth={2.5} /> Out of Stock</span>
+                            ) : `${p.stock} ${p.unit} left`}
                           </span>
                         </div>
                         {/* Stepper control */}
@@ -3343,61 +3351,175 @@ export default function ManagerDashboard() {
               >✕</button>
             </div>
 
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', background: '#fff', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: 10, top: 9, color: '#94a3b8' }} />
+                <input 
+                  type="text" 
+                  placeholder={t('Search items...', 'आइटम खोजें...')} 
+                  value={modalSearchQuery}
+                  onChange={e => setModalSearchQuery(e.target.value)}
+                  style={{ width: '100%', height: 32, paddingLeft: 30, borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, outline: 'none', transition: 'border-color 0.2s' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
+              </div>
+              <SortDropdown 
+                options={[
+                  { key: 'all', label: t('All (A-Z)', 'सभी (A-Z)') },
+                  { key: 'new', label: t('New Item', 'नया आइटम') },
+                  { key: 'order', label: t('Order from Customer', 'ग्राहक द्वारा ऑर्डर') },
+                  { key: 'low', label: t('Low Stock', 'कम स्टॉक') }
+                ]}
+                value={modalSort}
+                onChange={val => { setModalSort(modalSort === val ? '' : val); setModalSortOpen(false); }}
+                open={modalSortOpen}
+                onToggle={() => setModalSortOpen(!modalSortOpen)}
+              />
+            </div>
+
+            {/* List filters inside modal */}
+            {productLists.length > 0 && data.lowStockProducts?.length > 0 && (
+            <div className="hide-scrollbar" style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: '#fafbff', display: 'flex', gap: 6, overflowX: 'auto', whiteSpace: 'nowrap', alignItems: 'center', flexShrink: 0 }}>
+              <button
+                onClick={() => setActiveListFilter(null)}
+                style={{ height: 28, flexShrink: 0, padding: '0 14px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#ffffff' : '#64748b' }}
+                onMouseEnter={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#e2e8f0'; }}
+                onMouseLeave={e => { if (activeListFilter !== null) e.currentTarget.style.background = '#f1f5f9'; }}
+              >
+                All Items
+              </button>
+                {productLists.map(list => {
+                  const listProductIds = (list.products || []).map(p => p._id || p);
+                  const lowInList = data.lowStockProducts.filter(p => listProductIds.includes(p._id)).length;
+                  if (lowInList === 0) return null;
+                  const isActive = activeListFilter === list._id;
+                  return (
+                    <button
+                      key={list._id}
+                      onClick={() => setActiveListFilter(isActive ? null : list._id)}
+                      style={{ height: 28, flexShrink: 0, padding: '0 12px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 6, background: isActive ? 'var(--primary)' : '#f1f5f9', color: isActive ? '#ffffff' : '#64748b' }}
+                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#e2e8f0'; }}
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = '#f1f5f9'; }}
+                    >
+                      {list.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* List body — scrollable */}
-            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px auto', gap: 8, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)' }}>
+            <div style={{ overflowY: 'auto', flex: 1, padding: '0 0 8px 0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto', gap: 8, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Item Name</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right', paddingRight: 4 }}>Order Qty</span>
                 <span style={{ width: 32 }}></span>
               </div>
 
-              {editableLowStock.map((p, idx) => (
-                <div
-                  key={p._id || idx}
-                  style={{ display: 'grid', gridTemplateColumns: '1fr 130px auto', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafbff' }}
-                >
-                  <input
-                    value={p.name}
-                    onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], name: e.target.value }; return u; })}
-                    placeholder="Item name"
-                    style={{ border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                    onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                  />
-                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', width: 120, justifySelf: 'end' }}>
-                    <button
-                      onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, u[idx].orderQty - 1) }; return u; })}
-                      style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                      onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-                    ><Minus size={12} /></button>
-                    <input
-                      type="number" min="0"
-                      value={p.orderQty}
-                      onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, parseInt(e.target.value) || 0) }; return u; })}
-                      style={{ flex: 1, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 14, background: '#fff', padding: '0 4px', minWidth: 0 }}
-                    />
-                    <button
-                      onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: u[idx].orderQty + 1 }; return u; })}
-                      style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                      onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-                    ><Plus size={12} /></button>
-                  </div>
-                  <button
-                    onClick={() => setEditableLowStock(prev => prev.filter((_, i) => i !== idx))}
-                    style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 7, cursor: 'pointer', color: 'var(--danger)', transition: 'all 0.15s', flexShrink: 0 }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#fecaca'; }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
+              {(() => {
+                let indices = editableLowStock.map((_, i) => i);
+                indices = indices.filter(i => {
+                  const p = editableLowStock[i];
+                  if (activeListFilter && !p._id?.startsWith('custom-')) {
+                    const lst = productLists.find(l => l._id === activeListFilter);
+                    const inList = lst ? (lst.products || []).some(lp => (lp._id || lp) === p._id) : true;
+                    if (!inList) return false;
+                  }
+                  if (modalSearchQuery) {
+                    const q = modalSearchQuery.toLowerCase();
+                    if (!p.name?.toLowerCase().includes(q)) return false;
+                  }
+                  return true;
+                });
+
+                // ALWAYS sort. Groups go to top based on filter, everything else falls back to A-Z
+                indices.sort((i, j) => {
+                  const a = editableLowStock[i];
+                  const b = editableLowStock[j];
+
+                  const aEmpty = a._id?.startsWith('custom-') && (!a.name || a.name.trim() === '');
+                  const bEmpty = b._id?.startsWith('custom-') && (!b.name || b.name.trim() === '');
+                  if (aEmpty && !bEmpty) return 1;
+                  if (!aEmpty && bEmpty) return -1;
+
+                  if (modalSort === 'new') {
+                    const aIsCustom = a._id?.startsWith('custom-') && !aEmpty;
+                    const bIsCustom = b._id?.startsWith('custom-') && !bEmpty;
+                    if (aIsCustom && !bIsCustom) return -1;
+                    if (!aIsCustom && bIsCustom) return 1;
+                  } else if (modalSort === 'order') {
+                    if (a.created_from_order && !b.created_from_order) return -1;
+                    if (!a.created_from_order && b.created_from_order) return 1;
+                  } else if (modalSort === 'low') {
+                    const aIsOOS = a.stock === 0 && !a.created_from_order && !a.is_custom;
+                    const bIsOOS = b.stock === 0 && !b.created_from_order && !b.is_custom;
+                    const aIsOrder = a.created_from_order;
+                    const bIsOrder = b.created_from_order;
+
+                    if (aIsOOS && !bIsOOS) return -1;
+                    if (!aIsOOS && bIsOOS) return 1;
+                    if (aIsOrder && !bIsOrder) return -1;
+                    if (!aIsOrder && bIsOrder) return 1;
+                  }
+
+                  // Fallback for everything (and for 'all' / 'az'): Alphabetical Ascending
+                  return (a.name || '').localeCompare(b.name || '', 'hi', { numeric: true });
+                });
+
+                return indices.map((idx, renderedIndex) => {
+                  const p = editableLowStock[idx];
+                  return (
+                    <div
+                      key={p._id || idx}
+                      style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: renderedIndex % 2 === 0 ? '#fff' : '#fafbff' }}
+                    >
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input
+                          value={p.name}
+                          onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], name: e.target.value }; return u; })}
+                          placeholder="Item name"
+                          style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                          onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                          onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', width: 96, justifySelf: 'end' }}>
+                        <button
+                          onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, u[idx].orderQty - 1) }; return u; })}
+                          style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                          onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                        ><Minus size={12} /></button>
+                        <input
+                          type="number" min="0"
+                          value={p.orderQty}
+                          onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, parseInt(e.target.value) || 0) }; return u; })}
+                          style={{ flex: 1, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13, background: '#fff', padding: '0 2px', minWidth: 0 }}
+                        />
+                        <button
+                          onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: u[idx].orderQty + 1 }; return u; })}
+                          style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                          onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                        ><Plus size={12} /></button>
+                      </div>
+                      <button
+                        onClick={() => setEditableLowStock(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 7, cursor: 'pointer', color: 'var(--danger)', transition: 'all 0.15s', flexShrink: 0 }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#fecaca'; }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  );
+                });
+              })()}
 
               <div style={{ padding: '10px 16px' }}>
                 <button
-                  onClick={() => setEditableLowStock(prev => [...prev, { _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'pcs', orderQty: 1 }])}
+                  onClick={() => setEditableLowStock(prev => [...prev, { _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1 }])}
                   style={{ width: '100%', padding: '9px', border: '1.5px dashed #cbd5e1', borderRadius: 9, background: 'transparent', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s' }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}

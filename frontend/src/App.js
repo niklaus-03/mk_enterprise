@@ -38,7 +38,7 @@ import MobileGlobalSearch from './components/MobileGlobalSearch';
 import TopNavDateTime from './components/TopNavDateTime';
 import { ThemeProvider } from './context/ThemeContext';
 import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search, Home, ShoppingCart, Plus } from 'lucide-react';
-import { tripApi } from './utils/api';
+import { tripApi, orderApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────
 function ProtectedRoute({ children }) {
@@ -87,7 +87,28 @@ function Sidebar({ open, onClose, isFullscreen }) {
   const { settings } = useApp();
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
   const [isHovered, setIsHovered] = React.useState(false);
+  const [pendingOrders, setPendingOrders] = React.useState(0);
   const lang = settings.language === 'hi';
+
+  useEffect(() => {
+    if (isAdmin) {
+      const fetchPendingOrders = async () => {
+        try {
+          const res = await orderApi.getAll({ status: 'pending' });
+          if (Array.isArray(res)) {
+            setPendingOrders(res.length);
+          } else if (res.total !== undefined) {
+            setPendingOrders(res.total);
+          } else {
+            setPendingOrders(res.orders?.length || 0);
+          }
+        } catch (e) {}
+      };
+      fetchPendingOrders();
+      const interval = setInterval(fetchPendingOrders, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [isAdmin]);
 
   const isTempManager = user?.role === 'temp_manager';
   const isWalkinManager = user?.role === 'walkin_manager';
@@ -109,7 +130,7 @@ function Sidebar({ open, onClose, isFullscreen }) {
     ...((!isWalkinManager && !isAdmin) ? [{ to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} /> }] : []),
     { to: '/daily-report', label: lang ? 'दैनिक रिपोर्ट' : 'Daily Report', icon: <Moon size={16} /> },
     ...(isAdmin ? [
-      { to: '/admin-home', label: lang ? 'एडमिन होम' : 'Admin Home', icon: <Home size={16} /> },
+      { to: '/orders', label: lang ? 'ऑर्डर' : 'Orders', icon: <ShoppingCart size={16} />, badge: pendingOrders > 0 ? pendingOrders : null },
       { to: '/vehicle-incoming', label: lang ? 'वाहन' : 'Vehicles', icon: <Truck size={16} /> },
       { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
       { to: '/admin', label: lang ? 'एडमिन पैनल' : 'Admin Panel', icon: <Shield size={16} /> },
@@ -213,7 +234,14 @@ function Sidebar({ open, onClose, isFullscreen }) {
               }
             >
               <span className="nav-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
+              <span className="nav-label" style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {item.label}
+                {item.badge && (
+                  <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 10, lineHeight: 1 }}>
+                    {item.badge}
+                  </span>
+                )}
+              </span>
             </NavLink>
           ))}
         </nav>
