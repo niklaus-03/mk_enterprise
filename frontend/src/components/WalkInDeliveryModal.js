@@ -33,9 +33,8 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
       supplier: '',
       expected_arrival: now.toISOString().slice(0, 16),
       notes: '',
-      paid: false,
-      mode: 'cash',
-      items: [{ item_name: '', quantity: '1', unit: 'bag', base_price: '', final_price: '' }],
+      payments: [{ amount: '', mode: 'cash' }],
+      items: [{ item_name: '', quantity: '1', unit: '', base_price: '', final_price: '' }],
     };
   });
 
@@ -62,12 +61,20 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
     items[idx] = { ...items[idx], [field]: value };
     // Auto-add new row if we're typing the item_name of the last row
     if (field === 'item_name' && value && idx === items.length - 1) {
-      items.push({ item_name: '', quantity: '0', unit: 'bag', base_price: '', final_price: '' });
+      items.push({ item_name: '', quantity: '0', unit: '', base_price: '', final_price: '' });
     }
     return { ...f, items };
   });
 
   const removeItem = (idx) => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+
+  const addPayment = () => setForm(f => ({ ...f, payments: [...f.payments, { amount: '', mode: 'cash' }] }));
+  const removePayment = (idx) => setForm(f => ({ ...f, payments: f.payments.filter((_, i) => i !== idx) }));
+  const updatePayment = (idx, field, value) => setForm(f => {
+    const payments = [...f.payments];
+    payments[idx] = { ...payments[idx], [field]: value };
+    return { ...f, payments };
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -99,28 +106,27 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
           final_price: i.final_price ? parseFloat(i.final_price) : 0,
         })),
         notes: form.notes,
-        payment_status: form.paid ? 'paid' : 'unpaid',
+        payment_status: form.payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) > 0 ? 'paid' : 'unpaid',
         delivery_type: 'walkin_delivery',
       });
 
-      if (submitAction === 'save') {
-        await deliveryApi.updateStatus(newDelivery._id, 'delivered');
+      // 3. Settlement if Paid
+      for (const p of form.payments) {
+        const amt = parseFloat(p.amount) || 0;
+        if (amt > 0) {
+          if (!p.mode) return toast.error("Please select a payment mode for the amount: " + amt);
+          await settlementApi.create({
+            type: 'paid_to_supplier',
+            party_name: form.supplier.trim(),
+            amount: amt,
+            mode: p.mode,
+            notes: 'Walk-in delivery payment (Negotiated)',
+          });
+        }
       }
 
-      // 3. Settlement if Paid
-      // Note: We use final_price * qty for total, or base_price * qty?
-      // For Walk-in delivery, if paying the supplier, usually it's base_price (cost).
-      // If selling, it's final_price. Walk-in delivery means we receive goods and pay them.
-      const totalAmount = validItems.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
-      
-      if (form.paid && totalAmount > 0) {
-        await settlementApi.create({
-          type: 'paid_to_supplier',
-          party_name: form.supplier.trim(),
-          amount: totalAmount,
-          mode: form.mode,
-          notes: 'Walk-in delivery payment',
-        });
+      if (submitAction === 'save') {
+        await deliveryApi.updateStatus(newDelivery._id, 'delivered');
       }
 
       // 4. Send Notification if Send to Admin
@@ -222,6 +228,9 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>Order Items <span style={{ color: '#ef4444' }}>*</span></div>
               </div>
+              <datalist id="unit-options">
+                {QTY_UNITS.map(u => <option key={u} value={u} />)}
+              </datalist>
               <div className="hide-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
                 {form.items.map((item, idx) => (
                   <div key={idx} style={{ minWidth: 550, display: 'grid', gridTemplateColumns: (user?.role === 'walkin_manager' || user?.role === 'temp_manager') ? '2fr 70px 80px 100px auto' : '2fr 70px 80px 100px 100px auto', gap: 12, alignItems: 'center' }}>
@@ -238,7 +247,19 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                           setProductSuggestIdx(idx);
                           searchProducts(val);
                         }}
-                        onBlur={() => setTimeout(() => { setProductSuggestions([]); setProductSuggestIdx(null); }, 200)}
+                        onBlur={() => setTimeout(() => { 
+                          const match = productSuggestions.find(p => p.name.toLowerCase() === item.item_name.trim().toLowerCase());
+                          if (match) {
+                            setForm(f => {
+                              const newItems = [...f.items];
+                              if (!newItems[idx].base_price && match.supplier_base_price) newItems[idx].base_price = match.supplier_base_price;
+                              if (match.unit) newItems[idx].unit = match.unit;
+                              return { ...f, items: newItems };
+                            });
+                          }
+                          setProductSuggestions([]); 
+                          setProductSuggestIdx(null); 
+                        }, 200)}
                         style={{ fontSize: 13, borderRadius: 6 }} 
                       />
                       {productSuggestIdx === idx && item.item_name.trim() && productSuggestions.length > 0 && (
@@ -249,9 +270,9 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                               onMouseDown={() => {
                                 setForm(f => {
                                   const items = [...f.items];
-                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || 'bag', base_price: p.supplier_base_price || '', final_price: '' };
+                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || '', base_price: p.supplier_base_price || '', final_price: '' };
                                   if (idx === items.length - 1) {
-                                    items.push({ item_name: '', quantity: '0', unit: 'bag', base_price: '', final_price: '' });
+                                    items.push({ item_name: '', quantity: '0', unit: '', base_price: '', final_price: '' });
                                   }
                                   return { ...f, items };
                                 });
@@ -285,10 +306,14 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                     {/* Unit */}
                     <div>
                       {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Unit</div>}
-                      <select className="form-control" value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} style={{ fontSize: 12, borderRadius: 6 }}>
-                        <option value="">-</option>
-                        {QTY_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
+                      <input 
+                        className="form-control" 
+                        value={item.unit} 
+                        onChange={e => updateItem(idx, 'unit', e.target.value)} 
+                        list="unit-options"
+                        style={{ fontSize: 13, borderRadius: 6 }} 
+                        placeholder="unit"
+                      />
                     </div>
 
                     {/* Base Price */}
@@ -316,70 +341,96 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
               </div>
             </div>
 
-            {/* Total + Payment */}
-            {totalBase > 0 && (
-              <div style={{ background: 'linear-gradient(to right, #fffbeb, #fef3c7)', border: '1px solid #fde68a', borderRadius: 12, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, boxShadow: '0 4px 6px -1px rgba(251, 191, 36, 0.1)', marginTop: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: '#92400e' }}>Base Total: <span style={{ color: '#d97706', fontSize: 18 }}>{fc ? fc(totalBase) : `₹${totalBase.toFixed(2)}`}</span></div>
-                  {!form.paid && (
-                    <span style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 12, padding: '4px 10px', borderRadius: 20, fontWeight: 700 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> Unpaid</span>
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {/* Paid / Unpaid Toggle */}
-                  <div style={{ display: 'flex', background: '#f1f5f9', padding: 4, borderRadius: 8, gap: 4 }}>
-                    <button type="button" onClick={() => setForm(f => ({ ...f, paid: false }))}
-                      style={{
-                        padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 700,
-                        border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-                        background: !form.paid ? '#ef4444' : 'transparent',
-                        color: !form.paid ? '#fff' : '#64748b',
-                        boxShadow: !form.paid ? '0 2px 4px rgba(239, 68, 68, 0.2)' : 'none'
-                      }}>
-                      UNPAID
-                    </button>
-                    <button type="button" onClick={() => setForm(f => ({ ...f, paid: true }))}
-                      style={{
-                        padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 700,
-                        border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-                        background: form.paid ? '#22c55e' : 'transparent',
-                        color: form.paid ? '#fff' : '#64748b',
-                        boxShadow: form.paid ? '0 2px 4px rgba(34, 197, 94, 0.2)' : 'none'
-                      }}>
-                      PAID
-                    </button>
-                  </div>
+            {/* Base Total Display */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '16px 4px', borderTop: '1px solid #f1f5f9', marginTop: 16 }}>
+               <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-muted)', marginRight: 12 }}>Base Total:</span>
+               <span style={{ fontWeight: 800, fontSize: 22, color: 'var(--primary)' }}>{fc ? fc(totalBase) : `₹${totalBase.toFixed(2)}`}</span>
+            </div>
 
-                  {form.paid && (
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {['cash', 'upi', 'online', 'others'].map(m => (
-                        <button
-                          key={m} type="button"
-                          onClick={() => setForm(f => ({ ...f, mode: m }))}
-                          style={{
-                            padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                            border: form.mode === m ? 'none' : '1px solid #cbd5e1',
-                            background: form.mode === m ? '#2563eb' : '#fff',
-                            color: form.mode === m ? '#fff' : '#475569',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                            boxShadow: form.mode === m ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          {m === 'cash' && <Wallet size={14} />}
-                          {m === 'upi' && <Smartphone size={14} />}
-                          {m === 'online' && <Globe size={14} />}
-                          {m === 'others' && <CreditCard size={14} />}
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+            {/* Payments Section */}
+            <div className="card" style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Wallet size={18} style={{ color: 'var(--success)' }} />
+                  Payment Details
                 </div>
+                <button 
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, payments: [...f.payments, { mode: 'cash', amount: '' }] }))}
+                  className="btn btn-outline"
+                  style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
+                >
+                  + Add Mode
+                </button>
               </div>
-            )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {form.payments.map((p, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Payment Mode</label>
+                      <select 
+                        className="form-control" 
+                        value={p.mode} 
+                        onChange={e => {
+                          const newP = [...form.payments];
+                          newP[idx].mode = e.target.value;
+                          setForm(f => ({ ...f, payments: newP }));
+                        }}
+                        style={{ height: '38px', fontSize: '13px', borderRadius: '6px' }}
+                      >
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI</option>
+                        <option value="online">Online</option>
+                        <option value="others">Others</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Paid Amount ₹</label>
+                      <input 
+                        type="number" 
+                        className="form-control" 
+                        placeholder="0.00" 
+                        value={p.amount}
+                        onChange={e => {
+                          const newP = [...form.payments];
+                          newP[idx].amount = e.target.value;
+                          setForm(f => ({ ...f, payments: newP }));
+                        }}
+                        style={{ height: '38px', fontSize: '14px', borderRadius: '6px' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%', paddingBottom: '2px' }}>
+                      {idx === 0 ? (
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            const newP = [...form.payments];
+                            const currentOtherPaid = newP.filter((_, i) => i !== 0).reduce((sum, pay) => sum + (parseFloat(pay.amount) || 0), 0);
+                            newP[0].amount = String(Math.max(0, totalBase - currentOtherPaid));
+                            setForm(f => ({ ...f, payments: newP }));
+                          }}
+                          style={{ height: '38px', padding: '0 12px', fontSize: '12px', fontWeight: '700', borderRadius: '6px', border: '1px solid #3b82f6', background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}
+                        >
+                          Full
+                        </button>
+                      ) : (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const newP = form.payments.filter((_, i) => i !== idx);
+                            setForm(f => ({ ...f, payments: newP }));
+                          }}
+                          style={{ height: '38px', width: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             </form>
           </div> {/* End Scrollable Body */}
@@ -390,11 +441,6 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
             <button type="submit" form="walkin-form" className="btn btn-primary" onClick={() => setSubmitAction('save')} disabled={saving}>
               {saving && submitAction === 'save' ? 'Saving...' : '✓ Save Entry'}
             </button>
-            {(userRole === 'manager' || userRole === 'admin') && (
-              <button type="submit" form="walkin-form" className="btn btn-primary" onClick={() => setSubmitAction('send')} disabled={saving}>
-                {saving && submitAction === 'send' ? 'Sending...' : '✓ Send to Admin'}
-              </button>
-            )}
           </div>
       </div>
     </div>

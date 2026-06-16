@@ -107,31 +107,57 @@ const cron = require('node-cron');
 const DailyReport = require('./models/DailyReport');
 const Notification = require('./models/Notification');
 
-// Schedule daily report reminder at 16:30 IST
-cron.schedule('30 16 * * *', async () => {
-  console.log("Running daily report reminder check...");
+// Schedule daily report reminder (runs every minute to check custom time)
+cron.schedule('* * * * *', async () => {
   try {
-    const managers = await User.find({ role: 'manager' });
-    if (!managers.length) return;
+    const Setting = require('./models/Setting');
+    
+    // Get the configured time, default to 19:00 (7 PM)
+    const timeSetting = await Setting.findOne({ key: 'report_reminder_time' });
+    const targetTime = timeSetting?.value || '19:00';
 
-    // Get today's date in IST
+    // Get current time in IST
     const now = new Date();
     const ist = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-    const todayIST = ist.toISOString().slice(0, 10);
+    const currentHours = ist.getUTCHours().toString().padStart(2, '0');
+    const currentMinutes = ist.getUTCMinutes().toString().padStart(2, '0');
+    const currentTime = `${currentHours}:${currentMinutes}`;
 
+    if (currentTime !== targetTime) return;
+
+    console.log(`Running daily report reminder check for time: ${targetTime}...`);
+
+    const managers = await User.find({ role: { $in: ['manager', 'temp_manager', 'walkin_manager'] }, is_active: true });
+    if (!managers.length) return;
+
+    const todayIST = ist.toISOString().slice(0, 10);
     const reportsToday = await DailyReport.find({ date: todayIST });
     const submittedManagerIds = reportsToday.map(r => r.manager_id.toString());
 
+    // Check existing notifications to avoid duplicates in case of slight timing issues
+    const startOfDay = new Date(ist);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+
     for (const manager of managers) {
       if (!submittedManagerIds.includes(manager._id.toString())) {
-        await Notification.create({
+        
+        const existingNotif = await Notification.findOne({
           recipient_id: manager._id,
-          recipient_role: 'manager',
-          type: 'general',
-          title: 'Daily Report Reminder',
-          message: 'Please submit your daily end-of-day report. It is pending.',
-          priority: 'high'
+          type: 'daily_report_reminder',
+          timestamp: { $gte: startOfDay }
         });
+
+        if (!existingNotif) {
+          await Notification.create({
+            recipient_id: manager._id,
+            recipient_role: manager.role,
+            type: 'daily_report_reminder',
+            title: '📋 Daily Report Reminder',
+            message: 'It is time to submit your daily end-of-day report. Please submit it now.',
+            priority: 'high',
+            metadata: { action: 'submit_report' }
+          });
+        }
       }
     }
   } catch (err) {

@@ -67,9 +67,9 @@ export default function WalkInDelivery() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const handleMarkWalkinPaid = async (id, mode, notes) => {
+  const handleMarkWalkinPaid = async (id, mode, notes, paidAmt) => {
     try {
-      await deliveryApi.updatePayment(id, 'paid', mode || 'cash', notes);
+      await deliveryApi.updatePayment(id, 'paid', mode || 'cash', notes, paidAmt);
       toast.success('Walk-in delivery marked as paid');
       setPaymentDelivery(null);
       load();

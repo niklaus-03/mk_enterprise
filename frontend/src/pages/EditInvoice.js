@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { invoiceApi, productApi, customerApi } from '../utils/api';
-import { formatCurrency } from '../utils/helpers';
-import { Edit, Save, AlertTriangle, FileText, CreditCard, Coins, ArrowLeft } from 'lucide-react';
+import { formatCurrency, formatIST } from '../utils/helpers';
+import { Edit, Save, AlertTriangle, FileText, CreditCard, Coins, ArrowLeft, Wallet, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'goods_exchange', 'others'];
@@ -31,7 +31,8 @@ function ProductAutocomplete({ value, onSelect, onNameChange }) {
         onChange={e => { setQuery(e.target.value); onNameChange(e.target.value); search(e.target.value); }}
         onFocus={() => query && search(query)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        style={{ fontSize: 13, padding: '6px 8px' }}
+        style={{ fontSize: 13, padding: '6px 8px', width: 'auto', minWidth: '150px' }}
+        size={Math.max((query || '').length, 10)}
         placeholder="Product name..." />
       {open && results.length > 0 && (
         <div className="autocomplete-dropdown">
@@ -72,6 +73,8 @@ export default function EditInvoice() {
   const [items, setItems] = useState([]);
   const [payments, setPayments] = useState([{ mode: 'cash', amount: '', reference: '' }]);
   const [discount, setDiscount] = useState('');
+  const [vehicleCharge, setVehicleCharge] = useState('');
+  const [labourCharge, setLabourCharge] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -79,10 +82,23 @@ export default function EditInvoice() {
   useEffect(() => {
     invoiceApi.get(id).then(inv => {
       setOriginal(inv);
-      setItems(inv.items.map(i => ({ ...i, _key: Math.random() })));
+      setItems(inv.items.map(i => ({ ...i, product_name: (i.product_name || '').replace(/\s*\(\d{1,2}\s+[A-Za-z]{3}\)/g, '').trim(), _key: Math.random() })));
       setPayments(inv.payments?.length ? inv.payments : [{ mode: 'cash', amount: '', reference: '' }]);
       setDiscount(inv.discount || '');
-      setNotes(inv.notes || '');
+      setVehicleCharge(inv.vehicle_charge || '');
+      setLabourCharge(inv.labour_charge || '');
+      let currentNotes = (inv.notes || '').trim();
+      let editCount = 1;
+      const match = currentNotes.match(/Revision (\d+)/i);
+      if (match) {
+        editCount = parseInt(match[1], 10) + 1;
+        currentNotes = currentNotes.replace(match[0], '').trim();
+        if (currentNotes.startsWith('|') || currentNotes.startsWith('-')) currentNotes = currentNotes.substring(1).trim();
+      } else if (currentNotes.startsWith('Consolidated from')) {
+        currentNotes = '';
+      }
+      const editStr = `Revision ${editCount}`;
+      setNotes(currentNotes ? `${editStr} - ${currentNotes}` : editStr);
     }).catch(e => { toast.error(e.message); navigate('/invoices'); })
       .finally(() => setLoading(false));
   }, [id]);
@@ -99,6 +115,12 @@ export default function EditInvoice() {
           changes.weight = parseFloat((wpu * newQty).toFixed(2));
         }
       }
+
+      if (changes.qty !== undefined || changes.price !== undefined || changes.gst !== undefined || changes.returned_qty !== undefined || changes.adjustment !== undefined) {
+        if (changes.total_override === undefined) {
+          changes.total_override = '';
+        }
+      }
       
       next[idx] = calcItem({ ...next[idx], ...changes }, gstEnabled); 
       return next; 
@@ -112,7 +134,9 @@ export default function EditInvoice() {
   const subtotal = items.reduce((s, i) => s + (i.taxable_amount || 0), 0);
   const gstTotal = gstEnabled ? items.reduce((s, i) => s + (i.cgst || 0) + (i.sgst || 0), 0) : 0;
   const dis = parseFloat(discount) || 0;
-  const total = Math.max(0, subtotal + gstTotal - dis);
+  const vc = parseFloat(vehicleCharge) || 0;
+  const lc = parseFloat(labourCharge) || 0;
+  const total = Math.max(0, subtotal + gstTotal + vc + lc - dis);
   const prevBal = original?.previous_balance || 0;
   const totalWithPrev = total + prevBal;
   const amtReceived = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
@@ -135,6 +159,8 @@ export default function EditInvoice() {
         total_weight: items.reduce((s, i) => s + (parseFloat(i.weight) || 0), 0),
         payments: payments.filter(p => parseFloat(p.amount) > 0).map(p => ({ ...p, amount: parseFloat(p.amount) })),
         discount: dis,
+        vehicle_charge: vc,
+        labour_charge: lc,
         notes,
         gst_enabled: gstEnabled,
       });
@@ -151,50 +177,46 @@ export default function EditInvoice() {
 
   return (
     <div>
-      <div className="page-header no-print">
-        <div>
-          <div className="page-title d-flex align-items-center gap-2"><Edit size={22} className="text-warning" /> Edit Invoice — {original?.invoice_number}</div>
-          <div className="page-subtitle">Modify items, handle returns or defectives</div>
-        </div>
-        <div className="page-actions">
-          <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</button>
-          <button className="btn btn-success btn-lg d-inline-flex align-items-center gap-1" onClick={handleSave} disabled={saving}>
-            {saving ? <><span className="spinner"></span> Saving...</> : <><Save size={16} /> Save Changes</>}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }} className="no-print invoice-topbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
           </button>
-        </div>
-      </div>
-
-      <div className="alert alert-warning">
-        <div className="d-flex align-items-start gap-2">
-          <AlertTriangle size={18} className="text-warning mt-1" style={{ flexShrink: 0 }} />
-          <div>
-            <strong>Edit Invoice:</strong> Original stock will be restored and re-deducted based on updated quantities. Returns and defectives will be accounted for automatically.
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title d-flex align-items-center gap-2" style={{ margin: 0, marginTop: '4px', fontSize: '1.25rem' }}><FileText size={20} className="text-primary" /> Edit Invoice — {original?.invoice_number}</div>
+            <div className="page-subtitle" style={{ margin: 0, whiteSpace: 'normal', wordBreak: 'break-word' }}>
+              {original?.customer_name} {original?.customer_phone ? `· ${original.customer_phone}` : ''} {original?.date || original?.ist_formatted ? `· ${original?.ist_formatted || formatIST(original?.date)}` : ''}
+            </div>
           </div>
         </div>
       </div>
 
+
+
       <div className="billing-layout">
         <div>
           {/* Items with return/defective handling */}
-          <div className="card mb-5">
+          <div className="card mb-3">
             <div className="card-header">
-              <div className="card-title d-flex align-items-center gap-2"><FileText size={18} className="text-primary" /> Items (with Return / Defective Handling)</div>
-              <button className="btn btn-outline btn-sm" onClick={addItem}>+ Add Row</button>
+              <div className="card-title d-flex align-items-center gap-2"><FileText size={18} className="text-primary" /> Items (Add, Return, or Adjust)</div>
             </div>
             <div className="card-body" style={{ padding: '12px 16px', overflowX: 'auto' }}>
-              <table className="items-table">
+              <table className="items-table" style={{ width: 'max-content' }}>
                 <thead>
                   <tr>
-                    <th style={{ minWidth: 180 }}>Product</th>
-                    <th style={{ width: 65 }}>Orig Qty</th>
-                    <th style={{ width: 80 }}>Returned</th>
-                    <th style={{ width: 75 }}>Rate ₹</th>
-                    {gstEnabled && <th style={{ width: 65 }}>GST %</th>}
-                    <th style={{ width: 80 }}>Defective</th>
-                    <th style={{ width: 90 }}>Adj ₹</th>
-                    <th style={{ width: 90 }}>Reason</th>
-                    <th style={{ width: 90 }}>Total ₹</th>
-                    <th style={{ width: 32 }}></th>
+                    <th style={{ minWidth: 150 }}>Product</th>
+                    <th style={{ width: 75, minWidth: 75 }}>Orig Qty</th>
+                    <th style={{ width: 85, minWidth: 85 }}>Returned</th>
+                    <th style={{ width: 90, minWidth: 90 }}>Rate ₹</th>
+                    {gstEnabled && <th style={{ width: 85, minWidth: 85 }}>GST %</th>}
+                    <th style={{ width: 90, minWidth: 90 }}>Adjust ₹</th>
+                    <th style={{ width: 110, minWidth: 110 }}>Total ₹</th>
+                    <th style={{ width: 36, minWidth: 36 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -212,8 +234,16 @@ export default function EditInvoice() {
                           onChange={e => updateItem(idx, { qty: e.target.value })} style={{ textAlign: 'right' }} />
                       </td>
                       <td>
-                        <input className="form-control" type="number" min="0" step="0.01" max={item.qty} value={item.returned_qty || ''}
-                          onChange={e => updateItem(idx, { returned_qty: e.target.value })}
+                        <input className="form-control" type="number" min="0" step="0.01" max={item.qty} value={item.returned_qty !== undefined && item.returned_qty !== null ? item.returned_qty : ''}
+                          onChange={e => {
+                            let val = e.target.value;
+                            if (val !== '') {
+                              const num = parseFloat(val);
+                              const maxQty = parseFloat(item.qty) || 0;
+                              if (num > maxQty) val = maxQty.toString();
+                            }
+                            updateItem(idx, { returned_qty: val });
+                          }}
                           placeholder="0" style={{ textAlign: 'right', background: item.returned_qty > 0 ? '#fefce8' : '' }} />
                       </td>
                       <td>
@@ -222,25 +252,39 @@ export default function EditInvoice() {
                       </td>
                       {gstEnabled && (
                         <td>
-                          <select className="form-control" value={item.gst} onChange={e => updateItem(idx, { gst: e.target.value })}>
+                          <select className="form-control" value={item.gst} onChange={e => updateItem(idx, { gst: e.target.value })} style={{ padding: '6px 20px 6px 8px' }}>
                             {[0, 0.25, 1, 3, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
                           </select>
                         </td>
                       )}
-                      <td style={{ textAlign: 'center' }}>
-                        <input type="checkbox" checked={!!item.is_defective} onChange={e => updateItem(idx, { is_defective: e.target.checked })} style={{ width: 16, height: 16, cursor: 'pointer' }} />
-                      </td>
                       <td>
                         <input className="form-control" type="number" min="0" step="0.01" value={item.adjustment || ''}
                           onChange={e => updateItem(idx, { adjustment: e.target.value })} placeholder="₹0" style={{ textAlign: 'right', background: item.adjustment > 0 ? '#fef9f0' : '' }} />
                       </td>
                       <td>
-                        <input className="form-control" value={item.return_reason || ''}
-                          onChange={e => updateItem(idx, { return_reason: e.target.value })} placeholder="Reason" style={{ fontSize: 12 }} />
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.total_override !== undefined && item.total_override !== '' ? item.total_override : (item.total || '')}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              updateItem(idx, { total_override: '' });
+                              return;
+                            }
+                            const newTotal = parseFloat(val) || 0;
+                            const billableQty = Math.max(0, (parseFloat(item.qty) || 0) - (parseFloat(item.returned_qty) || 0));
+                            if (billableQty > 0) {
+                              const gst = gstEnabled ? (parseFloat(item.gst) || 0) : 0;
+                              const adj = parseFloat(item.adjustment) || 0;
+                              const newTaxable = (newTotal + adj) / (1 + gst / 100);
+                              const newPrice = newTaxable / billableQty;
+                              updateItem(idx, { price: newPrice.toFixed(4), total_override: val });
+                            } else {
+                              updateItem(idx, { total_override: val });
+                            }
+                          }}
+                          placeholder="0.00" style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, minWidth: '80px' }} />
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fc(item.total || 0)}</td>
                       <td>
-                        <button className="btn btn-danger btn-sm" style={{ padding: '4px 7px' }} onClick={() => removeItem(idx)}>✕</button>
+                        <button className="btn btn-danger btn-sm d-flex align-items-center justify-content-center" style={{ padding: '6px' }} onClick={() => removeItem(idx)} title="Remove Item"><Trash2 size={16} /></button>
                       </td>
                     </tr>
                   ))}
@@ -251,7 +295,7 @@ export default function EditInvoice() {
           </div>
 
           {/* Payments */}
-          <div className="card mb-5">
+          <div className="card mb-3">
             <div className="card-header">
               <div className="card-title d-flex align-items-center gap-2"><CreditCard size={18} className="text-primary" /> Payments</div>
               <button className="btn btn-outline btn-sm" onClick={() => setPayments(p => [...p, { mode: 'cash', amount: '', reference: '' }])}>+ Add Mode</button>
@@ -264,7 +308,6 @@ export default function EditInvoice() {
                   </select>
                   <input className="form-control" type="number" min="0" step="0.01" placeholder="Amount ₹" value={p.amount} onChange={e => updatePayment(idx, { amount: e.target.value })} />
                   <input className="form-control" placeholder="Reference (optional)" value={p.reference} onChange={e => updatePayment(idx, { reference: e.target.value })} />
-                  <button className="btn btn-ghost btn-sm" onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))}>✕</button>
                 </div>
               ))}
             </div>
@@ -281,28 +324,100 @@ export default function EditInvoice() {
         </div>
 
         {/* Summary */}
-        <div>
-          <div className="summary-box">
-            <div className="summary-title d-flex align-items-center gap-2"><Coins size={18} className="text-primary" /> Updated Summary</div>
-            <div className="summary-row"><span className="text-muted">Subtotal</span><span className="mono">{fc(subtotal)}</span></div>
-            {gstEnabled && <>
-              <div className="summary-row"><span className="text-muted">CGST</span><span className="mono">{fc(gstTotal / 2)}</span></div>
-              <div className="summary-row"><span className="text-muted">SGST</span><span className="mono">{fc(gstTotal / 2)}</span></div>
-            </>}
-            {dis > 0 && <div className="summary-row text-success"><span>Discount</span><span className="mono">- {fc(dis)}</span></div>}
-            <div className="summary-row total"><span>{t('Total', 'कुल')}</span><span className="mono">{fc(total)}</span></div>
-            {prevBal > 0 && <div className="summary-row prev"><span>+ Prev. Balance</span><span className="mono">{fc(prevBal)}</span></div>}
-            {prevBal > 0 && <div className="summary-row total" style={{ fontSize: 15 }}><span>Net Payable</span><span className="mono">{fc(totalWithPrev)}</span></div>}
-            <hr className="divider" />
-            <div className="summary-row paid"><span>{t('Amount Received', 'प्राप्त राशि')}</span><span className="mono">{fc(amtReceived)}</span></div>
-            <div className={`summary-row ${balanceDue > 0.01 ? 'due' : 'paid'}`}>
-              <span>{balanceDue > 0.01 ? 'Balance Due' : 'Change'}</span>
-              <span className="mono">{fc(Math.abs(balanceDue))}</span>
+        <div style={{ flex: '1 1 35%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="position-sticky" style={{ top: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="card" style={{ padding: '20px' }}>
+              <h4 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', fontSize: '16px', fontWeight: '800', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+                <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}><Wallet size={18} />Billing Summary</span>
+                <span style={{ fontSize: '11px', background: 'var(--primary)', color: 'var(--bg-card)', padding: '3px 8px', borderRadius: '12px' }}>
+                  {items.length} Items
+                </span>
+              </h4>
+
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Subtotal (Before Tax)</span>
+                  <strong style={{ fontWeight: '700' }}>{fc(subtotal)}</strong>
+                </li>
+
+                {gstEnabled && (
+                  <>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Central GST (CGST)</span>
+                      <strong style={{ fontWeight: '600', fontFamily: 'monospace', fontSize: '14px' }}>{fc(gstTotal / 2)}</strong>
+                    </li>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>State GST (SGST)</span>
+                      <strong style={{ fontWeight: '600', fontFamily: 'monospace', fontSize: '14px' }}>{fc(gstTotal / 2)}</strong>
+                    </li>
+                  </>
+                )}
+
+                {vc > 0 && (
+                  <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Transportation</span>
+                    <strong style={{ fontWeight: '600', fontFamily: 'monospace', fontSize: '14px' }}>{fc(vc)}</strong>
+                  </li>
+                )}
+
+                {lc > 0 && (
+                  <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Labour</span>
+                    <strong style={{ fontWeight: '600', fontFamily: 'monospace', fontSize: '14px' }}>{fc(lc)}</strong>
+                  </li>
+                )}
+
+                {dis > 0 && (
+                  <li style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontSize: '14px' }}>
+                    <span style={{ fontWeight: '700' }}>Discount</span>
+                    <strong style={{ fontWeight: '700', fontFamily: 'monospace', fontSize: '14px' }}>- {fc(dis)}</strong>
+                  </li>
+                )}
+
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--text)' }}>Grand Total</span>
+                  <strong style={{ color: 'var(--primary)', fontWeight: '700', fontFamily: 'monospace', fontSize: '14px' }}>{fc(total)}</strong>
+                </li>
+
+                {prevBal !== 0 && (
+                  <>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                      <span style={{ color: prevBal > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                        {prevBal > 0 ? 'Previous Due' : 'Previous Advance'}
+                      </span>
+                      <strong style={{ fontWeight: '700', fontFamily: 'monospace', color: prevBal > 0 ? 'var(--danger)' : 'var(--success)', fontSize: '14px' }}>{fc(prevBal)}</strong>
+                    </li>
+                    <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                      <span style={{ fontWeight: '700', color: 'var(--text)' }}>Net Payable</span>
+                      <strong style={{ color: 'var(--text)', fontWeight: '700', fontFamily: 'monospace', fontSize: '14px' }}>{fc(totalWithPrev)}</strong>
+                    </li>
+                  </>
+                )}
+
+                <li style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)' }}>
+                  <span>Amount Paid</span>
+                  <strong style={{ fontWeight: '700', fontFamily: 'monospace', fontSize: '14px' }}>{fc(amtReceived)}</strong>
+                </li>
+
+                <li 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    fontSize: '14px', 
+                    color: balanceDue > 0.01 ? 'var(--danger)' : 'var(--success)'
+                  }}
+                >
+                  <span style={{ fontWeight: '700' }}>
+                    {balanceDue > 0.01 ? 'Balance Due' : balanceDue < -0.01 ? 'Change' : 'Fully Paid'}
+                  </span>
+                  <strong style={{ fontWeight: '700', fontFamily: 'monospace', fontSize: '14px' }}>{fc(Math.abs(balanceDue))}</strong>
+                </li>
+              </ul>
             </div>
-            <button className="btn btn-success btn-block btn-lg mt-3 d-inline-flex align-items-center justify-content-center gap-1" onClick={handleSave} disabled={saving}>
+
+            <button className="btn btn-primary btn-block btn-lg d-inline-flex align-items-center justify-content-center gap-1" onClick={handleSave} disabled={saving} style={{ padding: '12px', width: '100%' }}>
               {saving ? 'Saving...' : <><Save size={16} /> Save Changes</>}
             </button>
-            <button className="btn btn-outline btn-block mt-2 d-inline-flex align-items-center justify-content-center" onClick={() => navigate(-1)}>{t('Cancel', 'रद्द करें')}</button>
           </div>
         </div>
       </div>

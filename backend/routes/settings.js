@@ -30,6 +30,7 @@ const DEFAULTS = {
   // Enhancement 6: quintal-based tax system
   quintal_tax_enabled: false,
   tax_per_quintal: 0,           // ₹ per quintal (100 kg)
+  report_reminder_time: '19:00', // HH:mm IST - auto reminder for daily reports
 };
 
 router.get('/', async (req, res) => {

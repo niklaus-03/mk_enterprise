@@ -1092,6 +1092,10 @@ a {
   margin-bottom: 18px;
 }
 
+.product-modal-grid .form-group {
+  margin-bottom: 0 !important;
+}
+
 .form-label {
   display: block;
   font-size: 11.5px;
@@ -3426,7 +3430,7 @@ body:has(.modal-overlay), body:has(.cs-modal-overlay) {
 /* Base billing layout: 2-col on wide, 1-col on ≤1024 */
 .billing-layout {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: auto 1fr;
   gap: 18px;
   align-items: start;
   width: 100%;

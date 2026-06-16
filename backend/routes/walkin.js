@@ -511,6 +511,13 @@ router.post('/load-products', auth, requireWalkinOrSupervisor, async (req, res) 
         // Incoming local movement log removed as per request
       }
 
+      // 4. Auto-add loaded product to walkin manager's personal list
+      const autoList = await ProductList.findOne({ auto_for_manager: req.user.id });
+      if (autoList && !autoList.products.some(pid => pid.toString() === localProduct._id.toString())) {
+        autoList.products.push(localProduct._id);
+        await autoList.save();
+      }
+
       results.push({ name: globalProduct.name, loaded: loadQty });
     }
 

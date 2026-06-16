@@ -1046,7 +1046,7 @@ export default function NewInvoice() {
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Receipt size={17} style={{ color: 'var(--primary)' }} />{t('Payment & Adjustments', 'भुगतान और समायोजन')}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
-              Customer: <strong style={{ color: 'var(--primary)' }}>{selectedCustomer ? selectedCustomer.name : (walkInData ? `Walk-in: ${walkInData.name || 'Anonymous'}` : 'Walk-in Customer')}</strong>
+              Customer: <strong style={{ color: 'var(--primary)' }}>{selectedCustomer ? selectedCustomer.name : (walkIn ? `Walk-in: ${walkIn.name || 'Anonymous'}` : 'Walk-in Customer')}</strong>
             </div>
           </div>
         </div>
@@ -1563,7 +1563,7 @@ export default function NewInvoice() {
               <Receipt size={17} style={{ color: 'var(--primary)' }} /> Bill Details & Review
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
-              Customer: <strong style={{ color: 'var(--primary)' }}>{selectedCustomer ? selectedCustomer.name : (walkInData ? `Walk-in: ${walkInData.name || 'Anonymous'}` : 'Walk-in Customer')}</strong>
+              Customer: <strong style={{ color: 'var(--primary)' }}>{selectedCustomer ? selectedCustomer.name : (walkIn ? `Walk-in: ${walkIn.name || 'Anonymous'}` : 'Walk-in Customer')}</strong>
             </div>
           </div>
         </div>
@@ -1968,7 +1968,7 @@ export default function NewInvoice() {
               </button>
 
               <button
-                className="btn btn-success"
+                className="btn btn-primary"
                 onClick={() => handleSubmit(false)}
                 disabled={saving}
                 style={{

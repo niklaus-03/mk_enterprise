@@ -146,6 +146,50 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // GOODS EXCHANGE AUTOMATION: Sync to Linked Customer
+    if (type === 'paid_to_supplier' && mode === 'goods_exchange') {
+      const Supplier = require('../models/Supplier');
+      const Customer = require('../models/Customer');
+      const Invoice = require('../models/Invoice');
+      
+      const supplier = await Supplier.findOne({ name: { $regex: `^${(party_name || '').trim()}$`, $options: 'i' } });
+      if (supplier && supplier.linked_customer_id) {
+        const customer = await Customer.findById(supplier.linked_customer_id);
+        if (customer) {
+          const invoice = await Invoice.create({
+            customer_id: customer._id,
+            customer_name: customer.name,
+            total_amount: parseFloat(amount),
+            paid_amount: 0,
+            status: 'unpaid',
+            items: [{
+              item_name: 'Goods Exchange against Supplier Due',
+              quantity: 1,
+              base_price: parseFloat(amount),
+              final_price: parseFloat(amount)
+            }],
+            date: entryDate,
+            ist_date,
+            created_by: req.user.id
+          });
+          
+          customer.balance = (customer.balance || 0) + parseFloat(amount);
+          await customer.save();
+          
+          await ActivityLog.create({
+            user_id: req.user.id,
+            username: req.user.username,
+            user_role: req.user.role,
+            action: 'create',
+            entity_type: 'invoice',
+            entity_id: invoice._id,
+            entity_name: customer.name,
+            description: `Auto-generated Invoice for Goods Exchange with Supplier`,
+          });
+        }
+      }
+    }
+
     res.status(201).json(settlement);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

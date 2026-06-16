@@ -3,12 +3,16 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { productListApi, productApi, managerApi } from '../utils/api';
 import toast from 'react-hot-toast';
-import { List, Plus, Trash2, Edit, Share2, Search, X, Package, CheckSquare, Square, AlertTriangle, Eye, User, Check } from 'lucide-react';
+import { List, Plus, Trash2, Edit, Share2, Search, X, Package, CheckSquare, Square, AlertTriangle, Eye, User, Check, ChevronDown } from 'lucide-react';
 
-export default function ProductLists() {
+export default function ProductLists({ globalSearch = '', onListCountChange, triggerAddList = 0 }) {
   const { t } = useApp();
   const { user } = useAuth();
   const isAdmin = user?.role === 'supervisor';
+
+  useEffect(() => {
+    if (triggerAddList > 0) openAdd();
+  }, [triggerAddList]);
 
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +26,6 @@ export default function ProductLists() {
 
   const [allProducts, setAllProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
-  const [listSearch, setListSearch] = useState('');
 
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
@@ -31,8 +34,23 @@ export default function ProductLists() {
   const [selectedManagerId, setSelectedManagerId] = useState('');
   const [shareOverrides, setShareOverrides] = useState([]);
   const [sharing, setSharing] = useState(false);
+  const [managerDropdownOpen, setManagerDropdownOpen] = useState(false);
   
   const [viewListModal, setViewListModal] = useState(null);
+
+  useEffect(() => {
+    if (showForm || viewListModal || shareModal) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.overscrollBehavior = 'none';
+    } else {
+      document.body.style.overflow = 'unset';
+      document.body.style.overscrollBehavior = 'unset';
+    }
+    return () => { 
+      document.body.style.overflow = 'unset'; 
+      document.body.style.overscrollBehavior = 'unset';
+    };
+  }, [showForm, viewListModal, shareModal]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -175,22 +193,22 @@ export default function ProductLists() {
   );
 
   const filteredLists = lists.filter(l => 
-    l.name.toLowerCase().includes(listSearch.toLowerCase())
+    l.name.toLowerCase().includes(globalSearch.toLowerCase())
   );
+
+  useEffect(() => {
+    if (onListCountChange) {
+      onListCountChange(filteredLists.length);
+    }
+  }, [filteredLists.length, onListCountChange]);
 
   return (
     <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>Create product groupings and share them with managers</div>
-          <div className="flex gap-2">
-            {!showForm && (
-              <button className="btn btn-primary btn-sm" onClick={openAdd}>+ Create List</button>
-            )}
-          </div>
-        </div>
+
 
       {showForm && (
-        <div className="card" style={{ marginBottom: 20, border: '1.5px solid #6366f1', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.15)' }}>
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, margin: '20px auto' }}>
           <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--sidebar-bg)', borderBottom: '1.5px solid #e2e8f0' }}>
             <div style={{ background: editId ? 'var(--warning-light)' : 'var(--success-light)', color: editId ? '#d97706' : '#059669', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {editId ? <Edit size={16} /> : <Plus size={16} />}
@@ -204,6 +222,47 @@ export default function ProductLists() {
               <label className="form-label" style={{ fontWeight: 700 }}>List Name *</label>
               <input className="form-control" value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Construction Materials" autoFocus />
             </div>
+
+            {isAdmin && (
+              <div className="form-group" style={{ marginBottom: 16 }}>
+                <label className="form-label" style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted)', marginBottom: 12 }}>Share with Managers ({formManagers.length} selected)</label>
+                <div style={{ position: 'relative' }}>
+                  <div 
+                    onClick={() => setManagerDropdownOpen(!managerDropdownOpen)}
+                    className="form-control" 
+                    style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)', color: formManagers.length > 0 ? 'var(--text)' : '#94a3b8' }}
+                  >
+                    {formManagers.length === 0 ? '-- Select Managers --' : `${formManagers.length} manager(s) selected`}
+                    <ChevronDown size={16} color="#64748b" style={{ transform: managerDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                  </div>
+                  {managerDropdownOpen && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, marginTop: 4, zIndex: 10, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                      {managers.filter(m => m._id !== user._id).map(m => {
+                        const isSelected = formManagers.includes(m._id);
+                        return (
+                          <div 
+                            key={m._id} 
+                            onClick={() => {
+                              if (isSelected) setFormManagers(formManagers.filter(id => id !== m._id));
+                              else setFormManagers([...formManagers, m._id]);
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', margin: 0, background: isSelected ? '#f8fafc' : 'white', transition: 'background 0.2s' }}
+                          >
+                            <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${isSelected ? '#3b82f6' : '#cbd5e1'}`, background: isSelected ? '#3b82f6' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s' }}>
+                              {isSelected && <Check size={12} color="white" strokeWidth={3} />}
+                            </div>
+                            <span style={{ fontSize: 13, fontWeight: isSelected ? 600 : 500, color: isSelected ? '#1e293b' : '#475569' }}>{m.display_name || m.username}</span>
+                          </div>
+                        );
+                      })}
+                      {managers.filter(m => m._id !== user._id).length === 0 && (
+                        <div style={{ padding: 14, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>No managers available</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="form-group" style={{ marginBottom: 16 }}>
               <label className="form-label" style={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
@@ -244,33 +303,6 @@ export default function ProductLists() {
               </div>
             </div>
 
-            {isAdmin && (
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted)', marginBottom: 12 }}>Share with Managers ({formManagers.length} selected)</label>
-                <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, display: 'flex', flexWrap: 'wrap', gap: 10, background: '#f8fafc' }}>
-                  {managers.filter(m => m._id !== user._id).map(m => {
-                    const isSelected = formManagers.includes(m._id);
-                    return (
-                      <div key={m._id} onClick={() => toggleManager(m._id)} style={{
-                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-                        background: isSelected ? '#ecfdf5' : 'var(--bg-card)',
-                        border: `1.5px solid ${isSelected ? '#10b981' : '#e2e8f0'}`,
-                        borderRadius: 30, cursor: 'pointer', transition: 'all 0.2s',
-                        boxShadow: isSelected ? '0 2px 4px rgba(16, 185, 129, 0.1)' : '0 1px 2px rgba(0,0,0,0.05)'
-                      }}>
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', border: `1.5px solid ${isSelected ? '#10b981' : '#cbd5e1'}`, background: isSelected ? '#10b981' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {isSelected && <Check size={10} color="white" strokeWidth={3} />}
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? '#065f46' : 'var(--text)', whiteSpace: 'nowrap' }}>{m.display_name || m.username}</span>
-                      </div>
-                    );
-                  })}
-                  {managers.filter(m => m._id !== user._id).length === 0 && (
-                    <div style={{ fontSize: 13, color: '#94a3b8', width: '100%', textAlign: 'center', padding: 10 }}>No managers available</div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
           <div className="card-footer flex gap-3" style={{ justifyContent: 'flex-end', background: 'var(--bg)', borderBottomLeftRadius: 16, borderBottomRightRadius: 16, padding: '16px 24px', borderTop: '1px solid #e2e8f0' }}>
             <button className="btn btn-outline" style={{ borderRadius: 8 }} onClick={() => setShowForm(false)}>{t('Cancel', 'रद्द करें')}</button>
@@ -278,27 +310,14 @@ export default function ProductLists() {
               {saving ? 'Saving...' : editId ? 'Update List' : 'Create List'}
             </button>
           </div>
+          </div>
         </div>
       )}
 
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="card-title" style={{ margin: 0 }}>All Item Lists</div>
-            <span className="badge badge-primary">{filteredLists.length}</span>
-          </div>
-          <div style={{ position: 'relative', minWidth: 200 }}>
-            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
-              <Search size={14} />
-            </span>
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="Search lists..." 
-              value={listSearch}
-              onChange={e => setListSearch(e.target.value)}
-              style={{ paddingLeft: 30, fontSize: 13, borderRadius: 6, height: 32 }}
-            />
+            <div className="card-title" style={{ margin: 0 }}>All Lists</div>
           </div>
         </div>
         <div className="card-body no-pad">
@@ -340,33 +359,30 @@ export default function ProductLists() {
                     return (
                       <tr key={list._id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
                         <td style={{ padding: '16px', verticalAlign: 'top' }}>
-                          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 14 }}>{list.name}</div>
+                          <div style={{ fontWeight: 700, color: list.auto_for_manager ? '#9333ea' : '#1e293b', fontSize: 14 }}>{list.name}</div>
                           {!isOwner && (
                             <div style={{ fontSize: 12, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, marginTop: 4 }}>
                               <User size={13} /> {isAdmin ? 'By:' : 'Shared by:'} {list.created_by?.display_name || list.created_by?.username}
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '16px', verticalAlign: 'top' }}>
-                          <div className="hide-scroll" style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-                            {displayProducts.slice(0, 5).map((p, i) => (
-                              <span key={p._id} style={{ whiteSpace: 'nowrap', color: '#475569', fontSize: 13, fontWeight: 500 }}>
-                                {p.name}{i < Math.min(5, displayProducts.length) - 1 || displayProducts.length > 5 ? ',' : ''}
-                              </span>
-                            ))}
-                            {displayProducts.length > 5 && <span style={{ whiteSpace: 'nowrap', color: '#4338ca', fontSize: 13, fontWeight: 600 }}>+{displayProducts.length - 5} more</span>}
+                        <td style={{ padding: '16px', verticalAlign: 'top', maxWidth: '250px' }}>
+                          <div style={{ color: '#475569', fontSize: 13, fontWeight: 500, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.5' }}>
+                            {displayProducts.length > 0 ? (
+                              displayProducts.length > 1 
+                                ? `${displayProducts.slice(0, 1).map(p => p.name).join(', ')} and ${displayProducts.length - 1} more`
+                                : displayProducts.map(p => p.name).join(', ')
+                            ) : <span style={{ color: '#cbd5e1' }}>No items</span>}
                           </div>
                         </td>
                         {isAdmin && (
-                        <td style={{ padding: '16px', verticalAlign: 'top' }}>
+                        <td style={{ padding: '16px', verticalAlign: 'top', maxWidth: '200px' }}>
                           {list.shares?.length > 0 ? (
-                            <div className="hide-scroll" style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-                              {list.shares.slice(0, 2).map((s, i) => (
-                                <span key={s._id || s.manager_id?._id} style={{ whiteSpace: 'nowrap', fontSize: 13, color: '#d97706', fontWeight: 500 }}>
-                                  {s.manager_id?.display_name || s.manager_id?.username || 'Manager'}{i < Math.min(2, list.shares.length) - 1 || list.shares.length > 2 ? ',' : ''}
-                                </span>
-                              ))}
-                              {list.shares.length > 2 && <span style={{ whiteSpace: 'nowrap', fontSize: 13, color: '#b45309', fontWeight: 600 }}>+{list.shares.length - 2} more</span>}
+                            <div style={{ color: '#d97706', fontSize: 13, fontWeight: 500, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.5' }}>
+                              {list.shares.length > 1
+                                ? `${list.shares.slice(0, 1).map(s => s.manager_id?.display_name || s.manager_id?.username || 'Manager').join(', ')} and ${list.shares.length - 1} more`
+                                : list.shares.map(s => s.manager_id?.display_name || s.manager_id?.username || 'Manager').join(', ')
+                              }
                             </div>
                           ) : (
                             <span style={{ fontSize: 12, color: '#94a3b8' }}>Not shared</span>

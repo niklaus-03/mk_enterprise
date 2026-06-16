@@ -26,7 +26,7 @@ export default function NewOrder() {
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState([emptyItem(), emptyItem()]);
   const [advancePaid, setAdvancePaid] = useState('');
-  const [advanceMode, setAdvanceMode] = useState('cash');
+  const [advanceMode, setAdvanceMode] = useState('');
   const [saving, setSaving] = useState(false);
 
   // ── Product search state ────────────────────────────────────
@@ -125,6 +125,11 @@ export default function NewOrder() {
 
     const validItems = items.filter(i => i.product_name.trim() && parseFloat(i.qty) > 0);
     if (!validItems.length) return toast.error('Add at least one item with quantity');
+
+    const advance = parseFloat(advancePaid) || 0;
+    if (advance > 0 && !advanceMode) {
+      return toast.error('Please select a payment mode for the advance payment');
+    }
 
     setSaving(true);
     try {

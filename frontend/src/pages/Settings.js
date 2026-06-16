@@ -237,6 +237,17 @@ export default function Settings() {
                   {fld('bank_branch', 'Branch (optional)', 'e.g. Main Branch, Delhi')}
                 </div>
               </div>
+
+              <div className="card">
+                <div className="card-header"><div className="card-title">⏰ Daily Report Reminders</div></div>
+                <div className="card-body">
+                  <div className="form-group">
+                    <label className="form-label">Report Reminder Time (IST)</label>
+                    <input className="form-control" type="time" value={form.report_reminder_time || '19:00'} onChange={e => setForm({ ...form, report_reminder_time: e.target.value })} onBlur={e => handleUpdateSetting('report_reminder_time', e.target.value)} />
+                    <div className="form-hint">Managers will receive an automatic notification at this time to submit their report.</div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

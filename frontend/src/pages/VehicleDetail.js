@@ -359,7 +359,7 @@ export default function VehicleDetail() {
           </div>
           {!isDelivered && (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>
-              Edit weight & pricing. Final Price is auto-calculated but editable.
+              Edit weight & pricing. Selling Price is auto-calculated but editable.
             </div>
           )}
         </div>
@@ -457,7 +457,7 @@ export default function VehicleDetail() {
                           </span>
                         </div>
                         <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Final Price:</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Selling Price:</span>
                           <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--primary)', marginLeft: 6 }}>
                             {item.final_price ? fc(item.final_price) : '—'}
                           </span>
@@ -544,7 +544,7 @@ export default function VehicleDetail() {
 
                         {/* Final Price */}
                         <div style={{ gridColumn: 'span 7' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Final Price ₹</label>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Selling Price ₹</label>
                           <div>
                             <input type="number" min="0" step="0.01" className="form-control"
                               style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8, fontWeight: 700 }}
@@ -569,7 +569,7 @@ export default function VehicleDetail() {
                     {[
                       'Item', 'Type', 'Current Stock', 'Incoming Qty',
                       'Final Stock', 'Weight (kg)',
-                      ...(user?.role === 'supervisor' ? ['Base Price ₹'] : []), 'Extra Charge ₹', 'Quintal Charge ₹', 'GST %', 'Final Price ₹'
+                      ...(user?.role === 'supervisor' ? ['Base Price ₹'] : []), 'Extra Charge ₹', 'Quintal Charge ₹', 'GST %', 'Selling Price ₹'
                     ].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif" }}>{h}</th>
                     ))}
@@ -734,7 +734,7 @@ export default function VehicleDetail() {
       {!isDelivered && (
         <div style={{ marginTop: 14, padding: '12px 18px', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 12, fontSize: '13px', color: '#1e40af', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>💡</span>
-          <span><strong>Pricing Formula:</strong> Final Price = Base Price + Extra Charge + (Quintal Charge × Weight ÷ 100) + GST%. Final Price is auto-calculated but can be manually overridden.</span>
+          <span><strong>Pricing Formula:</strong> Selling Price = Base Price + Extra Charge + (Quintal Charge × Weight ÷ 100) + GST%. Selling Price is auto-calculated but can be manually overridden.</span>
         </div>
       )}
 

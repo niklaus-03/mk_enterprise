@@ -184,7 +184,7 @@ export const deliveryApi = {
   }),
   create: (data) => api.post('/deliveries', data),
   updateStatus: (id, status) => api.patch(`/deliveries/${id}/status`, { status }),
-  updatePayment: (id, payment_status, payment_mode, notes) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode, notes }),
+  updatePayment: (id, payment_status, payment_mode, notes, actual_paid_amount) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode, notes, actual_paid_amount }),
   update: (id, data) => api.put(`/deliveries/${id}`, data),
   delete: (id) => api.delete(`/deliveries/${id}`),
 };
@@ -205,6 +205,8 @@ export const supplierApi = {
   create: (data) => api.post('/suppliers', data),
   update: (id, data) => api.put(`/suppliers/${id}`, data),
   delete: (id) => api.delete(`/suppliers/${id}`),
+  linkCustomer: (id, customer_id) => api.post(`/suppliers/${id}/link_customer`, { customer_id }),
+  unlinkCustomer: (id) => api.post(`/suppliers/${id}/unlink_customer`),
 };
 
 // ── Settlements ───────────────────────────────────────────────────────────────

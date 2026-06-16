@@ -45,6 +45,7 @@ export default function CustomerSelectStep({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [addressFocused, setAddressFocused] = useState(false);
   const [balance, setBalance] = useState('');
   const [balanceType, setBalanceType] = useState('due'); // 'due' or 'advance'
 
@@ -160,6 +161,11 @@ export default function CustomerSelectStep({
       setLoading(false);
     }
   };
+
+  const allAddressesList = [...new Set(customers.map(c => c.address?.trim()).filter(Boolean))];
+  const filteredAddressList = address
+    ? allAddressesList.filter(a => a.toLowerCase().includes(address.toLowerCase()) && a.toLowerCase() !== address.toLowerCase())
+    : allAddressesList;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '20px' }}>
@@ -655,15 +661,47 @@ export default function CustomerSelectStep({
               </div>
 
               {/* Address */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', position: 'relative' }}>
                 <label className="form-label" style={{ fontWeight: '600', fontSize: '13px' }}>Address</label>
-                <textarea
+                <input
+                  type="text"
                   className="form-control"
                   placeholder="Enter full address..."
                   value={address}
+                  onFocus={() => setAddressFocused(true)}
+                  onBlur={() => setTimeout(() => setAddressFocused(false), 200)}
                   onChange={(e) => setAddress(toTitleCase(e.target.value))}
-                  style={{ borderRadius: '8px', minHeight: '60px', padding: '10px' }}
+                  style={{ borderRadius: '8px', height: '42px', padding: '0 14px' }}
                 />
+                {addressFocused && address.length > 0 && filteredAddressList.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)', 
+                    borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                  }}>
+                    {filteredAddressList.map(addr => (
+                      <div 
+                        key={addr}
+                        style={{ 
+                          padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', 
+                          fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', 
+                          overflow: 'hidden', textOverflow: 'ellipsis' 
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setAddress(addr);
+                          setAddressFocused(false);
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        title={addr}
+                      >
+                        {addr}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Opening Balance */}

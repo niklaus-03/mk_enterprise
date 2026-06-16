@@ -379,7 +379,7 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
  */
 router.patch('/:id/payment', async (req, res) => {
   try {
-    const { payment_status, payment_mode, notes } = req.body;
+    const { payment_status, payment_mode, notes, actual_paid_amount } = req.body;
     const delivery = await Delivery.findById(req.params.id);
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
     delivery.payment_status = payment_status || 'paid';
@@ -391,11 +391,12 @@ router.patch('/:id/payment', async (req, res) => {
       // Sync to Settlement as Paid Out when walk-in is marked paid
       if (delivery.vehicle_number === 'WALK-IN') {
         const Settlement = require('../models/Settlement');
-        const totalAmount = delivery.items.reduce((s, i) => {
+        const invoiceTotal = delivery.items.reduce((s, i) => {
           const priceToUse = parseFloat(i.base_price) || parseFloat(i.final_price) || 0;
           return s + (priceToUse * (parseFloat(i.quantity) || 0));
         }, 0);
-        if (totalAmount > 0) {
+        const finalSettlementAmount = actual_paid_amount !== undefined ? parseFloat(actual_paid_amount) : invoiceTotal;
+        if (finalSettlementAmount > 0 || invoiceTotal > 0) {
           const now = new Date();
           const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
           const istDate = new Date(now.getTime() + IST_OFFSET_MS);
@@ -408,7 +409,7 @@ router.patch('/:id/payment', async (req, res) => {
           await Settlement.create({
             type: 'paid_to_supplier',
             party_name: delivery.supplier || 'Walk-in Supplier',
-            amount: totalAmount,
+            amount: finalSettlementAmount,
             mode: payment_mode || 'cash',
             notes: finalNotes,
             date: now,
@@ -416,6 +417,49 @@ router.patch('/:id/payment', async (req, res) => {
             ist_formatted: formatIST(now),
             created_by: req.user ? req.user.id : null,
           });
+
+          // GOODS EXCHANGE AUTOMATION: Sync to Linked Customer
+          if (payment_mode === 'goods_exchange') {
+            const Supplier = require('../models/Supplier');
+            const Customer = require('../models/Customer');
+            const Invoice = require('../models/Invoice');
+            const supplier = await Supplier.findOne({ name: { $regex: `^${(delivery.supplier || '').trim()}$`, $options: 'i' } });
+            if (supplier && supplier.linked_customer_id) {
+              const customer = await Customer.findById(supplier.linked_customer_id);
+              if (customer) {
+                const invoice = await Invoice.create({
+                  customer_id: customer._id,
+                  customer_name: customer.name,
+                  total_amount: finalSettlementAmount,
+                  paid_amount: 0,
+                  status: 'unpaid',
+                  items: [{
+                    item_name: 'Goods Exchange against Walk-in Delivery',
+                    quantity: 1,
+                    base_price: finalSettlementAmount,
+                    final_price: finalSettlementAmount
+                  }],
+                  date: now,
+                  ist_date,
+                  created_by: req.user ? req.user.id : null
+                });
+                customer.balance = (customer.balance || 0) + finalSettlementAmount;
+                await customer.save();
+                
+                const ActivityLog = require('../models/ActivityLog');
+                await ActivityLog.create({
+                  user_id: req.user ? req.user.id : null,
+                  username: req.user ? req.user.username : 'Admin',
+                  user_role: req.user ? req.user.role : 'admin',
+                  action: 'create',
+                  entity_type: 'invoice',
+                  entity_id: invoice._id,
+                  entity_name: customer.name,
+                  description: `Auto-generated Invoice for Goods Exchange with Supplier`,
+                });
+              }
+            }
+          }
         }
       }
 
@@ -424,10 +468,11 @@ router.patch('/:id/payment', async (req, res) => {
       if (delivery.created_by && String(delivery.created_by) !== String(currentUserId)) {
         try {
           const Notification = require('../models/Notification');
-          const totalAmount = delivery.items.reduce((s, i) => {
+          const invoiceTotal = delivery.items.reduce((s, i) => {
             const priceToUse = parseFloat(i.base_price) || parseFloat(i.final_price) || 0;
             return s + (priceToUse * (parseFloat(i.quantity) || 0));
           }, 0);
+          const finalNotificationAmount = actual_paid_amount !== undefined ? parseFloat(actual_paid_amount) : invoiceTotal;
           
           let actorName = 'Admin';
           if (req.user && req.user.username) actorName = req.user.username;
@@ -437,7 +482,7 @@ router.patch('/:id/payment', async (req, res) => {
             recipient_id: delivery.created_by,
             type: 'general',
             title: '💸 Walk-in Paid',
-            message: `${actorName} marked walk-in from ${delivery.supplier || 'Unknown'} as PAID (₹${totalAmount}).`,
+            message: `${actorName} marked walk-in from ${delivery.supplier || 'Unknown'} as PAID (₹${finalNotificationAmount}).`,
             priority: 'high',
             entity_type: 'delivery',
             entity_id: delivery._id

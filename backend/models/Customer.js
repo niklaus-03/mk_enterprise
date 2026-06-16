@@ -21,6 +21,7 @@ const customerSchema = new mongoose.Schema({
   // Phase 2: Multi-ledger — track per-manager balances independently
   manager_balances: [managerBalanceSchema],
   merged_by_admin: { type: Boolean, default: false },
+  linked_supplier_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', default: null },
 }, { timestamps: true });
 
 // Helper: get balance for a specific manager

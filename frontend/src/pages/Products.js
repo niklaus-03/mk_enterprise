@@ -11,12 +11,12 @@ import { useAuth } from '../context/AuthContext';
 import { Package, Plus, Search, Edit, Trash2, ArrowDownAZ, AlertTriangle, User, Clock, Share2, Info, Sparkles, MapPin, Check, X, Scale, IndianRupee, Save, List, CheckSquare, Square, CheckCircle2, ShieldAlert } from 'lucide-react';
 import ProductLists from './ProductLists';
 import { productListApi } from '../utils/api';
-import { ChevronLeft, ChevronRight, Truck } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Truck, ArrowUpDown, ChevronDown, ArrowLeft } from 'lucide-react';
 import VehicleAssignModal from '../components/VehicleAssignModal';
 import LoadProductModal from '../components/walkin/LoadProductModal';
 import UnitInput from '../components/shared/UnitInput';
 const emptyForm = {
-  name: '', price: '', gst: '0', unit: 'bag', stock: '0',
+  name: '', price: '', gst: '0', unit: 'unit', stock: '0',
   weight_per_unit: '', suggested_price: '', custom_low_stock: '', supplier_base_price: 0, last_delivery_final_price: 0, is_active: true,
   has_loose: false, loose_name: '', loose_stock: '0', loose_unit: '', loose_conversion_factor: '', loose_price: ''
 };
@@ -37,6 +37,8 @@ export default function Products() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [listCount, setListCount] = useState(0);
+  const [triggerAddList, setTriggerAddList] = useState(0);
   const LIMIT = 25;
   const [showForm, setShowForm] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
@@ -64,6 +66,7 @@ export default function Products() {
   // New State for Overhaul
   const [activeTab, setActiveTab] = useState('products');
   const [sortBy, setSortBy] = useState('recently_added');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [addToListMode, setAddToListMode] = useState('existing'); // 'existing' | 'new'
@@ -389,7 +392,7 @@ export default function Products() {
     const quintalCharge = parseFloat(settings?.tax_per_quintal) || 0;
     const gst = parseFloat(form.gst) || 0;
 
-    if (!base) return toast.error('Enter base price first');
+    if (!base) return toast.error('Enter selling price first');
 
     const quintalAdj = weight > 0 && quintalCharge > 0
       ? (weight / 100) * quintalCharge
@@ -406,7 +409,7 @@ export default function Products() {
   const handleSave = async (e) => {
     if (e) e.preventDefault();
     if (!form.name.trim()) return toast.error('Product name required');
-    if (!form.price) return toast.error('Base Price (Selling) required');
+    if (!form.price) return toast.error('Selling Price required');
     setSaving(true);
     try {
       const payload = {
@@ -459,15 +462,48 @@ export default function Products() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}><Package size={22} /></span>
-            <span>Products Inventory</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <div style={{ marginTop: '6px' }}>
+              <Package size={22} className="text-primary" /> 
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div className="page-title" style={{ margin: 0, marginTop: '4px', lineHeight: 1.1 }}>
+                <div>Products</div>
+                <div>Inventory</div>
+              </div>
+              <div className="page-subtitle" style={{ margin: 0, marginTop: '2px', color: 'var(--text-muted)' }}>
+                {(activeTab === 'products' ? totalItems > 0 : listCount > 0) && (
+                  <span>
+                    {activeTab === 'products' ? `${totalItems} product${totalItems !== 1 ? 's' : ''} found` : `${listCount} list${listCount !== 1 ? 's' : ''} found`}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="page-subtitle">Manage inventory, pricing, and stock levels</div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" style={{ flexShrink: 0 }}>
+          {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+            <button className="btn btn-primary" onClick={() => { 
+              if (activeTab === 'products') {
+                setForm(emptyForm); setEditId(null); setShowForm(true);
+              } else {
+                setTriggerAddList(t => t + 1);
+              }
+            }} style={{ borderRadius: 8, padding: '8px 16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Plus size={16} /> <span className="hidden sm:inline">{activeTab === 'products' ? 'Add Product' : 'Create List'}</span>
+            </button>
+          )}
+          
           {user?.role === 'walkin_manager' && activeTrip && !activeTrip.trip_started && (
             <button className="btn btn-success" onClick={() => setConfirmStartTripModal(true)} style={{ background: '#10b981', borderColor: '#10b981' }}>
               <CheckCircle2 size={16} /> Start the journey
@@ -487,9 +523,9 @@ export default function Products() {
 
           {/* Regular Add Product / Assign Vehicle Flow */}
           {(!activeTrip && user?.role === 'walkin_manager' && reportSubmittedToday && !newTripApproved) ? null : (
-            !walkinTripStarted && user?.role !== 'temp_manager' && (
+            !walkinTripStarted && user?.role === 'walkin_manager' && (
               <button className="btn btn-primary" onClick={openAdd}>
-                {user?.role === 'walkin_manager' ? (activeTrip ? '+ Load Product' : 'Assign Vehicle') : '+ Add Product'}
+                {activeTrip ? '+ Load Product' : 'Assign Vehicle'}
               </button>
             )
           )}
@@ -525,21 +561,103 @@ export default function Products() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 24, borderBottom: '1.5px solid #e2e8f0', marginBottom: 24, padding: '0 4px' }}>
-        <div 
-          onClick={() => setActiveTab('products')} 
-          style={{ padding: '10px 4px', borderBottom: activeTab === 'products' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'products' ? 700 : 600, color: activeTab === 'products' ? 'var(--primary)' : 'var(--text-muted)', transition: 'all 0.2s' }}
-        >
-          All Products
-        </div>
-        {user?.role !== 'walkin_manager' && (
+      <div className="hide-scroll" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1.5px solid #e2e8f0', marginBottom: 24, padding: '0 4px', flexWrap: 'nowrap', gap: 12, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
           <div 
-            onClick={() => setActiveTab('lists')} 
-            style={{ padding: '10px 4px', borderBottom: activeTab === 'lists' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'lists' ? 700 : 600, color: activeTab === 'lists' ? 'var(--primary)' : 'var(--text-muted)', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => setActiveTab('products')} 
+            style={{ padding: '8px 2px', borderBottom: activeTab === 'products' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'products' ? 700 : 600, color: activeTab === 'products' ? 'var(--primary)' : 'var(--text-muted)', transition: 'all 0.2s', marginBottom: -1.5, whiteSpace: 'nowrap', fontSize: 13 }}
           >
-            <List size={16} /> Item Lists
+            Products
           </div>
-        )}
+          {user?.role !== 'walkin_manager' && (
+            <div 
+              onClick={() => setActiveTab('lists')} 
+              style={{ padding: '8px 2px', borderBottom: activeTab === 'lists' ? '2.5px solid var(--primary)' : '2.5px solid transparent', cursor: 'pointer', fontWeight: activeTab === 'lists' ? 700 : 600, color: activeTab === 'lists' ? 'var(--primary)' : 'var(--text-muted)', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 4, marginBottom: -1.5, whiteSpace: 'nowrap', fontSize: 13 }}
+            >
+              Lists
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, paddingBottom: 6, flexWrap: 'nowrap', flex: 1, minWidth: 100 }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', minWidth: 60 }}>
+            <span style={{ position: 'absolute', left: 8, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
+              <Search size={14} />
+            </span>
+            <input
+              className="form-control"
+              placeholder={activeTab === 'products' ? 'Search products...' : 'Search lists...'}
+              value={search}
+              onChange={e => { setSearch(e.target.value); load(e.target.value); }}
+              style={{ paddingLeft: 28, fontSize: 13, borderRadius: 8, height: 34, width: '100%' }}
+            />
+            {search && (
+              <button
+                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                onClick={() => { setSearch(''); load(''); }}
+              >✕</button>
+            )}
+          </div>
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="btn btn-outline" 
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '8px 10px' : '8px 14px', background: 'white' }}
+            >
+              <ArrowUpDown size={14} /> 
+              {!isMobile && (
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  {
+                    [
+                      { id: 'recently_added', label: 'Recently Added' },
+                      { id: 'last_updated', label: 'Last Updated' },
+                      { id: 'name_asc', label: 'Name (A - Z)' },
+                      { id: 'name_desc', label: 'Name (Z - A)' },
+                      { id: 'price_asc', label: 'Price (Low - High)' },
+                      { id: 'price_desc', label: 'Price (High - Low)' }
+                    ].find(o => o.id === sortBy)?.label || 'Recently Added'
+                  }
+                </span>
+              )}
+            </button>
+            
+            {showSortMenu && (
+              <>
+                <div 
+                  style={{ position: 'fixed', inset: 0, zIndex: 40 }} 
+                  onClick={() => setShowSortMenu(false)} 
+                />
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 8, background: '#fff', 
+                  border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                  zIndex: 50, minWidth: 200, padding: 0, overflow: 'hidden'
+                }}>
+                  {[
+                    { id: 'recently_added', label: 'Recently Added' },
+                    { id: 'last_updated', label: 'Last Updated' },
+                    { id: 'name_asc', label: 'Name (A - Z)' },
+                    { id: 'name_desc', label: 'Name (Z - A)' },
+                    { id: 'price_asc', label: 'Price (Low - High)' },
+                    { id: 'price_desc', label: 'Price (High - Low)' }
+                  ].map(opt => (
+                    <div 
+                      key={opt.id}
+                      style={{
+                        padding: '10px 16px', fontSize: 13, cursor: 'pointer',
+                        background: sortBy === opt.id ? '#f8fafc' : 'white',
+                        color: sortBy === opt.id ? 'var(--primary)' : 'var(--text)',
+                        fontWeight: sortBy === opt.id ? 600 : 500
+                      }}
+                      onClick={() => { setSortBy(opt.id); setShowSortMenu(false); }}
+                    >
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {showAssignModal && <VehicleAssignModal onAssigned={loadWalkinTrip} onClose={() => setShowAssignModal(false)} />}
@@ -583,7 +701,7 @@ export default function Products() {
       )}
 
       {activeTab === 'lists' && (
-        <ProductLists />
+        <ProductLists globalSearch={search} onListCountChange={setListCount} triggerAddList={triggerAddList} />
       )}
 
       {activeTab === 'products' && (
@@ -613,7 +731,7 @@ export default function Products() {
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
+                <div className="product-modal-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 8 }}>
               {/* Name */}
               <div className="form-group" style={{ gridColumn: 'span 12', position: 'relative' }}>
                 <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Product Name *</label>
@@ -680,7 +798,7 @@ export default function Products() {
 
               {/* Final Selling Price */}
               <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 6' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: walkinTripStarted || user?.role === 'walkin_manager' ? '#c5a059' : 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Final Selling Price ₹ * {(walkinTripStarted || user?.role === 'walkin_manager') && <span style={{ fontSize: 9, color: '#c5a059' }}>(editable)</span>}</label>
+                <label className="form-label" style={{ fontWeight: 700, color: walkinTripStarted || user?.role === 'walkin_manager' ? '#c5a059' : 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Selling Price ₹ * {(walkinTripStarted || user?.role === 'walkin_manager') && <span style={{ fontSize: 9, color: '#c5a059' }}>(editable)</span>}</label>
                 <input className="form-control" type="number" min="0" step="0.01"
                   value={form.price}
                   onChange={e => { setForm(f => ({ ...f, price: e.target.value })); setPriceCalculated(false); }}
@@ -786,7 +904,7 @@ export default function Products() {
                       </div>
                       
                       {/* Toggle Switch */}
-                      <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, margin: 0, cursor: 'pointer' }}>
+                      <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, margin: 0, cursor: 'pointer', flexShrink: 0 }}>
                         <input 
                           type="checkbox" 
                           checked={form.has_loose}
@@ -797,7 +915,7 @@ export default function Products() {
                           style={{ opacity: 0, width: 0, height: 0 }} 
                         />
                         <span style={{ position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: form.has_loose ? '#8b5cf6' : '#cbd5e1', transition: '.4s', borderRadius: 24 }}>
-                          <span style={{ position: 'absolute', content: '""', height: 18, width: 18, left: form.has_loose ? 22 : 3, bottom: 3, backgroundColor: 'white', transition: '.4s', borderRadius: '50%' }}></span>
+                          <span style={{ position: 'absolute', content: '""', height: 18, width: 18, left: form.has_loose ? 23 : 3, bottom: 3, backgroundColor: 'white', transition: '.4s', borderRadius: '50%' }}></span>
                         </span>
                       </label>
                     </div>
@@ -863,51 +981,7 @@ export default function Products() {
         document.body
       )}
 
-      {/* Search & Sort */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-body" style={{ padding: '12px 16px', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 200 }}>
-            <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
-              <Search size={16} />
-            </span>
-            <input
-              className="form-control"
-              placeholder="Search products by name..."
-              value={search}
-              onChange={e => { setSearch(e.target.value); load(e.target.value); }}
-              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8, height: '100%' }}
-            />
-            {search && (
-              <button
-                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
-                onClick={() => { setSearch(''); load(''); }}
-              >✕</button>
-            )}
-          </div>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' }} title="Sort Products" onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}>
-            <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', color: '#64748b' }}>
-              <ArrowDownAZ size={18} />
-            </div>
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value)}
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', appearance: 'none' }}
-            >
-              <option value="recently_added">Sort: Recently Added</option>
-              <option value="last_updated">Sort: Last Updated</option>
-              <option value="name_asc">Sort: Name (A - Z)</option>
-              <option value="name_desc">Sort: Name (Z - A)</option>
-              <option value="price_asc">Sort: Price (Low - High)</option>
-              <option value="price_desc">Sort: Price (High - Low)</option>
-            </select>
-          </div>
-          {totalItems > 0 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-              {totalItems} product{totalItems !== 1 ? 's' : ''} found
-            </div>
-          )}
-        </div>
-      </div>
+
 
       {/* Products Table */}
       <div className="card">
@@ -932,21 +1006,16 @@ export default function Products() {
             </div>
           ) : (
             <>
-              {window.innerWidth < 768 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 16px', padding: '10px 8px', background: 'var(--primary-light)', border: '1px solid #bae6fd', borderRadius: 10, color: '#0369a1', fontSize: 12, fontWeight: 500 }}>
-                  <Info size={14} style={{ flexShrink: 0 }} />
-                  <span>Swipe horizontally ↔ to view full details (GST, Weight, Stock, Actions).</span>
-                </div>
-              )}
+
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead>
                   <tr style={{ background: 'var(--bg)' }}>
                     {(user?.role === 'walkin_manager' 
                       ? ['Product Name', 'Price', 'Stock', 'Actions'] 
-                      : ['Product Name', 'Base Price', 'GST', 'Final Price', 'Weight', 'Stock', 'Actions']
+                      : ['Product Name', 'Selling Price', 'GST', 'Final Price', 'Weight', 'Stock', 'Actions']
                     ).map(h => (
-                      <th key={h} style={{ padding: '10px 8px', textAlign: h.includes('Price') || h === 'Stock' || h === 'GST' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                      <th key={h} style={{ padding: '10px 8px', paddingLeft: h === 'Weight' ? '24px' : '8px', paddingRight: h === 'Stock' ? '24px' : '8px', textAlign: h.includes('Price') || h === 'Stock' || h === 'GST' || h === 'Actions' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -955,20 +1024,12 @@ export default function Products() {
                     const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0) ? p.custom_low_stock : threshold;
                     const stockColor = p.stock === 0 ? 'var(--danger)' : p.stock <= minStock ? 'var(--warning)' : 'var(--success)';
 
-                    // Highlight search match
-                    const hl = (text) => {
-                      if (!search.trim() || !text) return text || '—';
-                      const i = text.toLowerCase().indexOf(search.trim().toLowerCase());
-                      if (i === -1) return text;
-                      return <>{text.slice(0, i)}<mark style={{ background: 'var(--warning-light)', padding: 0, borderRadius: 2 }}>{text.slice(i, i + search.trim().length)}</mark>{text.slice(i + search.trim().length)}</>;
-                    };
-
                     return (
                       <tr id={`product-${p._id}`} key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: highlightId === p._id ? 'var(--warning-light)' : (!p.is_active ? 'var(--bg-hover)' : idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)'), transition: 'background-color 0.5s ease' }}>
                         <td style={{ padding: '10px 8px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              {hl(p.name)}
+                              {p.name || '—'}
                               {isNewProduct(p.createdAt) && user?.role !== 'walkin_manager' && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 800, letterSpacing: 0.5 }}>NEW</span>}
                               {!p.is_active && <span style={{ fontSize: 10, background: 'var(--border)', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
                               {p.has_loose && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>Has Loose</span>}
@@ -983,17 +1044,17 @@ export default function Products() {
                             </div>
                             {p.created_by && p.created_by.role !== 'supervisor' && user?.role === 'supervisor' && (
                               <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, marginTop: 2 }}>
-                                <User size={12} /> By: {p.created_by.display_name || p.created_by.username}
+                                <User size={12} /> Created By: {p.created_by.display_name || p.created_by.username}
                               </div>
                             )}
+                            <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={10} /> {formatLastUpdated(p.updatedAt)}</div>
+                              {p.last_updated_by && user?.role !== 'walkin_manager' && <div style={{ fontSize: 8.5, color: 'var(--text-muted)' }}>• by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
+                            </div>
                           </div>
                         </td>
                         <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
                           <div style={{ fontSize: 14 }}>{fc(p.price)}</div>
-                          <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, maxWidth: 100 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={10} /> {formatLastUpdated(p.updatedAt)}</div>
-                            {p.last_updated_by && user?.role !== 'walkin_manager' && <div style={{ fontSize: 8.5, color: 'var(--text-muted)', whiteSpace: 'normal', textAlign: 'right' }}>by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
-                          </div>
                         </td>
                         {user?.role !== 'walkin_manager' && (
                           <>
@@ -1003,12 +1064,12 @@ export default function Products() {
                             <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
                               {p.suggested_price > 0 ? fc(p.suggested_price) : <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>—</span>}
                             </td>
-                            <td style={{ padding: '10px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>
+                            <td style={{ padding: '10px 8px', paddingLeft: '24px', textAlign: 'left', color: 'var(--text-muted)' }}>
                               {p.weight_per_unit > 0 ? `${p.weight_per_unit} kg` : '—'}
                             </td>
                           </>
                         )}
-                        <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                        <td style={{ padding: '10px 8px', paddingRight: '24px', textAlign: 'right' }}>
                           <span style={{ fontWeight: 700, color: stockColor }}>
                             {p.stock} {p.unit}
                           </span>
@@ -1020,7 +1081,7 @@ export default function Products() {
                           )}
                         </td>
                         <td style={{ padding: '10px 8px' }}>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
                             {isAdmin && p.has_loose && (
                               <button 
                                 className="btn btn-outline btn-sm" 
@@ -1028,7 +1089,7 @@ export default function Products() {
                                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: 6, color: '#d97706', borderColor: '#fde68a' }}
                                 title="Open Box to Loose"
                               >
-                                <Repeat size={14} /> Open Box
+                                <Repeat size={14} /> {!isMobile && <span style={{ marginLeft: 4 }}>Open Box</span>}
                               </button>
                             )}
                             {isAdmin && (
@@ -1053,8 +1114,8 @@ export default function Products() {
                                 </button>
                                 {user?.role === 'supervisor' && (
                                   <button 
-                                    className="btn btn-ghost btn-sm" 
-                                    style={{ color: '#ef4444', padding: '6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                    className="btn btn-outline btn-sm text-danger" 
+                                    style={{ padding: '6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderColor: '#fecaca' }}
                                     onClick={() => setDeleteConfirmId(p._id)}
                                     title="Delete Product"
                                   >
@@ -1156,7 +1217,7 @@ export default function Products() {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>Share Product</h3>
-              <button className="btn-close" onClick={() => setShareModal(null)}><X size={20} /></button>
+              <button onClick={() => setShareModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: '4px' }}><X size={20} /></button>
             </div>
             <div className="modal-body" style={{ padding: '20px' }}>
               <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>
@@ -1164,18 +1225,48 @@ export default function Products() {
               </p>
               <form onSubmit={handleShareSubmit}>
                 <div className="form-group" style={{ marginBottom: 16 }}>
-                  <label>Select Manager</label>
-                  <select 
-                    className="form-control" 
-                    value={selectedManagerId} 
-                    onChange={e => setSelectedManagerId(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Choose Manager --</option>
-                    {managers.filter(m => m._id !== user._id).map(m => (
-                      <option key={m._id} value={m._id}>{m.display_name || m.username}</option>
-                    ))}
-                  </select>
+                  <label style={{ fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, display: 'block' }}>Select Manager</label>
+                  <div style={{ 
+                    maxHeight: '220px', 
+                    overflowY: 'auto', 
+                    border: '1px solid var(--border)', 
+                    borderRadius: '10px',
+                    padding: '6px',
+                    background: 'var(--bg-card)'
+                  }}>
+                    {managers.filter(m => m._id !== user._id).map(m => {
+                      const isSelected = selectedManagerId === m._id;
+                      const name = m.display_name || m.username;
+                      return (
+                        <div 
+                          key={m._id} 
+                          onClick={() => setSelectedManagerId(m._id)}
+                          style={{ 
+                            padding: '10px 12px', 
+                            borderRadius: '8px', 
+                            cursor: 'pointer',
+                            background: isSelected ? 'var(--primary)' : 'transparent',
+                            color: isSelected ? 'white' : 'var(--text)',
+                            fontWeight: isSelected ? 600 : 500,
+                            display: 'flex', alignItems: 'center', gap: '12px',
+                            transition: 'all 0.2s',
+                            marginBottom: '2px'
+                          }}
+                        >
+                          <div style={{ 
+                            width: 32, height: 32, borderRadius: '50%', 
+                            background: isSelected ? 'rgba(255,255,255,0.2)' : '#e2e8f0', 
+                            color: isSelected ? 'white' : '#64748b', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                            fontSize: 14, fontWeight: 'bold' 
+                          }}>
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          {name}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
                   <button type="button" className="btn btn-secondary" onClick={() => setShareModal(null)}>{t('Cancel', 'रद्द करें')}</button>

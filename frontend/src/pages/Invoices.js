@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { Link, useSearchParams, useLocation } from 'react-router-dom';
+import { Link, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { invoiceApi, driverApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User, ArrowLeft } from 'lucide-react';
 
 export default function Invoices() {
   const { t } = useApp();
@@ -22,6 +22,7 @@ export default function Invoices() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const location = useLocation();
   const [highlightId, setHighlightId] = useState(location.state?.highlightInvoiceId || null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (location.state?.highlightInvoiceId) {
@@ -178,12 +179,26 @@ export default function Invoices() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> Invoice History</div>
-          <div className="page-subtitle">{total} invoices · Sales: {fc(totalSales)} · Due: {fc(totalDue)}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title d-flex align-items-center gap-2" style={{ margin: 0, marginTop: '4px' }}><FileText size={22} className="text-primary" /> Invoice History</div>
+            <div className="page-subtitle" style={{ margin: 0 }}>{total} invoices · Sales: {fc(totalSales)} · Due: {fc(totalDue)}</div>
+          </div>
         </div>
-        <Link to="/invoices/new" className="btn btn-primary d-inline-flex align-items-center gap-1"><Plus size={14} /> New Invoice</Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
+          <Link to="/invoices/new" className="btn btn-primary d-inline-flex align-items-center gap-1" style={{ fontWeight: 600, padding: '8px 16px', whiteSpace: 'nowrap' }}>
+            <Plus size={14} /> New Invoice
+          </Link>
+        </div>
       </div>
 
       <div className="card">
@@ -217,9 +232,9 @@ export default function Invoices() {
             {customer_id && <Link to="/invoices" className="btn btn-outline btn-sm d-inline-flex align-items-center gap-1"><X size={12} /> Clear Filter</Link>}
           </div>
         </div>
-        <div className={isMobile ? "card-body" : "card-body no-pad"}>
+        <div className="card-body no-pad">
           {loading ? <div className="loading"><span className="spinner"></span></div> : (
-            isMobile ? (
+            false ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {invoices.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>
@@ -328,9 +343,7 @@ export default function Invoices() {
                       </div>
                       
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" onClick={e => e.stopPropagation()} style={{ padding: '6px', minWidth: '32px', display: 'flex', justifyContent: 'center' }}>
-                          <Eye size={14} />
-                        </Link>
+
                         <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" onClick={e => e.stopPropagation()} style={{ padding: '6px', minWidth: '32px', display: 'flex', justifyContent: 'center' }}>
                           <Edit size={14} />
                         </Link>
@@ -359,8 +372,6 @@ export default function Invoices() {
                     <th>Invoice #</th>
                     <th>Date & Time (IST)</th>
                     <th>Customer</th>
-                    {isAdmin && <th>Created By</th>}
-                    <th style={{ width: 110 }} className="tr">Payment</th>
                     <th className="tr">{t('Total', 'कुल')}</th>
                     <th className="tr">Received</th>
                     <th className="tr">{t('Balance Due', 'शेष बकाया')}</th>
@@ -401,9 +412,16 @@ export default function Invoices() {
                           )}
                         </td>
                         <td onClick={e => e.stopPropagation()}>
-                          <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace' }}>
-                            {inv.invoice_number}
-                          </Link>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace' }}>
+                              {inv.invoice_number}
+                            </Link>
+                            {isAdmin && (
+                              <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                                <User size={12} /> By: {inv.actual_creator?.display_name || inv.actual_creator?.username || inv.created_by?.display_name || inv.created_by?.username || 'Admin'}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td style={{ fontSize: 12.5 }}>{inv.ist_formatted || formatIST(inv.date)}</td>
                         <td>
@@ -412,11 +430,14 @@ export default function Invoices() {
                             {inv.customer_phone && <small className="text-muted" style={{ display: 'block' }}>{inv.customer_phone}</small>}
                           </Link>
                         </td>
-                        {isAdmin && <td>
-                          <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                            <User size={12} /> By: {inv.actual_creator?.display_name || inv.actual_creator?.username || inv.created_by?.display_name || inv.created_by?.username || 'Admin'}
-                          </div>
-                        </td>}
+                          <td className="tr">
+                            <div className="mono fw-700">{fc(inv.total)}</div>
+                            {((inv.total_with_prev_balance || inv.total) - inv.total) > 0.01 && (
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'monospace' }}>
+                                Prev Due: +{fc((inv.total_with_prev_balance || inv.total) - inv.total)}
+                              </div>
+                            )}
+                          </td>
                         <td style={{ maxWidth: 120 }} className="tr">
                           {inv.payments && inv.payments.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -428,18 +449,9 @@ export default function Invoices() {
                               ))}
                             </div>
                           ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>No payment received</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>₹0.00</span>
                           )}
                         </td>
-                          <td className="tr">
-                            <div className="mono fw-700">{fc(inv.total)}</div>
-                            {((inv.total_with_prev_balance || inv.total) - inv.total) > 0.01 && (
-                              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'monospace' }}>
-                                Prev Due: +{fc((inv.total_with_prev_balance || inv.total) - inv.total)}
-                              </div>
-                            )}
-                          </td>
-                        <td className="tr mono text-success">{fc(inv.amount_received)}</td>
                         <td className="tr">
                           {getInvoiceDue(inv) > 0.01
                              ? <span className="badge badge-danger">{fc(getInvoiceDue(inv))}</span>
@@ -456,7 +468,7 @@ export default function Invoices() {
                         </td>
                         <td>
                           <div className="flex gap-2">
-                            <Link to={`/invoices/${inv._id}`} className="btn btn-outline btn-sm" onClick={e => e.stopPropagation()}><Eye size={14}/></Link>
+
                             <Link to={`/invoices/${inv._id}/edit`} className="btn btn-warning btn-sm" onClick={e => e.stopPropagation()}><Edit size={14}/></Link>
                             <button className="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(inv); }}><Trash2 size={14}/></button>
                           </div>

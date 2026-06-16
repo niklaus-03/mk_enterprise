@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
-import { FileText, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Share2, Plus, Phone, Wallet, X, AlertTriangle, Users, User, Search, MapPin, ArrowRight, Clock, CreditCard } from 'lucide-react';
+import { FileText, Edit, Trash2, ArrowUpDown, ChevronDown, ChevronUp, Share2, Plus, Phone, Wallet, X, AlertTriangle, Users, User, Search, MapPin, ArrowRight, Clock, CreditCard, ArrowLeft, Check } from 'lucide-react';
 import { parseCustomerName, formatCustomerName, isHindi, titleCase, getPrefixOptions, applyAutoSuffix } from '../utils/nameFormatter';
 
 const EMPTY = { prefix: 'Shree', name: '', phone: '', alternate_phones: [], address: '', balance: '', gstin: '' };
@@ -26,6 +26,9 @@ export default function Customers() {
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [sortBy, setSortBy] = useState('High Due First');
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const [addressFocused, setAddressFocused] = useState(false);
 
   useEffect(() => {
     if (showModal || showMergeModal) {
@@ -134,6 +137,21 @@ export default function Customers() {
     setSelectedCustomers(prev => 
       prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]
     );
+  };
+
+  const [pressTimer, setPressTimer] = useState(null);
+
+  const handlePressStart = (cId) => {
+    if (selectedCustomers.length > 0) return; 
+    const timer = setTimeout(() => {
+      toggleSelectCustomer(cId);
+      if (window.navigator.vibrate) window.navigator.vibrate(50);
+    }, 600);
+    setPressTimer(timer);
+  };
+
+  const handlePressEnd = () => {
+    if (pressTimer) clearTimeout(pressTimer);
   };
 
   const handleMergeConfirm = async (e) => {
@@ -296,52 +314,37 @@ export default function Customers() {
   const balanceCell = (b) => {
     if (b > 0.01) {
       return (
-        <span style={{ 
-          display: 'inline-flex', 
-          alignItems: 'center', 
-          padding: '4px 10px', 
-          borderRadius: 20, 
-          fontSize: 12, 
-          fontWeight: 700, 
-          background: 'var(--danger-light)', 
+        <div style={{ 
           color: '#dc2626', 
-          border: '1px solid #fecaca' 
+          fontWeight: 700,
+          fontVariantNumeric: 'tabular-nums',
+          textAlign: 'right'
         }}>
-          {fc(b)} (Due)
-        </span>
+          {fc(b)} <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 600 }}>(Due)</span>
+        </div>
       );
     }
     if (b < -0.01) {
       return (
-        <span style={{ 
-          display: 'inline-flex', 
-          alignItems: 'center', 
-          padding: '4px 10px', 
-          borderRadius: 20, 
-          fontSize: 12, 
-          fontWeight: 700, 
-          background: 'var(--success-light)', 
+        <div style={{ 
           color: '#059669', 
-          border: '1px solid #a7f3d0' 
+          fontWeight: 700,
+          fontVariantNumeric: 'tabular-nums',
+          textAlign: 'right'
         }}>
-          {fc(Math.abs(b))} (Advance)
-        </span>
+          {fc(Math.abs(b))} <span style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }}>(Advance)</span>
+        </div>
       );
     }
     return (
-      <span style={{ 
-        display: 'inline-flex', 
-        alignItems: 'center', 
-        padding: '4px 10px', 
-        borderRadius: 20, 
-        fontSize: 12, 
-        fontWeight: 700, 
-        background: '#f1f5f9', 
-        color: '#64748b', 
-        border: '1px solid #e2e8f0' 
+      <div style={{ 
+        color: '#94a3b8', 
+        fontWeight: 600,
+        textAlign: 'right',
+        fontSize: 13
       }}>
         Balance Clear
-      </span>
+      </div>
     );
   };
 
@@ -351,207 +354,166 @@ export default function Customers() {
   const uniqueAddresses = [...new Set(selectedData.map(c => c.address).filter(Boolean))];
   const uniqueGstins = [...new Set(selectedData.map(c => c.gstin).filter(Boolean))];
 
+  const sortedCustomers = [...customers].sort((a, b) => {
+    if (sortBy === 'High Due First') return (b.balance || 0) - (a.balance || 0);
+    if (sortBy === 'Low Due First') return (a.balance || 0) - (b.balance || 0);
+    if (sortBy === 'A-Z Name') return (a.name || '').localeCompare(b.name || '');
+    if (sortBy === 'Z-A Name') return (b.name || '').localeCompare(a.name || '');
+    if (sortBy === 'Registered First') {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : parseInt(a._id?.substring(0,8) || '0', 16);
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : parseInt(b._id?.substring(0,8) || '0', 16);
+      return timeA - timeB;
+    }
+    return 0;
+  });
+
+  const allAddressesList = [...new Set(customers.map(c => c.address?.trim()).filter(Boolean))];
+  const filteredAddressList = form.address
+    ? allAddressesList.filter(a => a.toLowerCase().includes(form.address.toLowerCase()) && a.toLowerCase() !== form.address.toLowerCase())
+    : allAddressesList;
+
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}><Users size={22} /></span>
-            <span>Customers Directory</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+              <Users size={22} className="text-primary" /> Customers Directory
+            </div>
+            <div className="page-subtitle" style={{ margin: 0 }}>{customers.length} customers · Total dues: {fc(totalDue)}</div>
           </div>
-          <div className="page-subtitle">{customers.length} customers · Total dues: {fc(totalDue)}</div>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {isAdmin && (
-            <button 
-              className={`btn ${isMergeMode ? 'btn-danger' : 'btn-secondary'}`} 
-              onClick={toggleMergeMode} 
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}
-            >
-              {isMergeMode ? 'Cancel Merge' : 'Merge Duplicates'}
-            </button>
-          )}
-          {isMergeMode && selectedCustomers.length >= 2 ? (
+        <div style={{ display: 'flex', gap: isMobile ? 6 : 12, flexShrink: 0, flexDirection: isMobile ? 'column' : 'row' }}>
+          {isAdmin && selectedCustomers.length >= 2 ? (
             <button 
               className="btn btn-primary" 
               onClick={openMergeModal}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : undefined, fontSize: isMobile ? 12 : undefined }}
             >
               Merge Selected ({selectedCustomers.length})
             </button>
           ) : (
-            <button className="btn btn-primary" onClick={openAdd} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8 }}>
-              <Plus size={14} />{t('Add Customer', 'ग्राहक जोड़ें')}</button>
+            <button className="btn btn-primary" onClick={openAdd} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : undefined, fontSize: isMobile ? 12 : undefined }}>
+              <Plus size={isMobile ? 12 : 14} />{t('Add Customer', 'ग्राहक जोड़ें')}</button>
           )}
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', maxWidth: isMobile ? '100%' : '320px' }}>
-            <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
-              <Search size={16} />
+        <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 60 }}>
+            <span style={{ position: 'absolute', left: 8, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
+              <Search size={14} />
             </span>
             <input 
               className="form-control" 
               placeholder="Search by name or phone..." 
               value={search} 
               onChange={e=> { setSearch(e.target.value); }} 
-              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8 }} 
+              style={{ paddingLeft: 28, fontSize: 13, borderRadius: 8, height: 34, width: '100%' }} 
             />
+            {search && (
+              <button
+                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                onClick={() => setSearch('')}
+              >✕</button>
+            )}
+          </div>
+          
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="btn btn-outline" 
+              onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '8px 10px' : '8px 14px', background: 'white' }}
+            >
+              <ArrowUpDown size={14} /> 
+              {!isMobile && <span style={{ fontSize: 13, fontWeight: 600 }}>{sortBy}</span>}
+            </button>
+            
+            {sortDropdownOpen && (
+              <>
+                <div 
+                  style={{ position: 'fixed', inset: 0, zIndex: 40 }} 
+                  onClick={() => setSortDropdownOpen(false)} 
+                />
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 180, overflow: 'hidden' }}>
+                  {[
+                    { label: 'High Due First', icon: '↓' },
+                    { label: 'Low Due First', icon: '↑' },
+                    { label: 'A-Z Name', icon: '' },
+                    { label: 'Z-A Name', icon: '' },
+                    { label: 'Registered First', icon: '✦' }
+                  ].map(opt => (
+                    <div 
+                      key={opt.label}
+                      onClick={() => { setSortBy(opt.label); setSortDropdownOpen(false); }}
+                      style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: sortBy === opt.label ? '#f8fafc' : 'white', fontWeight: sortBy === opt.label ? 600 : 500, color: sortBy === opt.label ? 'var(--primary)' : 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <span style={{ width: 14, textAlign: 'center', fontSize: 14 }}>{opt.icon}</span>
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="card-body no-pad">
           {loading ? (
             <div className="loading"><span className="spinner"></span></div>
-          ) : isMobile ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px', background: 'var(--bg)' }}>
-              {customers.length === 0 ? (
-                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No customers found. <button className="btn btn-outline btn-sm" onClick={openAdd} style={{ marginTop: 8 }}>Add first customer</button>
-                </div>
-              ) : (
-                customers.map(c => (
-                  <div id={`customer-${c._id}`} key={c._id} style={{ 
-                    background: highlightId === c._id ? 'var(--warning-light)' : selectedCustomers.includes(c._id) ? 'var(--primary-light)' : 'var(--bg-card)', 
-                    transition: 'background-color 0.5s ease',
-                    borderRadius: 12, 
-                    padding: 16, 
-                    border: '1px solid',
-                    borderColor: highlightId === c._id ? '#f59e0b' : selectedCustomers.includes(c._id) ? '#3b82f6' : 'var(--border)',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12,
-                    cursor: isMergeMode ? 'pointer' : 'default'
-                  }} onClick={() => isMergeMode && toggleSelectCustomer(c._id)}>
-                    {isMergeMode && (
-                      <div style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input 
-                          type="checkbox" 
-                          checked={selectedCustomers.includes(c._id)} 
-                          onChange={() => toggleSelectCustomer(c._id)}
-                          style={{ width: 18, height: 18 }}
-                        />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>Select to Merge</span>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{c.name}</div>
-                          </div>
-                          {c.created_by && c.created_by.role !== 'supervisor' && user?.role === 'supervisor' && (
-                            <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                              <User size={12} /> {c.added_by_admin ? 'Admin -> ' : 'By: '} {c.created_by.display_name || c.created_by.username}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
-                          {c.phone && (
-                            <a href={`tel:${c.phone}`} style={{ fontSize: 12, color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600 }}>
-                              <Phone size={12} /> {c.phone}
-                            </a>
-                          )}
-                          {c.alternate_phones && c.alternate_phones.map((p, idx) => (
-                            <a key={idx} href={`tel:${p}`} style={{ fontSize: 11, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600, marginLeft: 16 }}>
-                              {p}
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                      {balanceCell(c.balance)}
-                    </div>
-
-                    {(c.address || c.gstin) && (
-                      <div style={{ background: 'var(--bg)', padding: '10px 12px', borderRadius: 8, fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {c.address && <div style={{ display: 'flex', gap: 6 }}><MapPin size={12} style={{ flexShrink: 0, marginTop: 2, color: 'var(--text-muted)' }} /> <span>{c.address}</span></div>}
-                        {c.gstin && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500, marginLeft: 18 }}>GSTIN: {c.gstin}</div>}
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 10, flexWrap: 'wrap', gap: 10 }}>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {user?.role !== 'temp_manager' && (
-                          <Link to={`/customers/${c._id}/history`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                            <Clock size={13} /> History <ArrowRight size={12} />
-                          </Link>
-                        )}
-                        {c.balance > 0 && (
-                          <Link to={`/customers/${c._id}/history`} state={{ openCollect: true }} className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 12, borderRadius: 6, fontWeight: 700, background: '#16a34a', color: '#fff', border: 'none' }}>
-                            <CreditCard size={13} /> Collect
-                          </Link>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {user?.role === 'temp_manager' && (
-                          <Link to={`/invoices/new?customer_id=${c._id}`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#16a34a', borderColor: '#bbf7d0' }}>
-                            <FileText size={13} /> New Bill
-                          </Link>
-                        )}
-                        {user?.role !== 'walkin_manager' && (
-                          <button className="btn btn-outline btn-sm" onClick={() => setShareModal(c)} title="Share" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, padding: 0, borderRadius: 6, color: '#3b82f6', borderColor: '#bfdbfe' }}>
-                            <Share2 size={14} />
-                          </button>
-                        )}
-                        {user?.role !== 'temp_manager' && (
-                          <>
-                            <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)} title="Edit" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, padding: 0, borderRadius: 6, color: 'var(--text-muted)' }}>
-                              <Edit size={14} />
-                            </button>
-                            {user?.role !== 'walkin_manager' && (
-                              <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(c)} title="Delete" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, padding: 0, borderRadius: 6, color: '#ef4444' }}>
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
+          ) : sortedCustomers.length === 0 ? (
+            <div className="empty-state" style={{ padding: '40px 24px', textAlign: 'center' }}>
+              <div style={{ color: '#cbd5e1', marginBottom: 12, display: 'flex', justifyContent: 'center' }}><Users size={48} /></div>
+              <div className="empty-text" style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-muted)' }}>{search ? `No customers match "${search}"` : 'No customers yet'}</div>
+              <div className="empty-sub" style={{ marginTop: 8 }}>
+                {!search && (
+                  <button className="btn btn-primary" onClick={openAdd} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, marginTop: 12 }}>
+                    <Plus size={14} /> Add First Customer
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
               <table>
                 <thead>
                   <tr>
-                    {isMergeMode && <th style={{ width: 40, padding: '12px 16px' }}></th>}
+                    {isAdmin && <th style={{ width: 40, padding: '12px 16px' }}></th>}
                     <th style={{ padding: '12px 16px' }}>{t('Name', 'नाम')}</th>
                     <th style={{ padding: '12px 16px' }}>{t('Phone', 'फ़ोन')}</th>
-                    <th style={{ padding: '12px 16px' }}>{t('Address', 'पता')}</th>
-                    {user?.role !== 'walkin_manager' && <th style={{ padding: '12px 16px' }}>GSTIN</th>}
+                    <th style={{ padding: '12px 16px', width: '15%', maxWidth: 150 }}>{t('Address', 'पता')}</th>
+                    {user?.role !== 'walkin_manager' && <th style={{ padding: '12px 16px', width: '12%', maxWidth: 130 }}>GSTIN</th>}
                     <th style={{ padding: '12px 16px' }} className="tr">Balance</th>
                     <th style={{ padding: '12px 16px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {customers.length === 0 ? (
-                    <tr>
-                      <td colSpan={isMergeMode ? 7 : 6} style={{ textAlign: 'center', padding: 32 }}>
-                        No customers. <button className="btn btn-outline btn-sm" onClick={openAdd}>Add first customer</button>
-                      </td>
-                    </tr>
-                  ) : (
-                    customers.map(c => (
+                  {sortedCustomers.map(c => (
                       <tr id={`customer-${c._id}`} key={c._id} style={{ 
                         borderBottom: '1px solid #f1f5f9', 
-                        cursor: isMergeMode ? 'pointer' : 'default', 
+                        cursor: isAdmin ? 'pointer' : 'default', 
                         transition: 'background-color 0.5s ease',
-                        background: highlightId === c._id ? 'var(--warning-light)' : selectedCustomers.includes(c._id) ? 'var(--primary-light)' : 'transparent' 
-                      }} onClick={() => isMergeMode && toggleSelectCustomer(c._id)}>
-                        {isMergeMode && (
-                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={selectedCustomers.includes(c._id)} 
-                              onChange={() => toggleSelectCustomer(c._id)}
-                              style={{ width: 16, height: 16, cursor: 'pointer' }}
-                            />
-                          </td>
-                        )}
+                        background: highlightId === c._id ? 'var(--warning-light)' : selectedCustomers.includes(c._id) ? 'var(--primary-light)' : 'transparent',
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none'
+                      }} 
+                        onDoubleClick={() => { if (!isMobile && isAdmin && selectedCustomers.length === 0) toggleSelectCustomer(c._id); }}
+                        onTouchStart={() => { if (isAdmin) handlePressStart(c._id); }}
+                        onTouchEnd={handlePressEnd}
+                        onTouchMove={handlePressEnd}
+                        onMouseDown={() => { if (isMobile && isAdmin) handlePressStart(c._id); }}
+                        onMouseUp={handlePressEnd}
+                        onMouseLeave={handlePressEnd}
+                        onClick={() => { if (isAdmin && selectedCustomers.length > 0) toggleSelectCustomer(c._id); }}
+                      >
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <div style={{ fontWeight: 700, color: 'var(--text)' }}>
@@ -588,7 +550,7 @@ export default function Customers() {
                         )}
                         <td style={{ padding: '12px 16px' }} className="tr">{balanceCell(c.balance)}</td>
                         <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'nowrap' }}>
                             {user?.role === 'temp_manager' && (
                               <Link to={`/invoices/new?customer_id=${c._id}`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#16a34a', borderColor: '#bbf7d0' }}>
                                 <FileText size={12} /> New Bill
@@ -599,10 +561,14 @@ export default function Customers() {
                                 <Clock size={12} /> History
                               </Link>
                             )}
-                            {c.balance > 0 && (
-                              <Link to={`/customers/${c._id}/history`} state={{ openCollect: true }} className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 700, background: '#16a34a', color: '#fff', border: 'none' }}>
+                            {c.balance > 0 ? (
+                              <Link to={`/customers/${c._id}/history`} state={{ openCollect: true }} className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 700, background: '#16a34a', color: '#fff', border: 'none', width: 85 }}>
                                 <CreditCard size={12} /> Collect
                               </Link>
+                            ) : (
+                              <button disabled className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, background: '#f8fafc', color: '#94a3b8', border: '1px dashed #cbd5e1', cursor: 'not-allowed', width: 85 }}>
+                                <Check size={12} /> Cleared
+                              </button>
                             )}
                             {user?.role !== 'walkin_manager' && (
                               <button className="btn btn-outline btn-sm" onClick={() => setShareModal(c)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#3b82f6', borderColor: '#bfdbfe' }}>
@@ -624,7 +590,7 @@ export default function Customers() {
                         </td>
                       </tr>
                     ))
-                  )}
+                  }
                 </tbody>
               </table>
             </div>
@@ -650,9 +616,9 @@ export default function Customers() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 16 }}>
                   {/* Full Name */}
                   <div className="form-group" style={{ gridColumn: 'span 12' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                      <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Full Name *</label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--text-muted)' }}>
+                    <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, display: 'block' }}>Full Name *</label>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--text-muted)', minWidth: '85px' }}>
                         {getPrefixOptions(form.name).map(opt => (
                           <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', margin: 0 }}>
                             <input 
@@ -667,9 +633,8 @@ export default function Customers() {
                           </label>
                         ))}
                       </div>
-                    </div>
-                    <div>
-                      <input 
+                      <div style={{ flex: 1 }}>
+                        <input 
                         ref={nameRef}
                         className="form-control" 
                         value={form.name} 
@@ -697,6 +662,7 @@ export default function Customers() {
                         style={{ flex: 1, borderRadius: 8 }} 
                       />
                     </div>
+                  </div>
                   </div>
 
                   {/* Phone */}
@@ -782,13 +748,15 @@ export default function Customers() {
                   </div>
 
                   {/* Address */}
-                  <div className="form-group" style={{ gridColumn: 'span 12' }}>
+                  <div className="form-group" style={{ gridColumn: 'span 12', position: 'relative' }}>
                     <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>{t('Address', 'पता')}</label>
-                    <textarea 
+                    <input 
+                      type="text"
                       ref={addressRef}
                       className="form-control" 
-                      rows={2} 
                       value={form.address} 
+                      onFocus={() => setAddressFocused(true)}
+                      onBlur={() => setTimeout(() => setAddressFocused(false), 200)}
                       onChange={e => {
                         const val = e.target.value;
                         const capitalized = val.replace(/\b[a-zA-Z]/g, c => c.toUpperCase());
@@ -801,8 +769,38 @@ export default function Customers() {
                         }
                       }}
                       placeholder="Full address" 
-                      style={{ borderRadius: 8 }} 
+                      style={{ borderRadius: 8, height: '42px' }} 
                     />
+                    
+                    {addressFocused && form.address.length > 0 && filteredAddressList.length > 0 && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', 
+                        borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                      }}>
+                        {filteredAddressList.map(addr => (
+                          <div 
+                            key={addr}
+                            style={{ 
+                              padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', 
+                              fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', 
+                              overflow: 'hidden', textOverflow: 'ellipsis' 
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setForm(f => ({ ...f, address: addr }));
+                              setAddressFocused(false);
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            title={addr}
+                          >
+                            {addr}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* GSTIN */}
@@ -984,7 +982,7 @@ export default function Customers() {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>Share Customer</h3>
-              <button className="btn-close" onClick={() => setShareModal(null)}><X size={20} /></button>
+              <button onClick={() => setShareModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: '4px' }}><X size={20} /></button>
             </div>
             <div className="modal-body" style={{ padding: '20px' }}>
               <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16 }}>
@@ -992,18 +990,48 @@ export default function Customers() {
               </p>
               <form onSubmit={handleShareSubmit}>
                 <div className="form-group" style={{ marginBottom: 16 }}>
-                  <label>Select Manager</label>
-                  <select 
-                    className="form-control" 
-                    value={selectedManagerId} 
-                    onChange={e => setSelectedManagerId(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Choose Manager --</option>
-                    {managers.filter(m => m._id !== user._id).map(m => (
-                      <option key={m._id} value={m._id}>{m.display_name || m.username}</option>
-                    ))}
-                  </select>
+                  <label style={{ fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, display: 'block' }}>Select Manager</label>
+                  <div style={{ 
+                    maxHeight: '220px', 
+                    overflowY: 'auto', 
+                    border: '1px solid var(--border)', 
+                    borderRadius: '10px',
+                    padding: '6px',
+                    background: 'var(--bg-card)'
+                  }}>
+                    {managers.filter(m => m._id !== user._id).map(m => {
+                      const isSelected = selectedManagerId === m._id;
+                      const name = m.display_name || m.username;
+                      return (
+                        <div 
+                          key={m._id} 
+                          onClick={() => setSelectedManagerId(m._id)}
+                          style={{ 
+                            padding: '10px 12px', 
+                            borderRadius: '8px', 
+                            cursor: 'pointer',
+                            background: isSelected ? 'var(--primary)' : 'transparent',
+                            color: isSelected ? 'white' : 'var(--text)',
+                            fontWeight: isSelected ? 600 : 500,
+                            display: 'flex', alignItems: 'center', gap: '12px',
+                            transition: 'all 0.2s',
+                            marginBottom: '2px'
+                          }}
+                        >
+                          <div style={{ 
+                            width: 32, height: 32, borderRadius: '50%', 
+                            background: isSelected ? 'rgba(255,255,255,0.2)' : '#e2e8f0', 
+                            color: isSelected ? 'white' : '#64748b', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                            fontSize: 14, fontWeight: 'bold' 
+                          }}>
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          {name}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
                   <button type="button" className="btn btn-secondary" onClick={() => setShareModal(null)}>{t('Cancel', 'रद्द करें')}</button>

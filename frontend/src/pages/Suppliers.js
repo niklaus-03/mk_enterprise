@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supplierApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
-import { Building2, Search, Phone, MapPin, Trash2, Plus, X, Edit, CreditCard, FileText, ArrowRight, Calendar, User, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building2, Search, Phone, MapPin, Trash2, Plus, X, Edit, CreditCard, FileText, ArrowRight, Calendar, User, ChevronDown, ChevronUp, ArrowLeft, ArrowUpDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
@@ -20,6 +20,8 @@ export default function Suppliers() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [sortBy, setSortBy] = useState('A-Z Name');
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const navigate = useNavigate();
   const fc = formatCurrency;
   
@@ -91,22 +93,35 @@ export default function Suppliers() {
   const filtered = suppliers.filter(s =>
     s.name?.toLowerCase().includes(search.toLowerCase()) ||
     s.phone?.includes(search)
-  );
+  ).sort((a, b) => {
+    if (sortBy === 'High Balance First') return (b.balance || 0) - (a.balance || 0);
+    if (sortBy === 'Low Balance First') return (a.balance || 0) - (b.balance || 0);
+    if (sortBy === 'A-Z Name') return (a.name || '').localeCompare(b.name || '');
+    if (sortBy === 'Z-A Name') return (b.name || '').localeCompare(a.name || '');
+    return 0;
+  });
 
 
   return (
     <div>
       {/* ── HEADER ── */}
-      <div className="page-header">
-        <div>
-          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
-              <Building2 size={22} />
-            </span>
-            <span>Suppliers Directory</span>
-          </div>
-          <div className="page-subtitle">
-            {suppliers.length} suppliers · Manage contacts and payment history
+      <div className="page-header" style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+              <Building2 size={22} className="text-primary" /> Suppliers Directory
+            </div>
+            <div className="page-subtitle" style={{ margin: 0 }}>
+              {suppliers.length} suppliers · Manage contacts and payment history
+            </div>
           </div>
         </div>
         {isAdmin && (
@@ -118,18 +133,61 @@ export default function Suppliers() {
 
       {/* ── MAIN CARD ── */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', maxWidth: isMobile ? '100%' : '320px' }}>
-            <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
-              <Search size={16} />
+        <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 60 }}>
+            <span style={{ position: 'absolute', left: 8, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
+              <Search size={14} />
             </span>
             <input
               className="form-control"
               placeholder="Search by name or phone..."
               value={search}
               onChange={e=> setSearch(e.target.value)}
-              style={{ paddingLeft: 36, fontSize: 14, borderRadius: 8 }}
+              style={{ paddingLeft: 28, fontSize: 13, borderRadius: 8, height: 34, width: '100%' }}
             />
+            {search && (
+              <button
+                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                onClick={() => setSearch('')}
+              >✕</button>
+            )}
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="btn btn-outline" 
+              onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '8px 10px' : '8px 14px', background: 'white' }}
+            >
+              <ArrowUpDown size={14} /> 
+              {!isMobile && <span style={{ fontSize: 13, fontWeight: 600 }}>{sortBy}</span>}
+            </button>
+            
+            {sortDropdownOpen && (
+              <>
+                <div 
+                  style={{ position: 'fixed', inset: 0, zIndex: 40 }} 
+                  onClick={() => setSortDropdownOpen(false)} 
+                />
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 180, overflow: 'hidden' }}>
+                  {[
+                    { label: 'A-Z Name', icon: '' },
+                    { label: 'Z-A Name', icon: '' },
+                    { label: 'High Balance First', icon: '↓' },
+                    { label: 'Low Balance First', icon: '↑' }
+                  ].map(opt => (
+                    <div 
+                      key={opt.label}
+                      onClick={() => { setSortBy(opt.label); setSortDropdownOpen(false); }}
+                      style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: sortBy === opt.label ? '#f8fafc' : 'white', fontWeight: sortBy === opt.label ? 600 : 500, color: sortBy === opt.label ? 'var(--primary)' : 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <span style={{ width: 14, textAlign: 'center', fontSize: 14 }}>{opt.icon}</span>
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -169,7 +227,7 @@ export default function Suppliers() {
                   {isAdmin ? (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 10, flexWrap: 'wrap', gap: 10 }}>
                       <button onClick={() => openHistory(s)} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                        <CreditCard size={13} /> Payment History <ArrowRight size={12} />
+                        <FileText size={13} /> History <ArrowRight size={12} />
                       </button>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => openEdit(s)} style={{ padding: '6px', borderRadius: 6 }} title="Edit">
@@ -256,7 +314,7 @@ export default function Suppliers() {
                           <td style={{ padding: '12px 16px' }}>
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                               <button onClick={() => openHistory(s)} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                                <CreditCard size={12} /> Payments
+                                <FileText size={12} /> History
                               </button>
                               <button className="btn btn-ghost btn-sm" style={{ padding: '6px', borderRadius: 6 }} onClick={() => openEdit(s)} title="Edit">
                                 <Edit size={14} />

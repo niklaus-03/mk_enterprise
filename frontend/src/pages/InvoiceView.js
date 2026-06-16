@@ -588,8 +588,17 @@ Thank you! 🙏`
       `}</style>
       {/* Action bar */}
       <div className="page-header no-print" style={{ marginBottom: 20 }}>
-        <div>
-          <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> {invoice.invoice_number}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> {invoice.invoice_number}</div>
           <div className="page-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {istDisplay} · 
             <span style={{
@@ -605,6 +614,7 @@ Thank you! 🙏`
               textTransform: 'uppercase'
             }}>{paymentStatusText}</span>
           </div>
+        </div>
         </div>
         <div className="page-actions">
           <Link to="/invoices" className="btn btn-outline d-inline-flex align-items-center gap-1"><ArrowLeft size={14} /> All Invoices</Link>
