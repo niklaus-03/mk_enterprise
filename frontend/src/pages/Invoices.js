@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Link, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { invoiceApi, driverApi } from '../utils/api';
+import { invoiceApi, driverApi, managerApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User, ArrowLeft } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User, MapPin, Truck, ArrowLeft, Check, ChevronDown } from 'lucide-react';
 
 export default function Invoices() {
   const { t } = useApp();
@@ -23,6 +23,16 @@ export default function Invoices() {
   const location = useLocation();
   const [highlightId, setHighlightId] = useState(location.state?.highlightInvoiceId || null);
   const navigate = useNavigate();
+
+  const getTodayDate = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [date, setDate] = useState(location.state?.date || getTodayDate());
+  const autoDateRef = useRef(!(location.state?.date || location.state?.managerId));
+  const [managerId, setManagerId] = useState(location.state?.managerId || '');
+  const [managers, setManagers] = useState([]);
+  const [managerDropdownOpen, setManagerDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (location.state?.highlightInvoiceId) {
@@ -99,16 +109,44 @@ export default function Invoices() {
     }
   };
 
+  useEffect(() => {
+    if (isAdmin) {
+      managerApi.getAll().then(res => setManagers(res.data?.managers || res.managers || [])).catch(console.error);
+    }
+  }, [isAdmin]);
+
   const load = useCallback(() => {
     setLoading(true);
     const requestLimit = highlightId ? 1000 : LIMIT;
-    invoiceApi.getAll({ limit: requestLimit, page, search: search || undefined, customer_id: customer_id || undefined })
-      .then(d => { setInvoices(d.invoices); setTotal(d.total); })
-      .catch(e => toast.error(e.message))
-      .finally(() => setLoading(false));
-  }, [page, search, customer_id, highlightId]);
+    const params = { limit: requestLimit, page, customer_id: customer_id || undefined };
+    if (search) {
+      params.search = search;
+    } else {
+      if (date) params.date = date;
+    }
+    if (managerId) params.manager_id = managerId;
 
-  useEffect(() => { setPage(1); }, [search, customer_id]);
+    invoiceApi.getAll(params)
+      .then(d => { 
+        if (autoDateRef.current && !search && date === getTodayDate()) {
+          autoDateRef.current = false;
+          if (d.invoices && d.invoices.length < 7) {
+            setDate(''); // clear date to load past invoices
+            return; // useEffect will re-trigger load() when date changes
+          }
+        }
+        autoDateRef.current = false;
+        setInvoices(d.invoices); 
+        setTotal(d.total); 
+      })
+      .catch(e => {
+        autoDateRef.current = false;
+        toast.error(e.message);
+      })
+      .finally(() => setLoading(false));
+  }, [page, search, date, managerId, customer_id, highlightId]);
+
+  useEffect(() => { setPage(1); }, [search, date, managerId, customer_id]);
   useEffect(() => { load(); }, [load]);
   useRegisterRefresh(load);
 
@@ -120,6 +158,17 @@ export default function Invoices() {
 
   const getInvoiceDue = (i) => Math.max(0, i.total - (i.amount_received || 0));
   const getTrueBalance = (i) => Math.max(0, (i.total_with_prev_balance || i.total) - (i.amount_received || 0));
+
+  const renderCreator = (inv, short = false) => {
+    const actual = inv.actual_creator?.display_name || inv.actual_creator?.username;
+    const owner = inv.created_by?.display_name || inv.created_by?.username;
+    
+    if (actual && owner && actual !== owner) {
+      return short ? `${actual.split(' ')[0]} (for ${owner.split(' ')[0]})` : `${actual} (for ${owner})`;
+    }
+    const single = actual || owner || 'Admin';
+    return short ? single.split(' ')[0] : single;
+  };
 
   const totalSales = parseFloat(invoices.reduce((s, i) => s + i.total, 0).toFixed(2));
   const totalDue = parseFloat(invoices.reduce((s, i) => s + getInvoiceDue(i), 0).toFixed(2));
@@ -202,13 +251,64 @@ export default function Invoices() {
       </div>
 
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           <div className="search-wrap" style={{ position: 'relative' }}>
             <span className="search-icon" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}><Search size={14} style={{ color: '#94a3b8' }} /></span>
             <input className="form-control" placeholder="Search by customer or invoice number..." value={search}
               onChange={e => setSearch(e.target.value)} style={{ width: 320, paddingLeft: 36 }} />
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input 
+            type="date" 
+            className="form-control" 
+            style={{ width: 'auto' }}
+            value={date} 
+            onChange={e => setDate(e.target.value)} 
+          />
+          {isAdmin && managers.length > 0 && (
+            <div style={{ position: 'relative', width: isMobile ? 38 : 'auto', flexShrink: 0 }}>
+              <div 
+                onClick={() => setManagerDropdownOpen(!managerDropdownOpen)}
+                style={{ borderRadius: 8, padding: isMobile ? '8px 4px' : '0 14px', height: 34, background: 'white', border: '1px solid #e2e8f0', color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'center' : 'space-between', fontWeight: 600, fontSize: 13, minWidth: isMobile ? 'auto' : 160, transition: 'all 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+              >
+                {isMobile ? <User size={16} color={managerId ? '#16a34a' : '#64748b'} /> : (
+                  <>
+                    <span style={{ color: managerId ? '#16a34a' : 'inherit' }}>
+                      {managerId ? managers.find(m => m._id === managerId)?.display_name || managers.find(m => m._id === managerId)?.username || 'Selected' : 'All Managers'}
+                    </span>
+                    <ChevronDown size={14} style={{ opacity: 0.5, marginLeft: 8 }} />
+                  </>
+                )}
+              </div>
+              
+              {managerDropdownOpen && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setManagerDropdownOpen(false)} />
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 200, maxHeight: 300, overflowY: 'auto' }}>
+                    <div 
+                      onClick={() => { setManagerId(''); setManagerDropdownOpen(false); }}
+                      style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: !managerId ? '#f0fdf4' : 'white', color: !managerId ? '#16a34a' : '#334155', fontWeight: !managerId ? 700 : 500, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                    >
+                      All Managers {!managerId && <Check size={14} />}
+                    </div>
+                    {managers.map(m => (
+                      <div 
+                        key={m._id}
+                        onClick={() => { setManagerId(m._id); setManagerDropdownOpen(false); }}
+                        style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', borderTop: '1px solid #f1f5f9', background: managerId === m._id ? '#f0fdf4' : 'white', color: managerId === m._id ? '#16a34a' : '#334155', fontWeight: managerId === m._id ? 700 : 500, display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'background 0.2s' }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = managerId === m._id ? '#f0fdf4' : '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = managerId === m._id ? '#f0fdf4' : 'white'}
+                      >
+                        {m.display_name || m.username} {managerId === m._id && <Check size={14} />}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: 'auto' }}>
             {selectedInvoices.length > 0 && (
               <>
                 <button 
@@ -312,8 +412,8 @@ export default function Invoices() {
                            )}
                         </div>
                         {isAdmin && (
-                          <div style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
-                            <User size={10} /> {inv.actual_creator?.display_name?.split(' ')[0] || inv.created_by?.username?.split(' ')[0] || 'Admin'}
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }} title={renderCreator(inv)}>
+                            <User size={10} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>{renderCreator(inv, true)}</span>
                           </div>
                         )}
                       </div>
@@ -418,7 +518,7 @@ export default function Invoices() {
                             </Link>
                             {isAdmin && (
                               <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                                <User size={12} /> By: {inv.actual_creator?.display_name || inv.actual_creator?.username || inv.created_by?.display_name || inv.created_by?.username || 'Admin'}
+                                <User size={12} /> By: {renderCreator(inv)}
                               </div>
                             )}
                           </div>

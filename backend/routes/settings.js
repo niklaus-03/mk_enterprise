@@ -30,6 +30,8 @@ const DEFAULTS = {
   // Enhancement 6: quintal-based tax system
   quintal_tax_enabled: false,
   tax_per_quintal: 0,           // ₹ per quintal (100 kg)
+  margin_enabled: true,         // Enable/disable profit margin globally
+  margin_type: 'numeric',       // 'numeric' or 'percentage'
   report_reminder_time: '19:00', // HH:mm IST - auto reminder for daily reports
 };
 

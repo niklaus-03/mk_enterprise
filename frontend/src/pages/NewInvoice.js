@@ -130,7 +130,7 @@ export default function NewInvoice() {
 
   const [customerMode, setCustomerMode] = useState('walkin');
   const [drafts, setDrafts] = useState([]);
-  const [showDrafts, setShowDrafts] = useState(false);
+  const [showDrafts, setShowDrafts] = useState(params.get('drafts') === 'true');
   const [customerId, setCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedManagerForBill, setSelectedManagerForBill] = useState('');
@@ -158,6 +158,7 @@ export default function NewInvoice() {
   const [totalWeight, setTotalWeight] = useState('');
   const [vehicleCharge, setVehicleCharge] = useState('');
   const [labourCharge, setLabourCharge] = useState('');
+  const [isTransportationInvoice, setIsTransportationInvoice] = useState(() => new URLSearchParams(location.search).get('type') === 'transportation');
   const [isManualBill, setIsManualBill] = useState(false);
   const [isDraftLoaded, setIsDraftLoaded] = useState(false);
   const [qrForCurrentBill, setQrForCurrentBill] = useState(false);
@@ -173,6 +174,15 @@ export default function NewInvoice() {
 
   const [billDate, setBillDate] = useState(getISTDateTime());
   const [manualBillRef, setManualBillRef] = useState('');
+
+  // Watch URL params for drafts
+  useEffect(() => {
+    const isDrafts = new URLSearchParams(location.search).get('drafts') === 'true';
+    if (isDrafts) {
+      setShowDrafts(true);
+      setStep(prev => prev === 0 ? 1 : prev);
+    }
+  }, [location.search]);
 
   // Load order parameter (if navigated from orders screen)
   useEffect(() => {
@@ -238,6 +248,8 @@ export default function NewInvoice() {
     }
   }, [user?.role]);
 
+  const [activeTrip, setActiveTrip] = useState(null);
+
   // Load pending dues for walk-ins
   useEffect(() => {
     dashboardApi.get().then(d => {
@@ -248,6 +260,7 @@ export default function NewInvoice() {
     if (user?.role === 'walkin_manager') {
       walkinApi.getActiveTrip().then(res => {
         if (res.active && res.trip) {
+          setActiveTrip(res.trip);
           setVehicleNumber(res.trip.vehicle_number || '');
           setDriverName(res.trip.driver_name || '');
         }
@@ -645,6 +658,7 @@ export default function NewInvoice() {
         override_creator_id: selectedManagerForBill,
         qr_for_current_bill: qrForCurrentBill,
         is_ledger_entry: isLedgerEntry,
+        is_transportation_invoice: isTransportationInvoice,
       };
 
       if (allowEditPrevDue) {
@@ -1128,9 +1142,44 @@ export default function NewInvoice() {
         {/* Drafts panel */}
       {draftsPanelNode}
 
-      
+      {!showDrafts && (
         <div className="row g-4" style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
           <div style={{ flex: '1 1 60%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {user?.role === 'walkin_manager' && activeTrip?.reinforcement?.vehicle_number && (
+            <div className="card" style={{ padding: '20px', marginBottom: '20px', border: '1px solid #fde68a', background: '#fffbeb' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #fde68a', paddingBottom: '12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Truck size={18} style={{ color: '#d97706' }} /> Select Vehicle (Reinforced Team)
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <div 
+                  onClick={() => {
+                    setVehicleNumber(activeTrip.vehicle_number);
+                    setDriverName(activeTrip.driver_name);
+                  }}
+                  style={{ flex: 1, minWidth: '200px', padding: '12px', border: vehicleNumber === activeTrip.vehicle_number ? '2px solid #d97706' : '1.5px solid #fcd34d', borderRadius: '8px', background: vehicleNumber === activeTrip.vehicle_number ? '#fef3c7' : '#fff', cursor: 'pointer', transition: 'all 0.2s' }}
+                >
+                  <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 4 }}>🚚 Original Vehicle</div>
+                  <div style={{ fontSize: 13, color: '#78350f' }}><strong>{activeTrip.vehicle_number}</strong></div>
+                  <div style={{ fontSize: 12, color: '#92400e' }}>Dr: {activeTrip.driver_name}</div>
+                </div>
+
+                <div 
+                  onClick={() => {
+                    setVehicleNumber(activeTrip.reinforcement.vehicle_number);
+                    setDriverName(activeTrip.reinforcement.driver_name);
+                  }}
+                  style={{ flex: 1, minWidth: '200px', padding: '12px', border: vehicleNumber === activeTrip.reinforcement.vehicle_number ? '2px solid #d97706' : '1.5px solid #fcd34d', borderRadius: '8px', background: vehicleNumber === activeTrip.reinforcement.vehicle_number ? '#fef3c7' : '#fff', cursor: 'pointer', transition: 'all 0.2s' }}
+                >
+                  <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 4 }}>🚛 Reinforcement</div>
+                  <div style={{ fontSize: 13, color: '#78350f' }}><strong>{activeTrip.reinforcement.vehicle_number}</strong></div>
+                  <div style={{ fontSize: 12, color: '#92400e' }}>Dr: {activeTrip.reinforcement.driver_name}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {user?.role !== 'walkin_manager' && (
             <div className="card" style={{ padding: '20px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
@@ -1193,6 +1242,12 @@ export default function NewInvoice() {
                     <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>{t('Labour Charge (₹)', 'श्रम शुल्क (₹)')}</label>
                     <input className="form-control" type="number" min="0" step="0.01" value={labourCharge} onChange={e => setLabourCharge(e.target.value)} placeholder="0.00" style={{ height: '40px', padding: '8px 12px', fontSize: '14px', borderRadius: '6px' }} />
                   </div>
+                </div>
+                <div style={{ marginTop: '16px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155', fontWeight: 600 }}>
+                    <input type="checkbox" checked={isTransportationInvoice} onChange={e => setIsTransportationInvoice(e.target.checked)} style={{ width: '16px', height: '16px' }} />
+                    Is Transportation Invoice (CSN format)
+                  </label>
                 </div>
               </div>
 
@@ -1535,6 +1590,7 @@ export default function NewInvoice() {
           </div>
           </div>
         </div>
+      )}
       </div>
     );
   }

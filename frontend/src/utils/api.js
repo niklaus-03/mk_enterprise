@@ -130,6 +130,7 @@ export const customerApi = {
   delegate: (id, manager_id) => api.post(`/customers/${id}/delegate`, { manager_id }),
   collectPayment: (id, data) => api.post(`/payments/collect/${id}`, data),
   getPaymentHistory: (id, params) => api.get(`/payments/history/${id}`, { params }),
+  getLedger: (id, params) => api.get(`/customer-ledger/${id}`, { params }),
 };
 
 // ── Product Lists ─────────────────────────────────────────────────────────────
@@ -184,7 +185,7 @@ export const deliveryApi = {
   }),
   create: (data) => api.post('/deliveries', data),
   updateStatus: (id, status) => api.patch(`/deliveries/${id}/status`, { status }),
-  updatePayment: (id, payment_status, payment_mode, notes, actual_paid_amount) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode, notes, actual_paid_amount }),
+  updatePayment: (id, payment_status, payment_mode, notes, actual_paid_amount, payment_action) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode, notes, actual_paid_amount, payment_action }),
   update: (id, data) => api.put(`/deliveries/${id}`, data),
   delete: (id) => api.delete(`/deliveries/${id}`),
 };
@@ -207,6 +208,8 @@ export const supplierApi = {
   delete: (id) => api.delete(`/suppliers/${id}`),
   linkCustomer: (id, customer_id) => api.post(`/suppliers/${id}/link_customer`, { customer_id }),
   unlinkCustomer: (id) => api.post(`/suppliers/${id}/unlink_customer`),
+  getLedger: (id, params) => api.get(`/supplier-ledger/${id}`, { params }),
+  getMasterLedger: (id) => api.get(`/supplier-ledger/${id}/master`),
 };
 
 // ── Settlements ───────────────────────────────────────────────────────────────
@@ -258,6 +261,9 @@ export const walkinApi = {
   getGlobalProducts: () => api.get('/walkin/global-products'),
   loadProducts: (data) => api.post('/walkin/load-products', data),
   getPreviousTripRemaining: () => api.get('/walkin/previous-trip-remaining'),
+  adminAssignVehicle: (data) => api.post('/walkin/admin-assign-vehicle', data),
+  adminAssignItems: (data) => api.post('/walkin/admin-assign-items', data),
+  assignReinforcement: (data) => api.post('/walkin/assign-reinforcement', data),
 };
 
 // ── Daily Reports ─────────────────────────────────────────────────────────────

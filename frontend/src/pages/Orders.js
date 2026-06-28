@@ -212,7 +212,7 @@ export default function OrdersPage() {
                         fontSize: 11, fontWeight: 700, padding: '3px 9px',
                         borderRadius: 8, border: '1px solid #fca5a5',
                         display: 'inline-flex', alignItems: 'center', gap: 4
-                      }}><AlertTriangle size={11} /> Overdue</span>
+                      }}><AlertTriangle size={11} /> Expired</span>
                     )}
                     {isToday && (
                       <span style={{

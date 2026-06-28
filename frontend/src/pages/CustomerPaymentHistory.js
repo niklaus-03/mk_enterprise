@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { customerApi, invoiceApi } from '../utils/api';
+import { customerApi, invoiceApi, supplierApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { ArrowLeft, Calendar, CreditCard, Users, Wallet, Printer, IndianRupee, ArrowDownLeft, ArrowUpRight, Clock, Receipt, FileText, X, Plus, Edit3, ChevronDown, ChevronUp, Package } from 'lucide-react';
 
@@ -22,6 +22,11 @@ export default function CustomerPaymentHistory() {
   const [payments, setPayments] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [totalPaid, setTotalPaid] = useState(0);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [linkedSupplier, setLinkedSupplier] = useState(null);
+
+  const [ledger, setLedger] = useState([]);
+  const [summary, setSummary] = useState({ totalOutstanding: 0, totalPurchases: 0, totalReceived: 0, advanceBalance: 0 });
 
   const todayStr = new Date().toLocaleDateString('en-CA');
   const [dateFilter, setDateFilter] = useState(todayStr);
@@ -30,21 +35,61 @@ export default function CustomerPaymentHistory() {
   const [showCollectModal, setShowCollectModal] = useState(false);
   const [collectForm, setCollectForm] = useState({ amount: '', mode: 'cash', reference: '', notes: '', selectedInvoices: [] });
   const [collecting, setCollecting] = useState(false);
-
-  const [expandedRow, setExpandedRow] = useState(null);
+  const [breakdownModalData, setBreakdownModalData] = useState(null);
 
   const [selectedEntries, setSelectedEntries] = useState([]);
   const [consolidating, setConsolidating] = useState(false);
+  const [showConsolidateConfirm, setShowConsolidateConfirm] = useState(false);
 
   const toggleEntry = (e, itemId) => {
     if (e) e.stopPropagation();
     setSelectedEntries(prev => prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]);
   };
 
+  const clickTimer = useRef(null);
+  const touchTimer = useRef(null);
+  const touchMoved = useRef(false);
+
+  const handleRowClick = (item) => {
+    if (selectedEntries.length > 0) {
+      toggleEntry(null, item.id);
+      return;
+    }
+    if (item.type !== 'payment' && item.type !== 'invoice' && item.type !== 'goods_entry') return;
+    setBreakdownModalData(item);
+  };
+
+  const handleTouchStart = (item) => {
+    if (item.type === 'goods_entry' && !item.isBilled) {
+      touchMoved.current = false;
+      touchTimer.current = setTimeout(() => {
+        if (!touchMoved.current) {
+          toggleEntry(null, item.id);
+          if (navigator.vibrate) navigator.vibrate(50);
+        }
+        touchTimer.current = null;
+      }, 500);
+    }
+  };
+
+  const handleTouchMove = () => {
+    touchMoved.current = true;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchTimer.current) {
+      clearTimeout(touchTimer.current);
+      touchTimer.current = null;
+    }
+  };
+
   const handleConsolidate = async () => {
     if (!selectedEntries.length) return;
-    if (!window.confirm(`Consolidate ${selectedEntries.length} entries into a single Invoice?`)) return;
-    
+    setShowConsolidateConfirm(true);
+  };
+
+  const confirmConsolidate = async () => {
+    setShowConsolidateConfirm(false);
     setConsolidating(true);
     try {
       await invoiceApi.consolidate({ customer_id: id, entryIds: selectedEntries });
@@ -68,10 +113,13 @@ export default function CustomerPaymentHistory() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await customerApi.getPaymentHistory(id, { all: 'true' });
+      const params = isFullHistory ? { all: 'true' } : { date: dateFilter };
+      const res = await customerApi.getLedger(id, params);
+      setCustomer(res.customer || null);
+      setLedger(res.ledger || []);
+      setSummary(res.summary || { totalOutstanding: 0, totalPurchases: 0, totalBilled: 0, totalReceived: 0, advanceBalance: 0, totalConcession: 0 });
       setPayments(res.payments || []);
       setInvoices(res.invoices || []);
-      setCustomer(res.customer || null);
       setTotalPaid(res.totalPaid || 0);
     } catch (e) {
       toast.error(e.message || 'Failed to load history');
@@ -80,7 +128,22 @@ export default function CustomerPaymentHistory() {
     }
   };
 
-  useEffect(() => { loadData(); }, [id]);
+  useEffect(() => { loadData(); }, [id, dateFilter, isFullHistory]);
+
+  useEffect(() => {
+    const fetchLinkedSupplier = async () => {
+      if (customer?.linked_supplier_id) {
+        try {
+          const suppId = typeof customer.linked_supplier_id === 'object' ? customer.linked_supplier_id._id : customer.linked_supplier_id;
+          const allSuppliers = await supplierApi.getAll();
+          const list = Array.isArray(allSuppliers) ? allSuppliers : (allSuppliers.data || []);
+          const found = list.find(s => s._id === suppId);
+          if (found) setLinkedSupplier(found);
+        } catch (e) { console.error('Failed to load linked supplier'); }
+      }
+    };
+    fetchLinkedSupplier();
+  }, [customer]);
 
   useEffect(() => {
     if (showCollectModal) document.body.style.overflow = 'hidden';
@@ -95,114 +158,6 @@ export default function CustomerPaymentHistory() {
     }
   }, [state, customer, loading]);
 
-  const buildLedger = () => {
-    let items = [];
-
-    // Add Payments
-    payments.forEach(p => {
-      items.push({
-        _raw: p,
-        type: 'payment',
-        dateObj: new Date(p.date),
-        id: p._id,
-        ref: p.reference || p.mode,
-        desc: p.notes || `Payment via ${(p.mode||'cash').replace('_',' ')}`,
-        invoiceAmt: 0,
-        receivedAmt: p.amount,
-        mode: p.mode,
-        collected_by: p.collected_by
-      });
-    });
-
-    // Add Invoices & Goods Entries
-    invoices.forEach(i => {
-      if (i.is_ledger_entry) {
-        items.push({
-          _raw: i,
-          type: 'goods_entry',
-          dateObj: new Date(i.date),
-          id: i._id,
-          ref: i.invoice_number || 'Khata Entry',
-          desc: i.consolidated_into ? 'Billed in Invoice' : 'Unbilled Goods Entry',
-          invoiceAmt: 0, // Doesn't hit running balance until consolidated
-          receivedAmt: 0,
-          isBilled: !!i.consolidated_into,
-          billedInId: i.consolidated_into
-        });
-      } else {
-        items.push({
-          _raw: i,
-          type: 'invoice',
-          dateObj: new Date(i.date),
-          id: i._id,
-          ref: i.invoice_number,
-          desc: i.notes || 'Sales Invoice',
-          invoiceAmt: i.total,
-          receivedAmt: 0
-        });
-      }
-    });
-
-    // Filter by Date if needed
-    if (!isFullHistory && dateFilter) {
-      items = items.filter(item => {
-        if (item._raw.ist_date) return item._raw.ist_date === dateFilter;
-        const d = new Date(item.dateObj);
-        const istD = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
-        return istD.toISOString().slice(0, 10) === dateFilter;
-      });
-    }
-
-    // Sort oldest to newest to compute running balance
-    items.sort((a, b) => a.dateObj - b.dateObj);
-
-    // Calculate sum of due changes
-    let sumDueChanges = 0;
-    items.forEach(item => {
-      sumDueChanges += (item.invoiceAmt - item.receivedAmt);
-    });
-
-    // Brought Forward logic ensures actual balance matches the computed ending balance
-    let broughtForward = (customer?.balance || 0) - sumDueChanges;
-    let currentBalance = broughtForward;
-    let computedLedger = [];
-
-    // Add Brought Forward row
-    if (Math.abs(broughtForward) > 0.01 || (items.length > 0 && invoices.length === 100)) {
-      computedLedger.push({
-        type: 'opening_balance',
-        dateObj: items.length > 0 ? new Date(items[0].dateObj.getTime() - 1000) : new Date(),
-        id: 'brought_forward',
-        ref: '-',
-        desc: 'Previous Balance (Brought Forward)',
-        openingBalance: 0,
-        invoiceAmt: broughtForward > 0 ? broughtForward : 0,
-        receivedAmt: broughtForward < 0 ? Math.abs(broughtForward) : 0,
-        dueChange: broughtForward,
-        runningBalance: broughtForward,
-        isBroughtForward: true
-      });
-    }
-
-    items.forEach(item => {
-      let opBal = currentBalance;
-      let dueChange = item.invoiceAmt - item.receivedAmt;
-      currentBalance += dueChange;
-      
-      computedLedger.push({
-        ...item,
-        openingBalance: opBal,
-        dueChange: dueChange,
-        runningBalance: currentBalance
-      });
-    });
-
-    // Reverse to show newest first
-    computedLedger.reverse();
-    return computedLedger;
-  };
-
-  const ledger = buildLedger();
   const unpaidInvoices = invoices.filter(i => !i.is_ledger_entry && i.balance_due > 0.01);
   const unpaidInvoicesSum = unpaidInvoices.reduce((s, i) => s + (i.balance_due || 0), 0);
   const unpaidOpeningBalance = Math.max(0, (customer?.balance || 0) - unpaidInvoicesSum);
@@ -319,24 +274,23 @@ export default function CustomerPaymentHistory() {
     }
   };
 
-  const calculateKPIs = () => {
-    let totalPurchases = invoices.filter(i => !i.is_ledger_entry).reduce((s, i) => s + (i.total || 0), 0);
-    let totalOutstanding = Math.max(0, customer?.balance || 0);
-    let totalAdv = Math.max(0, -(customer?.balance || 0));
-    let lastDate = ledger.length > 0 ? formatDate(ledger[0].dateObj) : 'N/A';
-    return { totalPurchases, totalOutstanding, totalAdv, lastDate };
+  const kpis = {
+    totalPurchases: summary.totalPurchases,
+    totalBilled: summary.totalBilled,
+    totalOutstanding: summary.totalOutstanding,
+    totalAdv: summary.advanceBalance,
+    totalConcession: summary.totalConcession || 0,
+    lastDate: ledger.length > 0 && ledger[0].date ? formatDate(ledger[0].date) : 'N/A',
   };
 
   if (loading) {
     return <div className="loading" style={{ minHeight: 300 }}><span className="spinner"></span></div>;
   }
 
-  const kpis = calculateKPIs();
-
   return (
     <div style={{ paddingBottom: 60 }}>
       
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: isMobile ? '8px' : '16px', marginBottom: isMobile ? '12px' : '24px', overflowX: 'auto', whiteSpace: 'nowrap', flexDirection: isMobile ? 'column' : 'row' }} className="no-print">
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button 
             onClick={() => navigate('/customers')}
@@ -348,76 +302,108 @@ export default function CustomerPaymentHistory() {
           </button>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
-              <Users size={22} className="text-primary" /> {customer?.name || 'Customer'} Ledger
+              <Users size={22} className="text-primary" /> {customer?.name || 'Customer'}
             </div>
-            <div className="page-subtitle" style={{ margin: 0 }}>
+            <div className="page-subtitle" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               Ledger statement & payment history
+              {linkedSupplier && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600 }}>
+                  🔗 Linked to Supplier: {linkedSupplier.name}
+                </div>
+              )}
             </div>
           </div>
         </div>
         
-        <div style={{ display: 'flex', gap: isMobile ? 6 : 12, flexShrink: 0, flexDirection: isMobile ? 'column' : 'row' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'auto auto', gap: isMobile ? 8 : 12, alignItems: 'center', flexShrink: 0, width: isMobile ? '100%' : 'auto' }}>
           <button 
-            className="btn btn-primary" 
+            className="btn" 
             onClick={() => setShowCollectModal(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : undefined, fontSize: isMobile ? 12 : undefined }}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : '8px 14px', fontSize: isMobile ? 12 : 13, background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', width: isMobile ? '100%' : 'auto', fontWeight: 600 }}
           >
-            <CreditCard size={14} /> Record Payment
+            <Wallet size={14} /> Record Payment
           </button>
-          <button 
-            className="btn btn-outline" 
-            onClick={() => window.print()} 
-            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : undefined, fontSize: isMobile ? 12 : undefined, background: 'white' }}
-          >
-            <Printer size={14} /> Export PDF
-          </button>
+          {linkedSupplier && (
+            <button 
+              className="btn" 
+              onClick={() => navigate(`/suppliers/${linkedSupplier._id}/master-ledger`)}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : '8px 14px', fontSize: isMobile ? 12 : 13, background: '#ffedd5', border: '1px solid #fdba74', color: '#c2410c', width: isMobile ? '100%' : 'auto', fontWeight: 600, gridColumn: isMobile ? '1 / -1' : 'auto', marginTop: isMobile ? 12 : 0 }}
+            >
+              <FileText size={14} /> View Master Ledger
+            </button>
+          )}
         </div>
       </div>
 
       {/* ── SUMMARY CARDS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <div style={{ padding: '16px 20px', background: '#fffbeb', border: '1px solid #fde68a', borderLeft: '6px solid #f59e0b', borderRadius: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <Wallet size={18} color="#475569" />
-            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Outstanding</div>
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#d97706' }}>{fc(kpis.totalOutstanding)}</div>
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(250px, 1fr))', gap: isMobile ? 8 : 16, marginBottom: 24 }}>
         
-        <div style={{ padding: '16px 20px', background: '#fef2f2', border: '1px solid #fecaca', borderLeft: '6px solid #ef4444', borderRadius: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <ArrowUpRight size={18} color="#475569" />
-            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Purchases</div>
+        {/* 1. Total Balance (Billed + Opening) Card */}
+        <div style={{ padding: isMobile ? '12px' : '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, marginBottom: isMobile ? 8 : 12 }}>
+            <div style={{ width: isMobile ? 26 : 34, height: isMobile ? 26 : 34, borderRadius: '8px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               <ArrowUpRight size={isMobile ? 14 : 18} />
+            </div>
+            <div style={{ fontSize: isMobile ? 10 : 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.2 }}>Total Billed</div>
           </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#dc2626' }}>{fc(kpis.totalPurchases)}</div>
+          <div style={{ fontSize: isMobile ? 16 : 24, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>{fc(kpis.totalBilled)}</div>
         </div>
 
-        <div style={{ padding: '16px 20px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderLeft: '6px solid #10b981', borderRadius: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <ArrowDownLeft size={18} color="#475569" />
-            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Received</div>
+        {/* 2. Total Received Card */}
+        <div style={{ padding: isMobile ? '12px' : '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, marginBottom: isMobile ? 8 : 12 }}>
+            <div style={{ width: isMobile ? 26 : 34, height: isMobile ? 26 : 34, borderRadius: '8px', background: '#dcfce7', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               <ArrowDownLeft size={isMobile ? 14 : 18} />
+            </div>
+            <div style={{ fontSize: isMobile ? 10 : 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.2 }}>Amount Received</div>
           </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#059669' }}>{fc(totalPaid)}</div>
+          <div style={{ fontSize: isMobile ? 16 : 24, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>{fc(totalPaid)}</div>
         </div>
 
-        <div style={{ padding: '16px 20px', background: '#eff6ff', border: '1px solid #bfdbfe', borderLeft: '6px solid #3b82f6', borderRadius: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <CreditCard size={18} color="#475569" />
-            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Advance Balance</div>
+        {/* 3. Dynamic Balance Card (Outstanding/Advance) */}
+        {kpis.totalAdv > 0 ? (
+          <div style={{ padding: isMobile ? '12px' : '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, marginBottom: isMobile ? 8 : 12 }}>
+              <div style={{ width: isMobile ? 26 : 34, height: isMobile ? 26 : 34, borderRadius: '8px', background: '#dbeafe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                 <CreditCard size={isMobile ? 14 : 18} />
+              </div>
+              <div style={{ fontSize: isMobile ? 10 : 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.2 }}>Advance Balance</div>
+            </div>
+            <div style={{ fontSize: isMobile ? 16 : 24, fontWeight: 800, color: '#10b981', letterSpacing: '-0.5px' }}>{fc(kpis.totalAdv)}</div>
           </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#2563eb' }}>{fc(kpis.totalAdv)}</div>
+        ) : (
+          <div style={{ padding: isMobile ? '12px' : '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, marginBottom: isMobile ? 8 : 12 }}>
+              <div style={{ width: isMobile ? 26 : 34, height: isMobile ? 26 : 34, borderRadius: '8px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                 <Wallet size={isMobile ? 14 : 18} />
+              </div>
+              <div style={{ fontSize: isMobile ? 10 : 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.2 }}>Balance Due</div>
+            </div>
+            <div style={{ fontSize: isMobile ? 16 : 24, fontWeight: 800, color: '#dc2626', letterSpacing: '-0.5px' }}>{fc(kpis.totalOutstanding)}</div>
+          </div>
+        )}
+
+        {/* 4. Concessions Given Card */}
+        <div style={{ padding: isMobile ? '12px' : '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, marginBottom: isMobile ? 8 : 12 }}>
+            <div style={{ width: isMobile ? 26 : 34, height: isMobile ? 26 : 34, borderRadius: '8px', background: '#fce7f3', color: '#db2777', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               <Package size={isMobile ? 14 : 18} />
+            </div>
+            <div style={{ fontSize: isMobile ? 10 : 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.2 }}>Total Discount</div>
+          </div>
+          <div style={{ fontSize: isMobile ? 16 : 24, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>{fc(kpis.totalConcession)}</div>
         </div>
       </div>
 
       {/* ── LEDGER CARD ── */}
       <div className="card" style={{ overflow: 'hidden' }}>
-        <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, background: '#f8fafc' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 15 }}>
+        <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', gap: 12, background: '#f8fafc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap' }}>
             <Clock size={18} className="text-primary" /> 
             {isFullHistory ? 'Complete Ledger Statement' : 'Ledger for Date'}
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, whiteSpace: 'nowrap' }}>
             <button
               onClick={() => {
                 const unbilledIds = ledger.filter(i => i.type === 'goods_entry' && !i.isBilled).map(i => i.id);
@@ -444,7 +430,6 @@ export default function CustomerPaymentHistory() {
             {!isFullHistory ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', background: 'white', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                  <Calendar size={14} className="text-muted" style={{ marginRight: 8 }} />
                   <input
                     type="date"
                     value={dateFilter}
@@ -465,143 +450,144 @@ export default function CustomerPaymentHistory() {
         </div>
 
         <div className="card-body no-pad" style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1000 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: isMobile ? 800 : 1000 }}>
             <thead style={{ background: 'white', position: 'sticky', top: 0, zIndex: 10 }}>
               <tr style={{ background: 'white', borderBottom: '2px solid #e2e8f0' }}>
-                <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date</th>
-                <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Type</th>
-                <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ref No.</th>
-                <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Description</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Op. Balance</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Invoice Amt (Dr)</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Received (Cr)</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Due Change</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Running Bal</th>
+                <th style={{ padding: isMobile ? '10px 16px' : '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date</th>
+                <th style={{ padding: isMobile ? '10px 16px' : '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Details</th>
+                <th style={{ padding: isMobile ? '10px 16px' : '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Invoice (₹)</th>
+                <th style={{ padding: isMobile ? '10px 16px' : '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Paid (₹)</th>
+                <th style={{ padding: isMobile ? '10px 16px' : '14px 20px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Balance (₹)</th>
               </tr>
             </thead>
             <tbody>
               {ledger.length === 0 ? (
                 <tr><td colSpan="9" style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>No transaction history available.</td></tr>
               ) : ledger.map((item, idx) => {
-                const ts = getTypeStyle(item.type, item.isBilled);
-                const isExpanded = expandedRow === item.id;
+                const isPayment = item.type === 'payment';
+                const isOpening = item.isBroughtForward;
+                const isInvoice = item.type === 'invoice';
+                const isGoodsEntry = item.type === 'goods_entry';
+                
+                let rowBg = 'white';
+                let hoverBg = '#f8fafc';
+                let iconBg = '';
+                let iconColor = '';
+                let detailText = item.desc;
+                
+                if (isOpening) {
+                  iconBg = '#e2e8f0'; iconColor = '#64748b';
+                } else if (isPayment) {
+                  iconBg = '#dcfce7'; iconColor = '#15803d'; // Green for incoming payment
+                  rowBg = '#f0fdf4'; 
+                  hoverBg = '#dcfce7';
+                } else if (isInvoice) {
+                  const isFullyPaid = ((item.receivedAmt || 0) + (item.details?.discount || 0)) >= (item.invoiceAmt || 0) && (item.invoiceAmt > 0 || item.receivedAmt > 0);
+                  const isPartiallyPaid = (item.receivedAmt || 0) > 0 && !isFullyPaid;
+                  
+                  if (isFullyPaid) {
+                    iconBg = '#e0e7ff'; iconColor = '#4f46e5'; // Indigo
+                    rowBg = '#eef2ff'; 
+                    hoverBg = '#e0e7ff';
+                  } else if (isPartiallyPaid) {
+                    iconBg = '#fef3c7'; iconColor = '#d97706'; // Amber
+                    rowBg = '#fffbeb'; 
+                    hoverBg = '#fef3c7';
+                  } else {
+                    iconBg = '#fee2e2'; iconColor = '#ef4444'; // Red (Due)
+                    rowBg = '#fff5f5'; 
+                    hoverBg = '#fee2e2';
+                  }
+                } else if (isGoodsEntry) {
+                  iconBg = item.isBilled ? '#f1f5f9' : '#fee2e2'; 
+                  iconColor = item.isBilled ? '#64748b' : '#dc2626';
+                  rowBg = item.isBilled ? 'white' : '#fff5f5';
+                  hoverBg = item.isBilled ? '#f8fafc' : '#fee2e2';
+                }
+
                 return (
                   <React.Fragment key={item.id + idx}>
                     <tr 
-                      onClick={() => {
-                        if (item.type === 'goods_entry' && !item.isBilled) {
-                          toggleEntry(null, item.id);
-                        } else {
-                          setExpandedRow(isExpanded ? null : item.id);
-                        }
-                      }}
+                      onClick={() => handleRowClick(item)}
+                      onTouchStart={() => handleTouchStart(item)}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchCancel={handleTouchEnd}
                       style={{ 
                         borderBottom: '1px solid #f1f5f9', 
                         cursor: 'pointer',
-                        background: selectedEntries.includes(item.id) ? '#eff6ff' : (isExpanded ? '#f8fafc' : (item.isBroughtForward ? '#fdf8f6' : '#fff')),
+                        userSelect: 'none',
+                        background: selectedEntries.includes(item.id) ? '#e0f2fe' : (isOpening ? '#fdf8f6' : rowBg),
+                        boxShadow: selectedEntries.includes(item.id) ? 'inset 4px 0 0 #0284c7' : 'none',
                         transition: 'background 0.2s ease'
                       }}
-                      className="hover-bg-slate-50"
+                      onMouseEnter={e => { if(!selectedEntries.includes(item.id)) e.currentTarget.style.background = hoverBg }}
+                      onMouseLeave={e => { if(!selectedEntries.includes(item.id)) e.currentTarget.style.background = isOpening ? '#fdf8f6' : rowBg }}
                     >
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                          {item.type === 'goods_entry' && !item.isBilled && (
-                            <div onClick={(e) => toggleEntry(e, item.id)} style={{ paddingTop: 2 }}>
-                              <input 
-                                type="checkbox" 
-                                checked={selectedEntries.includes(item.id)} 
-                                onChange={(e) => toggleEntry(e, item.id)} 
-                                style={{ width: 16, height: 16, cursor: 'pointer' }}
-                              />
-                            </div>
-                          )}
+                      <td style={{ padding: '16px 20px', verticalAlign: 'top' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>
+                          {isOpening ? '-' : formatDate(item.date).replace(/ /g, ' ')}
+                        </div>
+                        {!isOpening && (
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                            {formatTime(item.date)}
+                          </div>
+                        )}
+                        {!isOpening && item.collected_by && (
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
+                            By: {item.collected_by.display_name || item.collected_by.username || 'Admin'}
+                          </div>
+                        )}
+                      </td>
+
+                      <td style={{ padding: '16px 20px', verticalAlign: 'top' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                          <div style={{ 
+                            width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            background: iconBg,
+                            color: iconColor
+                          }}>
+                            {isOpening ? <Clock size={16} /> : isPayment ? <ArrowDownLeft size={16} /> : isGoodsEntry ? <Package size={16} /> : <FileText size={16} />}
+                          </div>
                           <div>
-                            <div style={{ fontWeight: 600, color: '#1e293b' }}>{item.isBroughtForward ? '-' : formatDate(item.dateObj)}</div>
-                            {!item.isBroughtForward && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{formatTime(item.dateObj)}</div>}
+                            <div style={{ fontWeight: 600, fontSize: 14, color: isOpening ? '#64748b' : 'var(--text)' }}>
+                              {detailText}
+                            </div>
+                        
+                            {!isOpening && (
+                              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {item.ref && (
+                                  <div>Ref: {isInvoice || isGoodsEntry ? (
+                                    <Link to={`/invoices/${item.id}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
+                                      {item.ref}
+                                    </Link>
+                                  ) : item.ref.toUpperCase()}</div>
+                                )}
+                                {item.isBilled && item.billedInId && (
+                                  <div><Link to={`/invoices/${item.billedInId}`} onClick={e => e.stopPropagation()} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 500 }}>→ View Bill</Link></div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: ts.bg, color: ts.color, border: `1px solid ${ts.border}` }}>
-                          {ts.icon} {ts.label}
-                        </span>
+
+                      <td style={{ padding: '16px 20px', textAlign: 'right', verticalAlign: 'top', fontWeight: 600, color: (isInvoice || isGoodsEntry) ? '#0f766e' : 'var(--text-muted)', fontSize: 15 }}>
+                        {isOpening ? '-' : item.invoiceAmt > 0 ? fc(item.invoiceAmt) : '-'}
                       </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', fontFamily: 'monospace', fontWeight: 600, color: '#475569' }}>
-                        {item.type === 'invoice' || item.type === 'goods_entry' ? (
-                          <Link to={`/invoices/${item.id}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--primary)', textDecoration: 'none' }}>
-                            {item.ref}
-                          </Link>
-                        ) : (
-                          item.ref?.toUpperCase()
-                        )}
+                      
+                      <td style={{ padding: '16px 20px', textAlign: 'right', verticalAlign: 'top', fontWeight: 600, color: isPayment ? '#16a34a' : 'var(--text-muted)', fontSize: 15 }}>
+                        {isOpening ? '-' : item.receivedAmt > 0 ? fc(item.receivedAmt) : '-'}
+                        {item.details?.discount > 0 && <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>+ {fc(item.details.discount)} Discount</div>}
                       </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', color: '#475569' }}>
-                        <div style={{ fontWeight: 500 }}>{item.desc}</div>
-                        {item.isBilled && item.billedInId && (
-                          <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 4 }}>
-                            → <Link to={`/invoices/${item.billedInId}`} onClick={e => e.stopPropagation()} style={{ color: '#3b82f6', textDecoration: 'none' }}>View Bill</Link>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right', fontWeight: 500, color: '#64748b' }}>
-                        {item.isBroughtForward ? '-' : fc(item.openingBalance)}
-                      </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right', fontWeight: 700, color: item.invoiceAmt > 0 ? '#dc2626' : '#94a3b8' }}>
-                        {item.isBroughtForward ? '-' : item.invoiceAmt > 0 ? fc(item.invoiceAmt) : '-'}
-                      </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right', fontWeight: 700, color: item.receivedAmt > 0 ? '#16a34a' : '#94a3b8' }}>
-                        {item.isBroughtForward ? '-' : item.receivedAmt > 0 ? fc(item.receivedAmt) : '-'}
-                      </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right', fontWeight: 700, color: item.dueChange > 0 ? '#dc2626' : item.dueChange < 0 ? '#16a34a' : '#94a3b8' }}>
-                        {item.dueChange > 0 ? `+${fc(item.dueChange)}` : item.dueChange < 0 ? `${fc(item.dueChange)}` : '-'}
-                      </td>
-                      <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right', fontWeight: 800, color: item.runningBalance > 0 ? '#dc2626' : item.runningBalance < 0 ? '#16a34a' : '#1e293b', background: '#f8fafc', borderLeft: '1px solid #e2e8f0' }}>
+                      
+                      <td style={{ padding: '16px 20px', textAlign: 'right', verticalAlign: 'top', fontWeight: 800, color: item.runningBalance > 0 ? '#dc2626' : item.runningBalance < 0 ? '#16a34a' : 'var(--text)', fontSize: 15 }}>
                         {item.runningBalance !== 0 ? fc(Math.abs(item.runningBalance)) : '₹0.00'}
+                        {item.runningBalance > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', marginTop: 4, letterSpacing: '0.5px' }}>DUE</div>}
+                        {item.runningBalance < 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', marginTop: 4, letterSpacing: '0.5px' }}>ADVANCE</div>}
                       </td>
                     </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan="9" style={{ padding: 0 }}>
-                          <div style={{ background: '#f8fafc', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
-                            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                              <div style={{ flex: 1, minWidth: 280 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>Transaction Details</div>
-                                {item.type === 'payment' ? (
-                                  <div style={{ fontSize: 13, color: '#475569', display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px 16px' }}>
-                                    <div style={{ fontWeight: 600 }}>Mode:</div><div>{(item.mode||'').toUpperCase()}</div>
-                                    <div style={{ fontWeight: 600 }}>Reference:</div><div>{item.ref || 'N/A'}</div>
-                                    <div style={{ fontWeight: 600 }}>Collected By:</div><div>{item.collected_by?.display_name || item.collected_by?.username || 'Admin'}</div>
-                                    <div style={{ fontWeight: 600 }}>Notes:</div><div>{item._raw.notes || 'N/A'}</div>
-                                  </div>
-                                ) : (
-                                  <div style={{ fontSize: 13, color: '#475569', display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px 16px' }}>
-                                    <div style={{ fontWeight: 600 }}>Invoice No:</div><div>{item.ref}</div>
-                                    <div style={{ fontWeight: 600 }}>Items Count:</div><div>{item._raw.items?.length || 0}</div>
-                                    <div style={{ fontWeight: 600 }}>Subtotal:</div><div>{fc(item._raw.subtotal || 0)}</div>
-                                    <div style={{ fontWeight: 600 }}>Discount:</div><div>{fc(item._raw.discount || 0)}</div>
-                                    <div style={{ fontWeight: 600 }}>Total:</div><div>{fc(item._raw.total || 0)}</div>
-                                    <div style={{ fontWeight: 600 }}>Notes:</div><div>{item._raw.notes || 'N/A'}</div>
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                                {item.type === 'payment' && (
-                                  <button className="btn btn-outline btn-sm" onClick={(e) => { e.stopPropagation(); printReceipt(item._raw); }} style={{ background: '#fff', display: 'flex', alignItems: 'center' }}>
-                                    <Printer size={14} style={{ marginRight: 6 }}/> Print Receipt
-                                  </button>
-                                )}
-                                {(item.type === 'invoice' || item.type === 'goods_entry') && (
-                                  <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); navigate(`/invoices/${item.id}`); }} style={{ display: 'flex', alignItems: 'center' }}>
-                                    <FileText size={14} style={{ marginRight: 6 }}/> View Full Invoice
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                    </React.Fragment>
                 );
               })}
             </tbody>
@@ -609,80 +595,220 @@ export default function CustomerPaymentHistory() {
         </div>
       </div>
 
-      {/* ── COLLECT PAYMENT MODAL ── */}
-      {showCollectModal && (
-        <div className="modal-overlay" onClick={() => setShowCollectModal(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.60)', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: '480px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e2e8f0', margin: '16px' }}>
-            <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 16, color: 'var(--text)' }}>
-                <CreditCard size={18} style={{ color: '#facc15' }} />
-                Receive Payment
+      {/* ── BREAKDOWN MODAL ── */}
+      {breakdownModalData && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setBreakdownModalData(null)} />
+          <div className="modal-content" style={{ position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 500, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
+            
+            {/* Header */}
+            <div style={{ padding: '24px 24px 20px', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 18, color: '#0f172a' }}>
+                  <span style={{ color: '#0284c7', display: 'flex', alignItems: 'center', background: '#e0f2fe', padding: 8, borderRadius: 8 }}>
+                    <FileText size={20} />
+                  </span>
+                  <span>Transaction Details</span>
+                </div>
               </div>
-              <button onClick={() => setShowCollectModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16 }}>
-                <X size={20} />
+              <button onClick={() => setBreakdownModalData(null)} style={{ background: 'white', border: '1px solid #e2e8f0', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                <X size={16} />
               </button>
             </div>
-            <div style={{ padding: '20px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
-              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Customer</div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{customer?.name}</div>
-                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 800, color: '#dc2626' }}>
-                  Current Due: {fc(Math.max(0, customer?.balance || 0))}
-                </div>
-              </div>
 
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Amount Received ₹ *</label>
-                <input className="form-control" type="number" step="0.01" min="0" autoFocus
-                  value={collectForm.amount} onChange={e => setCollectForm({ ...collectForm, amount: e.target.value })}
-                  placeholder="0.00" style={{ borderRadius: 8, fontSize: 16, fontWeight: 700 }} />
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+            {/* Body */}
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
+              <div style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: 12, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+                {breakdownModalData.type === 'payment' ? (
+                  <div style={{ fontSize: 14, color: '#475569', display: 'grid', gridTemplateColumns: '130px 1fr', gap: '12px 16px' }}>
+                    <div style={{ fontWeight: 600 }}>Mode:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{(breakdownModalData.mode||'').toUpperCase()}</div>
+                    <div style={{ fontWeight: 600 }}>Reference:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{breakdownModalData.ref || 'N/A'}</div>
+                    <div style={{ fontWeight: 600 }}>Collected By:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{breakdownModalData.collected_by?.display_name || breakdownModalData.collected_by?.username || 'Admin'}</div>
+                    <div style={{ fontWeight: 600 }}>Notes:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{(breakdownModalData.details?.notes) || 'N/A'}</div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 14, color: '#475569', display: 'grid', gridTemplateColumns: '130px 1fr', gap: '12px 16px' }}>
+                    <div style={{ fontWeight: 600 }}>{breakdownModalData.type === 'goods_entry' ? 'Challan No:' : 'Invoice No:'}</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{breakdownModalData.ref}</div>
+                    <div style={{ fontWeight: 600 }}>Items Count:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{breakdownModalData.details?.items?.length || 0}</div>
+                    {breakdownModalData.details?.vehicle_number && <><div style={{ fontWeight: 600 }}>Vehicle No:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{breakdownModalData.details.vehicle_number.toUpperCase()}</div></>}
+                    {breakdownModalData.details?.driver_name && <><div style={{ fontWeight: 600 }}>Driver Name:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{breakdownModalData.details.driver_name}</div></>}
+                    {breakdownModalData.details?.vehicle_charge > 0 && <><div style={{ fontWeight: 600 }}>Driver Charge:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{fc(breakdownModalData.details.vehicle_charge)}</div></>}
+                    {breakdownModalData.details?.labour_charge > 0 && <><div style={{ fontWeight: 600 }}>Labour Charge:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{fc(breakdownModalData.details.labour_charge)}</div></>}
+                    {breakdownModalData.details?.amount_received > 0 && <><div style={{ fontWeight: 600 }}>Amount Rcvd:</div><div style={{ color: '#16a34a', fontWeight: 700 }}>{fc(breakdownModalData.details.amount_received)}</div></>}
+                    <div style={{ fontWeight: 600 }}>Subtotal:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{fc(breakdownModalData.details?.subtotal || 0)}</div>
+                    <div style={{ fontWeight: 600 }}>Discount:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{fc(breakdownModalData.details?.discount || 0)}</div>
+                    <div style={{ fontWeight: 600 }}>Final Total:</div><div style={{ fontWeight: 800, color: '#0284c7', fontSize: 16 }}>{fc(breakdownModalData.details?.total || 0)}</div>
+                    <div style={{ fontWeight: 600 }}>Notes:</div><div style={{ fontWeight: 500, color: '#0f172a' }}>{(breakdownModalData.details?.notes) || 'N/A'}</div>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                {breakdownModalData.type === 'payment' && (
+                  <button className="btn btn-outline" onClick={() => printReceipt(breakdownModalData.details)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Printer size={16} style={{ marginRight: 8 }}/> Print Receipt
+                  </button>
+                )}
+                {(breakdownModalData.type === 'invoice' || breakdownModalData.type === 'goods_entry') && (
+                  <button className="btn btn-primary" onClick={() => navigate(`/invoices/${breakdownModalData.id}`)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FileText size={16} style={{ marginRight: 8 }}/> View Full Invoice
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── COLLECT PAYMENT MODAL ── */}
+      {showCollectModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowCollectModal(false)} />
+          <div className="modal-content" style={{ position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 440, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
+            
+            {/* Header */}
+            <div style={{ padding: '24px 24px 20px', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ width: 48, height: 48, background: '#dcfce3', color: '#16a34a', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 4px 6px -1px rgba(22,163,74,0.1)' }}>
+                  <Wallet size={24} />
+                </div>
+                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>Receive Payment</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+                  From {customer?.name}
+                </p>
+              </div>
+              <button onClick={() => setShowCollectModal(false)} style={{ background: 'white', border: '1px solid #e2e8f0', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
+              <form id="collectForm" onSubmit={e => { e.preventDefault(); handleCollectPayment(); }}>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Payment Mode</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                    {PAYMENT_MODES.map(mode => (
+                      <div 
+                        key={mode} 
+                        onClick={() => setCollectForm({ ...collectForm, mode })}
+                        style={{ 
+                          padding: '12px', border: `2px solid ${collectForm.mode === mode ? '#16a34a' : '#e2e8f0'}`, borderRadius: 12, cursor: 'pointer', textAlign: 'center', fontWeight: 600, fontSize: 14, color: collectForm.mode === mode ? '#16a34a' : '#64748b', background: collectForm.mode === mode ? '#f0fdf4' : 'white', transition: 'all 0.2s' 
+                        }}
+                      >
+                        {mode.toUpperCase().replace('_', ' ')}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount Received *</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 20, color: '#16a34a', fontWeight: 600 }}>₹</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={collectForm.amount}
+                      onChange={e => setCollectForm({ ...collectForm, amount: e.target.value })}
+                      style={{ width: '100%', padding: '16px 16px 16px 40px', fontSize: 24, fontWeight: 800, border: '2px solid #e2e8f0', borderRadius: 12, outline: 'none', color: '#0f172a', transition: 'border-color 0.2s', boxSizing: 'border-box' }}
+                      placeholder="0.00"
+                    />
+                  </div>
                   {customer?.balance > 0 && (
-                    <span style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}
-                      onClick={() => setCollectForm({ ...collectForm, amount: (customer.balance).toFixed(2) })}>
-                      Settle Full Amount
-                    </span>
+                     <div style={{ marginTop: 8, fontSize: 13, color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                       <span>Total Due: <strong style={{ color: '#b45309' }}>{fc(customer.balance)}</strong></span>
+                       <span style={{ color: '#16a34a', cursor: 'pointer', fontWeight: 600 }} onClick={() => setCollectForm({ ...collectForm, amount: customer.balance.toFixed(2) })}>
+                         Receive Full Amount
+                       </span>
+                     </div>
                   )}
                 </div>
-              </div>
 
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Payment Mode *</label>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {PAYMENT_MODES.map(m => (
-                    <button key={m} type="button"
-                      className={`btn btn-sm ${collectForm.mode === m ? 'btn-primary' : 'btn-outline'}`}
-                      onClick={() => setCollectForm({ ...collectForm, mode: m })}
-                      style={{ borderRadius: 8, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.3px' }}>
-                      {m.replace('_', ' ')}
-                    </button>
-                  ))}
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Reference No. <span style={{ color: '#94a3b8', fontWeight: 500 }}>(Optional)</span></label>
+                  <input
+                    type="text"
+                    value={collectForm.reference}
+                    onChange={e => setCollectForm({ ...collectForm, reference: e.target.value })}
+                    className="form-control"
+                    placeholder="e.g. UTR / Cheque No"
+                    style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14 }}
+                  />
                 </div>
-              </div>
 
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Reference / UPI ID (optional)</label>
-                <input className="form-control" value={collectForm.reference} onChange={e => setCollectForm({ ...collectForm, reference: e.target.value })}
-                  placeholder="Transaction ID or UPI ref" style={{ borderRadius: 8 }} />
-              </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Notes <span style={{ color: '#94a3b8', fontWeight: 500 }}>(Optional)</span></label>
+                  <textarea
+                    value={collectForm.notes}
+                    onChange={e => setCollectForm({ ...collectForm, notes: e.target.value })}
+                    className="form-control"
+                    placeholder="Add payment details..."
+                    style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, minHeight: 80, resize: 'vertical' }}
+                  />
+                </div>
+              </form>
+            </div>
 
-              <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>Notes (optional)</label>
-                <input className="form-control" value={collectForm.notes} onChange={e => setCollectForm({ ...collectForm, notes: e.target.value })}
-                  placeholder="Payment notes" style={{ borderRadius: 8 }} />
-              </div>
+            {/* Footer */}
+            <div style={{ padding: '20px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 12 }}>
+              <button 
+                onClick={() => setShowCollectModal(false)}
+                className="btn btn-outline"
+                style={{ flex: 1, padding: '12px', borderRadius: 10, fontWeight: 600, fontSize: 15 }}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit"
+                form="collectForm"
+                className="btn btn-primary"
+                disabled={collecting}
+                style={{ flex: 2, padding: '12px', borderRadius: 10, fontWeight: 600, fontSize: 15, background: '#16a34a', borderColor: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              >
+                {collecting ? <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> : <Wallet size={18} />}
+                Record Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
-                <button className="btn btn-outline" onClick={() => setShowCollectModal(false)} style={{ borderRadius: 8 }}>Cancel</button>
-                <button className="btn btn-success" onClick={handleCollectPayment} disabled={collecting}
-                  style={{ borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {collecting ? <><span className="spinner"></span> Saving...</> : <><CreditCard size={15} /> Record Payment</>}
+      {/* MODALS EXCLUDED */}
+      {/* ── CONSOLIDATE CONFIRM MODAL ── */}
+      {showConsolidateConfirm && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 16 : 24 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowConsolidateConfirm(false)} />
+          
+          <div style={{ position: 'relative', background: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: 400, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ padding: '24px', textAlign: 'center' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eff6ff', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Package size={28} />
+              </div>
+              <h3 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginBottom: 8, letterSpacing: '-0.5px' }}>Consolidate Entries</h3>
+              <p style={{ fontSize: 14, color: '#64748b', lineHeight: 1.5, marginBottom: 24 }}>
+                Are you sure you want to consolidate <strong>{selectedEntries.length}</strong> selected entries into a single invoice? This action cannot be undone.
+              </p>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button 
+                  onClick={() => setShowConsolidateConfirm(false)}
+                  style={{ flex: 1, padding: '12px', background: '#f1f5f9', color: '#475569', borderRadius: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmConsolidate}
+                  style={{ flex: 1, padding: '12px', background: '#3b82f6', color: 'white', borderRadius: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(59,130,246,0.3)' }}
+                >
+                  Yes, Consolidate
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -30,4 +30,7 @@ const orderSchema = new mongoose.Schema({
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
 }, { timestamps: true });
 
+// Auto-delete orders 36 hours (129600 seconds) after the delivery_date
+orderSchema.index({ delivery_date: 1 }, { expireAfterSeconds: 129600 });
+
 module.exports = mongoose.model('Order', orderSchema);

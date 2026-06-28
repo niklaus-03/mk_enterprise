@@ -9,7 +9,7 @@ router.use(auth);
 
 router.get('/', async (req, res) => {
   try {
-    const { product_id, type, source, limit = 50, page = 1 } = req.query;
+    const { product_id, type, source, search, limit = 50, page = 1 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const query = {};
     if (req.user && ['manager', 'temp_manager', 'walkin_manager'].includes(req.user.role)) {
@@ -18,10 +18,28 @@ router.get('/', async (req, res) => {
     if (product_id) query.product_id = product_id;
     if (type) query.type = type;
     if (source) query.source = source;
+    if (search) {
+      query.$or = [
+        { product_name: { $regex: search, $options: 'i' } },
+        { vehicle_number: { $regex: search, $options: 'i' } },
+        { driver_name: { $regex: search, $options: 'i' } },
+        { supplier: { $regex: search, $options: 'i' } },
+        { notes: { $regex: search, $options: 'i' } }
+      ];
+    }
     const [movements, total] = await Promise.all([
-      StockMovement.find(query).sort({ date: -1 }).skip(skip).limit(parseInt(limit)).populate('product_id', 'name unit').populate('created_by', 'username display_name role'),
+      StockMovement.find(query).sort({ date: -1 }).skip(skip).limit(parseInt(limit)).populate('product_id', 'name unit').populate('created_by', 'username display_name role').lean(),
       StockMovement.countDocuments(query),
     ]);
+    const Invoice = require('../models/Invoice');
+    for (let m of movements) {
+      if ((m.source === 'invoice' || m.source === 'return') && m.reference && m.reference.length === 24 && !m.invoice_number) {
+        try {
+          const inv = await Invoice.findById(m.reference).select('invoice_number').lean();
+          if (inv) m.invoice_number = inv.invoice_number;
+        } catch(e) {}
+      }
+    }
     res.json({ movements, total });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -34,7 +52,16 @@ router.get('/today', async (req, res) => {
       query.created_by = req.user.id;
     }
     const movements = await StockMovement.find(query)
-      .sort({ date: -1 }).populate('product_id', 'name unit').populate('created_by', 'username display_name role');
+      .sort({ date: -1 }).populate('product_id', 'name unit').populate('created_by', 'username display_name role').lean();
+    const Invoice = require('../models/Invoice');
+    for (let m of movements) {
+      if ((m.source === 'invoice' || m.source === 'return') && m.reference && m.reference.length === 24 && !m.invoice_number) {
+        try {
+          const inv = await Invoice.findById(m.reference).select('invoice_number').lean();
+          if (inv) m.invoice_number = inv.invoice_number;
+        } catch(e) {}
+      }
+    }
     res.json(movements);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -17,7 +17,7 @@ import LoadProductModal from '../components/walkin/LoadProductModal';
 import UnitInput from '../components/shared/UnitInput';
 const emptyForm = {
   name: '', price: '', gst: '0', unit: 'unit', stock: '0',
-  weight_per_unit: '', suggested_price: '', custom_low_stock: '', supplier_base_price: 0, last_delivery_final_price: 0, is_active: true,
+  weight_per_unit: '', suggested_price: '', profit_margin: '', custom_low_stock: '', supplier_base_price: 0, last_delivery_final_price: 0, is_active: true,
   has_loose: false, loose_name: '', loose_stock: '0', loose_unit: '', loose_conversion_factor: '', loose_price: ''
 };
 
@@ -46,14 +46,7 @@ export default function Products() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (showForm || showLoadModal) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => { document.body.style.overflow = 'unset'; };
-  }, [showForm, showLoadModal]);
+
   const [priceCalculated, setPriceCalculated] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
@@ -65,7 +58,7 @@ export default function Products() {
 
   // New State for Overhaul
   const [activeTab, setActiveTab] = useState('products');
-  const [sortBy, setSortBy] = useState('recently_added');
+  const [sortBy, setSortBy] = useState('last_updated');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [showAddToListModal, setShowAddToListModal] = useState(false);
@@ -209,17 +202,22 @@ export default function Products() {
   // Freeze background scroll & hide header when modal is open
   useEffect(() => {
     if (showForm) {
-      document.body.style.overflow = 'hidden';
       document.body.classList.add('modal-open-header-hide');
     } else {
-      document.body.style.overflow = 'unset';
       document.body.classList.remove('modal-open-header-hide');
     }
+    
+    if (showForm || showLoadModal || shareModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    
     return () => {
       document.body.style.overflow = 'unset';
       document.body.classList.remove('modal-open-header-hide');
     };
-  }, [showForm]);
+  }, [showForm, showLoadModal, shareModal]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -346,6 +344,7 @@ export default function Products() {
       stock: String(p.stock || '0'),
       weight_per_unit: String(p.weight_per_unit || ''),
       suggested_price: String(p.suggested_price || ''),
+      profit_margin: p.profit_margin ? String(p.profit_margin) : '',
       custom_low_stock: p.custom_low_stock != null ? String(p.custom_low_stock) : '',
       supplier_base_price: p.supplier_base_price || 0,
       last_delivery_final_price: p.last_delivery_final_price || 0,
@@ -391,13 +390,24 @@ export default function Products() {
     const weight = parseFloat(form.weight_per_unit) || 0;
     const quintalCharge = parseFloat(settings?.tax_per_quintal) || 0;
     const gst = parseFloat(form.gst) || 0;
+    const marginVal = parseFloat(form.profit_margin) || 0;
 
     if (!base) return toast.error('Enter selling price first');
 
     const quintalAdj = weight > 0 && quintalCharge > 0
       ? (weight / 100) * quintalCharge
       : 0;
-    const beforeGST = base + quintalAdj;
+    const landedCost = base + quintalAdj;
+    
+    let marginAmt = 0;
+    if (settings?.margin_enabled !== false) {
+      if (settings?.margin_type === 'percentage') {
+        marginAmt = (landedCost * marginVal) / 100;
+      } else {
+        marginAmt = marginVal;
+      }
+    }
+    const beforeGST = landedCost + marginAmt;
     const gstAmt = (beforeGST * gst) / 100;
     const suggested = parseFloat((beforeGST + gstAmt).toFixed(2));
 
@@ -420,6 +430,7 @@ export default function Products() {
         stock: parseFloat(form.stock) || 0,
         weight_per_unit: parseFloat(form.weight_per_unit) || 0,
         suggested_price: parseFloat(form.suggested_price) || 0,
+        profit_margin: parseFloat(form.profit_margin) || 0,
         custom_low_stock: form.custom_low_stock !== '' ? parseFloat(form.custom_low_stock) : null,
         is_active: form.is_active,
         has_loose: form.has_loose,
@@ -472,14 +483,11 @@ export default function Products() {
           >
             <ArrowLeft size={18} />
           </button>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ marginTop: '6px' }}>
-              <Package size={22} className="text-primary" /> 
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: '4px' }}>
+            <Package size={22} className="text-primary" style={{ flexShrink: 0, marginTop: isMobile ? 2 : 4 }} />
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div className="page-title" style={{ margin: 0, marginTop: '4px', lineHeight: 1.1 }}>
-                <div>Products</div>
-                <div>Inventory</div>
+              <div className="page-title" style={{ margin: 0, whiteSpace: 'normal', lineHeight: 1.2 }}>
+                Products{isMobile ? <br /> : ' '}Inventory
               </div>
               <div className="page-subtitle" style={{ margin: 0, marginTop: '2px', color: 'var(--text-muted)' }}>
                 {(activeTab === 'products' ? totalItems > 0 : listCount > 0) && (
@@ -827,6 +835,19 @@ export default function Products() {
                 </div>
               )}
 
+              {/* Profit Margin */}
+              {user?.role !== 'walkin_manager' && settings?.margin_enabled !== false && (
+                <div className="form-group" style={{ gridColumn: isMobile ? 'span 12' : 'span 6' }}>
+                  <label className="form-label" style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, display: 'block' }}>
+                    Profit Margin {settings?.margin_type === 'percentage' ? '%' : '₹'}
+                  </label>
+                  <input className="form-control" type="number" step="0.01"
+                    value={form.profit_margin}
+                    onChange={e => { setForm(f => ({ ...f, profit_margin: e.target.value })); setPriceCalculated(false); }}
+                    placeholder={settings?.margin_type === 'percentage' ? "e.g. 5" : "0.00"} style={{ borderRadius: 8 }} />
+                </div>
+              )}
+
               {/* Suggested Final Price */}
               {user?.role !== 'walkin_manager' && (
                 <div className="form-group" style={{ gridColumn: 'span 12' }}>
@@ -846,7 +867,7 @@ export default function Products() {
                     onChange={e => { setForm(f => ({ ...f, suggested_price: e.target.value })); setPriceCalculated(true); }}
                     placeholder="Auto-calculated or manual" style={{ borderRadius: 8, borderColor: walkinTripStarted ? '#c5a059' : undefined }} />
                   <div className="form-hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>
-                    Formula: Base + (Weight ÷ 100 × Quintal Charge) + GST.
+                    Formula: Base + (Weight ÷ 100 × Quintal Charge) + Margin {settings?.margin_type === 'percentage' ? '(%)' : '(₹)'} + GST.
                   </div>
                 </div>
               )}
@@ -1025,12 +1046,17 @@ export default function Products() {
                     const stockColor = p.stock === 0 ? 'var(--danger)' : p.stock <= minStock ? 'var(--warning)' : 'var(--success)';
 
                     return (
-                      <tr id={`product-${p._id}`} key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: highlightId === p._id ? 'var(--warning-light)' : (!p.is_active ? 'var(--bg-hover)' : idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)'), transition: 'background-color 0.5s ease' }}>
+                      <tr 
+                        id={`product-${p._id}`} 
+                        key={p._id} 
+                        style={{ borderBottom: '1px solid #f3f4f6', background: highlightId === p._id ? 'var(--warning-light)' : (!p.is_active ? 'var(--bg-hover)' : idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)'), transition: 'background-color 0.5s ease', cursor: 'pointer' }}
+                        onClick={() => navigate('/stock-movements', { state: { filterProductId: p._id, searchQuery: p.name } })}
+                      >
                         <td style={{ padding: '10px 8px' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                               {p.name || '—'}
-                              {isNewProduct(p.createdAt) && user?.role !== 'walkin_manager' && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 800, letterSpacing: 0.5 }}>NEW</span>}
+
                               {!p.is_active && <span style={{ fontSize: 10, background: 'var(--border)', color: '#6b7280', padding: '1px 6px', borderRadius: 8 }}>Inactive</span>}
                               {p.has_loose && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>Has Loose</span>}
                             </div>
@@ -1044,11 +1070,11 @@ export default function Products() {
                             </div>
                             {p.created_by && p.created_by.role !== 'supervisor' && user?.role === 'supervisor' && (
                               <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500, marginTop: 2 }}>
-                                <User size={12} /> Created By: {p.created_by.display_name || p.created_by.username}
+                                <User size={12} /> {p.created_by.role === 'walkin_manager' ? 'Vehicle:' : 'Originally made by:'} {p.created_by.display_name || p.created_by.username}
                               </div>
                             )}
                             <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={10} /> {formatLastUpdated(p.updatedAt)}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={10} /> Updated: {formatLastUpdated(p.last_manual_edit_at || p.updatedAt || p.createdAt)}</div>
                               {p.last_updated_by && user?.role !== 'walkin_manager' && <div style={{ fontSize: 8.5, color: 'var(--text-muted)' }}>• by {p.last_updated_by.display_name || p.last_updated_by.username}</div>}
                             </div>
                           </div>
@@ -1085,7 +1111,7 @@ export default function Products() {
                             {isAdmin && p.has_loose && (
                               <button 
                                 className="btn btn-outline btn-sm" 
-                                onClick={() => openConvertModal(p, 'unpack')}
+                                onClick={(e) => { e.stopPropagation(); openConvertModal(p, 'unpack'); }}
                                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: 6, color: '#d97706', borderColor: '#fde68a' }}
                                 title="Open Box to Loose"
                               >
@@ -1095,7 +1121,7 @@ export default function Products() {
                             {isAdmin && (
                               <button 
                                 className="btn btn-outline btn-sm" 
-                                onClick={() => setShareModal(p)}
+                                onClick={(e) => { e.stopPropagation(); setShareModal(p); }}
                                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: 6, color: '#3b82f6', borderColor: '#bfdbfe' }}
                                 title="Share"
                               >
@@ -1106,7 +1132,7 @@ export default function Products() {
                               <>
                                 <button 
                                   className="btn btn-outline btn-sm" 
-                                  onClick={() => openEdit(p)}
+                                  onClick={(e) => { e.stopPropagation(); openEdit(p); }}
                                   style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: 6 }}
                                   title="Edit"
                                 >
@@ -1116,7 +1142,7 @@ export default function Products() {
                                   <button 
                                     className="btn btn-outline btn-sm text-danger" 
                                     style={{ padding: '6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderColor: '#fecaca' }}
-                                    onClick={() => setDeleteConfirmId(p._id)}
+                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(p._id); }}
                                     title="Delete Product"
                                   >
                                     <Trash2 size={14} />

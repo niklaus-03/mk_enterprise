@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -7,11 +8,12 @@ import { authApi, seedApi, managerApi } from '../utils/api';
 import { 
   Settings as SettingsIcon, Users, Plus, Phone, Trash2, Key, CheckCircle, CheckCircle2,
   Briefcase, CreditCard, FileText, AlertTriangle, User, Truck, DollarSign, 
-  Activity, Calendar, Building2, Shield, Languages, Save, Package
+  Activity, Calendar, Building2, Shield, Languages, Save, Package, ArrowLeft
 } from 'lucide-react';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { settings, updateSettings } = useApp();
   const { admin, isAdmin } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -182,11 +184,20 @@ export default function Settings() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 120px)' }}>
-      <div className="page-header" style={{ textAlign: 'center', alignItems: 'center' }}>
-        <div style={{ margin: '0 auto' }}>
-          <div className="page-title d-flex align-items-center justify-content-center gap-2">
-            <SettingsIcon size={22} className="text-secondary" /> 
-            {t('Settings', 'सेटिंग्स')}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+              <SettingsIcon size={22} className="text-secondary" /> {t('Settings', 'सेटिंग्स')}
+            </div>
           </div>
         </div>
       </div>
@@ -337,6 +348,25 @@ export default function Settings() {
                         }}
                         placeholder="e.g. 250" />
                       <div className="form-hint">Formula: (Weight ÷ 100) × Tax per Quintal</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header"><div className="card-title">📈 Profit Margin Settings</div></div>
+                <div className="card-body">
+                  {radioGroup('margin_enabled', [
+                    { value: true, title: '✅ Enabled', desc: 'Allow setting profit margins for products and deliveries.' },
+                    { value: false, title: '❌ Disabled', desc: 'Hide profit margin inputs.' }
+                  ], 'Profit Margin Mode')}
+
+                  {form.margin_enabled && (
+                    <div style={{ paddingLeft: '16px', marginTop: '-12px', marginBottom: '24px', borderLeft: '2px solid var(--primary)' }}>
+                      {radioGroup('margin_type', [
+                        { value: 'numeric', title: '₹ Numeric (Absolute)', desc: 'Enter profit margin as an absolute rupee value (e.g. ₹50).' },
+                        { value: 'percentage', title: '% Percentage', desc: 'Enter profit margin as a percentage (e.g. 5%).' }
+                      ], 'Profit Margin Type')}
                     </div>
                   )}
                 </div>

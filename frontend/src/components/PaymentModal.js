@@ -6,10 +6,23 @@ export default function PaymentModal({ isOpen, onClose, onConfirm, amount }) {
 
   const [notes, setNotes] = React.useState('');
   const [paidAmt, setPaidAmt] = React.useState(amount);
+  const [paymentAction, setPaymentAction] = React.useState('full');
 
   React.useEffect(() => {
     setPaidAmt(amount);
   }, [amount]);
+
+  React.useEffect(() => {
+    const numPaid = parseFloat(paidAmt) || 0;
+    const numAmt = parseFloat(amount) || 0;
+    if (numPaid < numAmt) {
+      if (paymentAction !== 'partial' && paymentAction !== 'negotiated') setPaymentAction('negotiated');
+    } else if (numPaid > numAmt) {
+      setPaymentAction('advance');
+    } else {
+      setPaymentAction('full');
+    }
+  }, [paidAmt, amount]);
 
   return (
     <div className="modal-overlay" onClick={onClose} style={{
@@ -40,14 +53,33 @@ export default function PaymentModal({ isOpen, onClose, onConfirm, amount }) {
                    style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', width: String(paidAmt).length * 18 + 20 + 'px', minWidth: '80px', maxWidth: '100%', textAlign: 'center', border: 'none', borderBottom: '2px dashed #cbd5e1', outline: 'none', background: 'transparent' }}
                  />
                </div>
-               {Number(paidAmt) !== Number(amount) && (
+               {Number(paidAmt) !== Number(amount) && Number(paidAmt) < Number(amount) && (
                  <div style={{ fontSize: 13, color: '#64748b', marginTop: 8, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                    <span>Original Bill:</span>
                    <span style={{ textDecoration: 'line-through' }}>₹{amount.toLocaleString('en-IN')}</span>
-                   <span style={{ color: '#10b981', fontWeight: 700, marginLeft: 4 }}>Negotiated!</span>
                  </div>
                )}
              </div>
+          )}
+
+          {Number(paidAmt) < Number(amount) && (
+            <div style={{ marginBottom: 20, background: '#f8fafc', padding: '12px 16px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8, textTransform: 'uppercase' }}>Payment Action</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 10 }}>
+                <input type="radio" name="paymentAction" checked={paymentAction === 'negotiated'} onChange={() => setPaymentAction('negotiated')} style={{ cursor: 'pointer' }} />
+                <span style={{ fontSize: 14, color: '#334155' }}><strong>Negotiated Settlement</strong> (Log discount)</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="radio" name="paymentAction" checked={paymentAction === 'partial'} onChange={() => setPaymentAction('partial')} style={{ cursor: 'pointer' }} />
+                <span style={{ fontSize: 14, color: '#334155' }}><strong>Partial Payment</strong> (Leave remainder due)</span>
+              </label>
+            </div>
+          )}
+
+          {Number(paidAmt) > Number(amount) && (
+            <div style={{ marginBottom: 20, background: '#ecfdf5', padding: '12px 16px', borderRadius: 8, border: '1px solid #a7f3d0', color: '#047857', fontSize: 13, fontWeight: 500 }}>
+              You are paying extra. The difference will automatically be stored as an advance in the supplier ledger.
+            </div>
           )}
 
           <div style={{ marginBottom: 20 }}>
@@ -61,7 +93,7 @@ export default function PaymentModal({ isOpen, onClose, onConfirm, amount }) {
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <button onClick={() => onConfirm('cash', notes, parseFloat(paidAmt) || 0)} style={{
+            <button onClick={() => onConfirm('cash', notes, parseFloat(paidAmt) || 0, paymentAction)} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 12px',
               border: '1.5px solid #cbd5e1', borderRadius: 12, background: '#fff', cursor: 'pointer',
               color: '#334155', fontWeight: 600, transition: 'all 0.2s'
@@ -69,7 +101,7 @@ export default function PaymentModal({ isOpen, onClose, onConfirm, amount }) {
               <Wallet size={24} color="#3b82f6" />
               Cash
             </button>
-            <button onClick={() => onConfirm('upi', notes, parseFloat(paidAmt) || 0)} style={{
+            <button onClick={() => onConfirm('upi', notes, parseFloat(paidAmt) || 0, paymentAction)} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 12px',
               border: '1.5px solid #cbd5e1', borderRadius: 12, background: '#fff', cursor: 'pointer',
               color: '#334155', fontWeight: 600, transition: 'all 0.2s'
@@ -77,7 +109,7 @@ export default function PaymentModal({ isOpen, onClose, onConfirm, amount }) {
               <Smartphone size={24} color="#10b981" />
               UPI
             </button>
-            <button onClick={() => onConfirm('online', notes, parseFloat(paidAmt) || 0)} style={{
+            <button onClick={() => onConfirm('online', notes, parseFloat(paidAmt) || 0, paymentAction)} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 12px',
               border: '1.5px solid #cbd5e1', borderRadius: 12, background: '#fff', cursor: 'pointer',
               color: '#334155', fontWeight: 600, transition: 'all 0.2s'
@@ -85,7 +117,7 @@ export default function PaymentModal({ isOpen, onClose, onConfirm, amount }) {
               <Globe size={24} color="#8b5cf6" />
               Online
             </button>
-            <button onClick={() => onConfirm('goods_exchange', notes, parseFloat(paidAmt) || 0)} style={{
+            <button onClick={() => onConfirm('goods_exchange', notes, parseFloat(paidAmt) || 0, paymentAction)} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 12px',
               border: '1.5px solid #cbd5e1', borderRadius: 12, background: '#fff', cursor: 'pointer',
               color: '#334155', fontWeight: 600, transition: 'all 0.2s'
@@ -93,7 +125,7 @@ export default function PaymentModal({ isOpen, onClose, onConfirm, amount }) {
               <Package size={24} color="#ec4899" />
               Goods Exchange
             </button>
-            <button onClick={() => onConfirm('others', notes, parseFloat(paidAmt) || 0)} style={{
+            <button onClick={() => onConfirm('others', notes, parseFloat(paidAmt) || 0, paymentAction)} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 12px',
               border: '1.5px solid #cbd5e1', borderRadius: 12, background: '#fff', cursor: 'pointer',
               color: '#334155', fontWeight: 600, transition: 'all 0.2s'

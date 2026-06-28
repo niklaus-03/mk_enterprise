@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { managerApi, driverApi, activityLogApi, authApi, deliveryApi, supplierApi, walkinApi } from '../utils/api';
-import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock, PauseCircle, PlayCircle, Eye, UserCheck } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock, PauseCircle, PlayCircle, Eye, UserCheck, Copy, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import HawkEye from '../components/HawkEye';
@@ -22,6 +22,9 @@ export default function AdminPanel() {
   const [mgrCreating, setMgrCreating] = useState(false);
   const [mgrResetModal, setMgrResetModal] = useState(null);
   const [mgrResetPw, setMgrResetPw] = useState('');
+  const [cloneModal, setCloneModal] = useState(null);
+  const [cloneForm, setCloneForm] = useState({ username: '', phone: '', password: '', display_name: '' });
+  const [cloning, setCloning] = useState(false);
 
   // Walk-in Delivery Modal
   const [showWalkinModal, setShowWalkinModal] = useState(false);
@@ -237,6 +240,23 @@ export default function AdminPanel() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const handleCloneManager = async (e) => {
+    e.preventDefault();
+    if (!cloneForm.username || !cloneForm.password) return toast.error('Username and password are required');
+    if (cloneForm.password.length < 6) return toast.error('Password must be at least 6 characters');
+    if (cloneForm.phone && cloneForm.phone.length !== 10) return toast.error('Phone number must be exactly 10 digits');
+    setCloning(true);
+    try {
+      const res = await managerApi.clone(cloneModal._id, cloneForm);
+      const s = res.stats;
+      toast.success(res.message || 'Manager cloned successfully!');
+      toast(`Copied: ${s.customers} customers, ${s.products} products, ${s.invoices} invoices`, { icon: '📋', duration: 5000 });
+      setCloneModal(null);
+      setCloneForm({ username: '', phone: '', password: '', display_name: '' });
+      loadManagers();
+    } catch (err) { toast.error(err.message || 'Failed to clone manager'); }
+    finally { setCloning(false); }
+  };
 
   // --- Driver Handlers ---
   const handleCreateDriver = async (e) => {
@@ -408,11 +428,43 @@ export default function AdminPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 120px)', paddingBottom: 40 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Shield size={24} style={{ color: 'var(--primary)' }} />
-          {t('Admin Panel', 'एडमिन पैनल')}
-        </h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+              <Shield size={22} className="text-primary" /> {t('Admin Panel', 'एडमिन पैनल')}
+            </div>
+            <div className="page-subtitle" style={{ margin: 0 }}>Manage system access, view activity logs, and handle requests</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {activeTab === 'managers' && (
+            <button 
+              className="btn btn-primary"
+              onClick={() => { setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false, role: 'manager', assigned_managers: [] }); setShowAddManager(true); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 10, fontWeight: 700, padding: '10px 18px', boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)' }}
+            >
+              <Plus size={16} /> Add Manager
+            </button>
+          )}
+          {activeTab === 'drivers' && (
+            <button 
+              className="btn btn-primary"
+              onClick={() => { setDriverForm({ username: '', phone: '', password: '', display_name: '' }); setShowAddDriver(true); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 10, fontWeight: 700, padding: '10px 18px', boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)' }}
+            >
+              <Plus size={16} /> Add Driver
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Standard Tabs */}
@@ -483,19 +535,6 @@ export default function AdminPanel() {
 
       {activeTab === 'managers' && (
       <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f0f9ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0ea5e9' }}><Users size={18} /></div>
-            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Managers', 'मैनेजर')} List</span>
-          </div>
-          <button 
-            className="btn-primary"
-            onClick={() => { setMgrForm({ username: '', phone: '', password: '', display_name: '', can_edit_products: false, role: 'manager', assigned_managers: [] }); setShowAddManager(true); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 4, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
-          >
-            <Plus size={16} /> Add Manager
-          </button>
-        </div>
         
         <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
           <div style={{ minWidth: 900 }}>
@@ -531,8 +570,20 @@ export default function AdminPanel() {
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#1e293b', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
                       {mgr.display_name || '-'}
-                      {mgr.role === 'temp_manager' && (
+                      {mgr.role?.toLowerCase() === 'temp_manager' && (
                         <span style={{ fontSize: 9, background: 'rgba(245,158,11,0.15)', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>TEMP MGR</span>
+                      )}
+                      {mgr.role?.toLowerCase() === 'supervisor' && (
+                        <span style={{ fontSize: 9, background: 'rgba(147,51,234,0.15)', color: '#9333ea', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>SUPERVISOR</span>
+                      )}
+                      {(!mgr.role || mgr.role?.toLowerCase() === 'manager') && (
+                        <span style={{ fontSize: 9, background: 'rgba(37,99,235,0.15)', color: '#2563eb', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>MANAGER</span>
+                      )}
+                      {mgr.role?.toLowerCase() === 'admin' && (
+                        <span style={{ fontSize: 9, background: 'rgba(220,38,38,0.15)', color: '#dc2626', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>ADMIN</span>
+                      )}
+                      {(mgr.role && !['manager', 'temp_manager', 'supervisor', 'admin'].includes(mgr.role.toLowerCase())) && (
+                        <span style={{ fontSize: 9, background: 'rgba(71,85,105,0.15)', color: '#475569', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>{mgr.role.toUpperCase()}</span>
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>@{mgr.username}</div>
@@ -563,6 +614,10 @@ export default function AdminPanel() {
                       {mgr.is_on_hold ? <PlayCircle size={14} /> : <PauseCircle size={14} />}
                       <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>{mgr.is_on_hold ? 'Un-Hold' : 'Hold'}</span>
                   </button>
+                  <button onClick={() => { setCloneForm({ username: '', phone: '', password: '', display_name: '' }); setCloneModal(mgr); }} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#f0fdf4', color: '#15803d', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#dcfce7'; e.currentTarget.style.color = '#166534'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4'; e.currentTarget.style.color = '#15803d'; }} title="Clone this manager (duplicate with same data access)">
+                    <Copy size={14} />
+                    <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Clone</span>
+                  </button>
                   <button onClick={() => openEditModal(mgr)} style={{ width: 'auto', minWidth: 40, height: 'auto', padding: '6px 4px', borderRadius: 8, border: 'none', background: '#f1f5f9', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#334155'; }} onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}>
                     <Edit2 size={14} />
                     <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1 }}>Edit</span>
@@ -587,19 +642,6 @@ export default function AdminPanel() {
 
       {activeTab === 'drivers' && (
         <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}><Truck size={18} /></div>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('Drivers', 'ड्राइवर')} List</span>
-            </div>
-            <button 
-              className="btn-primary"
-              onClick={() => { setDriverForm({ username: '', phone: '', password: '', display_name: '' }); setShowAddDriver(true); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 4, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
-            >
-              <Plus size={16} /> Add Driver
-            </button>
-          </div>
           
           <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
             <div style={{ minWidth: 900 }}>
@@ -679,12 +721,7 @@ export default function AdminPanel() {
 
       {activeTab === 'activity' && (
         <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6' }}><Activity size={18} /></div>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{t('System Activity Logs', 'सिस्टम गतिविधि लॉग')}</span>
-            </div>
-            
+          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input 
                 type="date" 
@@ -799,10 +836,6 @@ export default function AdminPanel() {
       {activeTab === 'requests' && (
         <>
           <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}><Truck size={18} /></div>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Trip Bypass Requests</span>
-            </div>
             
             <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
               <div style={{ minWidth: 900 }}>
@@ -884,10 +917,6 @@ export default function AdminPanel() {
           </div>
 
         <div className="card mt-4" style={{ border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 24px', background: '#fff', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706' }}><Unlock size={18} /></div>
-            <span style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Password Recovery Requests</span>
-          </div>
           
           <div className="hide-scroll" style={{ overflowX: 'auto', width: '100%' }}>
             <div style={{ minWidth: 900 }}>
@@ -939,7 +968,7 @@ export default function AdminPanel() {
       )}
 
       {/* Add / Edit Manager Modal */}
-      {showAddManager && (
+      {(showAddManager || showEditManager) && (
         <div className="modal-overlay" onMouseDown={() => { setShowAddManager(false); setShowEditManager(null); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(15, 23, 42, 0.60)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '20px' }}>
           <div className="modal" onMouseDown={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', margin: 'auto' }}>
             <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1018,6 +1047,61 @@ export default function AdminPanel() {
                 <button type="button" onClick={() => { setShowAddManager(false); setShowEditManager(null); }} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>{t('Cancel', 'रद्द करें')}</button>
                 <button type="submit" disabled={mgrCreating} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', borderRadius: 8, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(59,130,246,0.3)' }}>
                   {mgrCreating ? 'Saving...' : 'Save Manager'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Clone Manager Modal */}
+      {cloneModal && (
+        <div className="modal-overlay" onMouseDown={() => setCloneModal(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: 'rgba(15, 23, 42, 0.60)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '20px' }}>
+          <div className="modal" onMouseDown={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', margin: 'auto' }}>
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #15803d, #166534)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Copy size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>Clone Manager</div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>Duplicating from: <strong>{cloneModal.display_name || cloneModal.username}</strong></div>
+              </div>
+            </div>
+            
+            <form onSubmit={handleCloneManager} style={{ padding: '24px' }}>
+              <div style={{ padding: '12px 16px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #bbf7d0', marginBottom: 20, fontSize: 13, color: '#166534', lineHeight: 1.5 }}>
+                <strong>What will be copied:</strong>
+                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {['Customers', 'Products', 'Invoices', 'Customer Lists', 'Product Lists'].map(item => (
+                    <span key={item} style={{ background: '#dcfce7', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>✓ {item}</span>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>Username *</label>
+                  <input className="form-control" type="text" placeholder="e.g. suresh" value={cloneForm.username} onChange={e => setCloneForm({ ...cloneForm, username: e.target.value })} autoFocus style={{ borderRadius: 8, border: '1px solid #cbd5e1' }} />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>Display Name</label>
+                  <input className="form-control" type="text" placeholder="e.g. Suresh Kumar" value={cloneForm.display_name} onChange={e => setCloneForm({ ...cloneForm, display_name: e.target.value })} style={{ borderRadius: 8, border: '1px solid #cbd5e1' }} />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>Phone Number</label>
+                  <input className="form-control" type="text" placeholder="10-digit phone" value={cloneForm.phone} onChange={e => setCloneForm({ ...cloneForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} style={{ borderRadius: 8, border: '1px solid #cbd5e1' }} />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>Password *</label>
+                  <input className="form-control" type="password" placeholder="Min 6 characters" value={cloneForm.password} onChange={e => setCloneForm({ ...cloneForm, password: e.target.value })} style={{ borderRadius: 8, border: '1px solid #cbd5e1' }} />
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                <button type="button" onClick={() => setCloneModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>{t('Cancel', 'रद्द करें')}</button>
+                <button type="submit" disabled={cloning} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #22c55e, #15803d)', border: 'none', borderRadius: 8, fontWeight: 700, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Copy size={16} />
+                  {cloning ? 'Cloning...' : 'Clone Manager'}
                 </button>
               </div>
             </form>
@@ -1289,7 +1373,8 @@ export default function AdminPanel() {
                       setIsDeleting(true);
                       try {
                         const token = localStorage.getItem('shopbill_token');
-                        const verifyRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/verify-secret`, {
+                        const baseUrl = process.env.REACT_APP_API_URL || `http://${window.location.hostname}:5000/api`;
+                        const verifyRes = await fetch(`${baseUrl}/auth/verify-secret`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                           body: JSON.stringify({ username: user?.username || 'admin', secret_key: deleteSecretKey })
@@ -1322,7 +1407,8 @@ export default function AdminPanel() {
                 setIsDeleting(true);
                 try {
                   const token = localStorage.getItem('shopbill_token');
-                  const verifyRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/verify-secret`, {
+                  const baseUrl = process.env.REACT_APP_API_URL || `http://${window.location.hostname}:5000/api`;
+                  const verifyRes = await fetch(`${baseUrl}/auth/verify-secret`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ username: user?.username || 'admin', secret_key: deleteSecretKey })

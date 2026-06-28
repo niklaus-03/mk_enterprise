@@ -15,6 +15,9 @@ router.use(auth);
 
 // Helper: managers see only their own data (cast to ObjectId for aggregates)
 function ownerFilter(req) {
+  if (req.user.role === 'supervisor' && req.query.manager_id) {
+    return { created_by: new mongoose.Types.ObjectId(req.query.manager_id) };
+  }
   if (['manager', 'temp_manager', 'walkin_manager'].includes(req.user.role)) {
     return { created_by: new mongoose.Types.ObjectId(req.user.id) };
   }
@@ -23,15 +26,23 @@ function ownerFilter(req) {
 
 // Helper: managers see only their own products
 async function getProductOwnerFilter(req) {
-  if (req.user.role === 'walkin_manager') {
-    return { created_by: new mongoose.Types.ObjectId(req.user.id) };
+  let targetId = req.user.id;
+  let targetRole = req.user.role;
+  if (req.user.role === 'supervisor' && req.query.manager_id) {
+    targetId = req.query.manager_id;
+    // We assume the target is a manager; you could also look up their role if needed
+    targetRole = 'manager';
+  }
+
+  if (targetRole === 'walkin_manager') {
+    return { created_by: new mongoose.Types.ObjectId(targetId) };
   }
   
-  if (['manager', 'temp_manager'].includes(req.user.role)) {
-    const sharedLists = await ProductList.find({ 'shares.manager_id': req.user.id });
+  if (['manager', 'temp_manager'].includes(targetRole)) {
+    const sharedLists = await ProductList.find({ 'shares.manager_id': targetId });
     let sharedProductIds = [];
     sharedLists.forEach(list => {
-      const share = list.shares.find(s => s.manager_id.toString() === req.user.id);
+      const share = list.shares.find(s => s.manager_id.toString() === targetId);
       if (share) {
         list.products.forEach(pId => {
           const override = share.overrides.find(o => o.product_id.toString() === pId.toString());
@@ -42,10 +53,10 @@ async function getProductOwnerFilter(req) {
       }
     });
 
-    if (req.user.role === 'temp_manager') {
+    if (targetRole === 'temp_manager') {
       return {
         $or: [
-          { allowed_managers: new mongoose.Types.ObjectId(req.user.id) },
+          { allowed_managers: new mongoose.Types.ObjectId(targetId) },
           { _id: { $in: sharedProductIds } }
         ],
       };
@@ -53,8 +64,8 @@ async function getProductOwnerFilter(req) {
 
     return {
       $or: [
-        { created_by: new mongoose.Types.ObjectId(req.user.id) },
-        { allowed_managers: new mongoose.Types.ObjectId(req.user.id) },
+        { created_by: new mongoose.Types.ObjectId(targetId) },
+        { allowed_managers: new mongoose.Types.ObjectId(targetId) },
         { _id: { $in: sharedProductIds } }
       ],
     };
@@ -114,7 +125,7 @@ router.get('/', async (req, res) => {
       // 2. Selected date sales
       Invoice.aggregate([
         { $match: { ...notCancelled, date: { $gte: startUTC, $lt: endUTC } } },
-        { $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } },
+        { $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 }, concession: { $sum: '$discount' } } },
       ]),
       // 3. Total invoice count
       Invoice.countDocuments(notCancelled),
@@ -175,7 +186,7 @@ router.get('/', async (req, res) => {
       const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
         ? p.custom_low_stock
         : globalThreshold;
-      // Unit-independent: just compare raw stock number against threshold
+      if (p.saved_order_qty === -1) return false;
       return p.stock <= minStock || (p.saved_order_qty && p.saved_order_qty > 0);
     }).sort((a, b) => {
       if (a.created_from_order && !b.created_from_order) return -1;
@@ -260,6 +271,7 @@ router.get('/', async (req, res) => {
     res.json({
       totalSales: totalSalesAgg[0]?.total || 0,
       todaySales: selectedDateSalesAgg[0]?.total || 0,
+      todayConcession: selectedDateSalesAgg[0]?.concession || 0,
       todayCount: selectedDateSalesAgg[0]?.count || 0,
       invoiceCount: invoiceCount || 0,
       productCount: productCount || 0,

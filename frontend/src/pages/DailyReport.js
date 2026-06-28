@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { dashboardApi, invoiceApi, deliveryApi, settlementApi, dailyReportApi, customerApi, supplierApi, productApi, managerApi, walkinApi } from '../utils/api';
-import { Moon, Send, Plus, CheckCircle, AlertTriangle, DollarSign, FileText, Truck, X, ChevronDown, ChevronUp, Clock, Package, Users, Building2, TrendingUp, Loader, Coffee, CreditCard, Bell } from 'lucide-react';
+import { Moon, Send, Plus, CheckCircle, AlertTriangle, DollarSign, FileText, Truck, X, ChevronDown, ChevronUp, Clock, Package, Users, Building2, TrendingUp, Loader, Coffee, CreditCard, Bell, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
@@ -15,6 +15,7 @@ function getTodayIST() {
 }
 
 export default function DailyReport() {
+  const navigate = useNavigate();
   const location = useLocation();
   const { user, isAdmin, socket } = useAuth();
   const { t } = useApp();
@@ -79,10 +80,13 @@ export default function DailyReport() {
   const [productSuggestions, setProductSuggestions] = useState([]);
 
   // Admin view
-  const [adminSelectedDate, setAdminSelectedDate] = useState(getTodayIST());
+  const [adminSelectedDate, setAdminSelectedDate] = useState(location.state?.date || getTodayIST());
   const [allReports, setAllReports] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [expandedReport, setExpandedReport] = useState(null);
+  
+  const [realTimeReports, setRealTimeReports] = useState({});
+  const [loadingRealTime, setLoadingRealTime] = useState({});
 
   const [managerSelectedDate, setManagerSelectedDate] = useState(getTodayIST());
   const today = managerSelectedDate; // Keep variable name "today" to avoid renaming everywhere
@@ -232,8 +236,16 @@ export default function DailyReport() {
   }, [isAdmin, socket, loadAdminReports]);
 
   useEffect(() => {
-    if (isAdmin && allReports.length > 0 && location.state?.openReportId) {
-      setExpandedReport(location.state.openReportId);
+    if (isAdmin && allReports.length > 0) {
+      if (location.state?.openReportId) {
+        setExpandedReport(location.state.openReportId);
+      } else if (location.state?.managerId) {
+        // Find report for this manager
+        const matchedReport = allReports.find(r => 
+          (r.manager_id?._id || r.manager_id) === location.state.managerId
+        );
+        if (matchedReport) setExpandedReport(matchedReport._id);
+      }
     }
   }, [isAdmin, allReports, location.state]);
 
@@ -351,6 +363,7 @@ export default function DailyReport() {
         system_sales_reported: baseSales,
         system_money_received: totalMoneyReceived,
         system_debt_reported: todayDebt,
+        system_concession_reported: dashData?.todayConcession || 0,
         system_cash_reported: systemCash,
         actual_cash_reported: user?.role === 'walkin_manager' ? systemCash : (parseFloat(actualCash) || 0),
         system_bills_reported: totalBills,
@@ -402,25 +415,107 @@ export default function DailyReport() {
     }
   };
 
+  // Handle expanding a report (fetch real-time if pending)
+  const handleExpand = async (report) => {
+    if (report.status !== 'pending_submission' && !report.walkin_trip_summary && report.status !== 'reviewed') {
+      if (!report._id) return;
+    }
+    
+    const isExpanding = expandedReport !== report._id;
+    setExpandedReport(isExpanding ? report._id : null);
+    
+    if (isExpanding && report.status === 'pending_submission' && !realTimeReports[report.manager_id]) {
+      setLoadingRealTime(prev => ({ ...prev, [report.manager_id]: true }));
+      try {
+        const dash = await dashboardApi.get(adminSelectedDate, report.manager_id);
+        const dels = await deliveryApi.getAll({ date: adminSelectedDate, manager_id: report.manager_id });
+        const setts = await settlementApi.get({ date: adminSelectedDate, manager_id: report.manager_id });
+        
+        const rSales = dash?.data?.todaySales || dash?.todaySales || 0;
+        const rMoney = dash?.data?.statementData?.totalReceived || dash?.statementData?.totalReceived || 0;
+        const rBills = dash?.data?.todayCount || dash?.todayCount || 0;
+        const rConcessions = dash?.data?.todayConcession || dash?.todayConcession || 0;
+        const rDels = Array.isArray(dels) ? dels.filter(d => d.status === 'delivered').length : 0;
+        const rSetts = setts.settlements || [];
+        
+        const rSettExpenses = rSetts.filter(s => ['paid_to_supplier', 'other_expense', 'vehicle_expense'].includes(s.type)).reduce((s, x) => s + x.amount, 0);
+        const rSettIncome = rSetts.filter(s => ['other_income', 'by_invoice', 'due_cleared', 'advance_received', 'received_from_customer'].includes(s.type)).reduce((s, x) => s + x.amount, 0);
+        
+        setRealTimeReports(prev => ({
+          ...prev,
+          [report.manager_id]: {
+            system_sales_reported: rSales,
+            system_money_received: rMoney + rSettIncome,
+            system_concession_reported: rConcessions,
+            system_debt_reported: Math.max(0, rSales - rMoney),
+            system_bills_reported: rBills,
+            system_deliveries_reported: rDels,
+            system_expenses_reported: rSettExpenses,
+            // We don't have quick entries or opening balance here, but we show what we know
+            system_cash_reported: rMoney + rSettIncome - rSettExpenses,
+          }
+        }));
+      } catch (e) {
+        console.error("Failed to load real time stats", e);
+      } finally {
+        setLoadingRealTime(prev => ({ ...prev, [report.manager_id]: false }));
+      }
+    }
+  };
+
   // ── Admin View ──
   if (isAdmin) {
+    // Calculate global totals
+    const globalTotals = allReports.reduce((acc, r) => {
+      if (r.status !== 'pending_submission') {
+        acc.system_cash += (r.system_cash_reported || 0);
+        acc.actual_cash += (r.actual_cash_reported || 0);
+        acc.sales += (r.system_sales_reported || 0);
+        acc.received += (r.system_money_received || 0);
+        acc.concessions += (r.system_concession_reported || 0);
+        acc.debt += (r.system_debt_reported || 0);
+        acc.bills += (r.system_bills_reported || 0);
+        acc.deliveries += (r.system_deliveries_reported || 0);
+        acc.opening_balance += (r.opening_balance || 0);
+        acc.paid_out += ((r.quick_entries || []).filter(e => e.type === 'payment_out').reduce((s, e) => s + e.amount, 0));
+        acc.expenses += (r.system_expenses_reported || 0);
+      } else if (realTimeReports[r.manager_id]) {
+        const rt = realTimeReports[r.manager_id];
+        acc.system_cash += (rt.system_cash_reported || 0);
+        acc.actual_cash += 0; // Not available until submitted
+        acc.sales += (rt.system_sales_reported || 0);
+        acc.received += (rt.system_money_received || 0);
+        acc.concessions += (rt.system_concession_reported || 0);
+        acc.debt += (rt.system_debt_reported || 0);
+        acc.bills += (rt.system_bills_reported || 0);
+        acc.deliveries += (rt.system_deliveries_reported || 0);
+        acc.opening_balance += (rt.opening_balance || 0);
+        acc.paid_out += (rt.total_paid_out || 0);
+        acc.expenses += (rt.system_expenses_reported || 0);
+      }
+      return acc;
+    }, { system_cash: 0, actual_cash: 0, sales: 0, received: 0, concessions: 0, debt: 0, bills: 0, deliveries: 0, opening_balance: 0, paid_out: 0, expenses: 0 });
+
     return (
-      <div style={{ padding: '24px 20px', maxWidth: 900, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 14,
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Moon size={22} color="#fff" />
+      <div style={{ paddingBottom: 60 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+              <Moon size={22} className="text-primary" /> Manager Daily Reports
             </div>
-            <div>
-              <h1 style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: '-0.5px' }}>Manager Daily Reports</h1>
-              <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0 }}>Review end-of-day reports from your managers</p>
-            </div>
+            <div className="page-subtitle" style={{ margin: 0 }}>Review end-of-day reports from your managers</div>
           </div>
-          <div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
             <input 
               type="date" 
               className="form-control"
@@ -429,6 +524,86 @@ export default function DailyReport() {
               onChange={e => setAdminSelectedDate(e.target.value)}
               style={{ fontWeight: 700, padding: '8px 12px', background: 'var(--bg-card)' }}
             />
+          </div>
+        </div>
+
+        <style>
+          {`
+            .daily-stats-grid {
+              display: flex;
+              gap: 8px;
+              margin-bottom: 20px;
+              overflow-x: auto;
+              scrollbar-width: none;
+              -webkit-overflow-scrolling: touch;
+            }
+            .daily-stats-grid::-webkit-scrollbar {
+              display: none;
+            }
+            .daily-stats-grid > div {
+              flex: 1 0 auto;
+              min-width: 95px;
+            }
+            @media (max-width: 768px) {
+              .daily-stats-grid .stat-label {
+                font-size: 8.5px !important;
+              }
+              .daily-stats-grid .stat-value {
+                font-size: 13px !important;
+              }
+            }
+          `}
+        </style>
+        <div className="daily-stats-grid">
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('SYSTEM CASH', 'सिस्टम कैश')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>₹{globalTotals.system_cash.toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('ACTUAL CASH', 'असली कैश')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', marginTop: 2 }}>
+              {globalTotals.actual_cash === 0 && !allReports.some(r => r.actual_cash_reported !== undefined) ? '---' : `₹${globalTotals.actual_cash.toLocaleString('en-IN')}`}
+            </div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('TOTAL SALES', 'कुल बिक्री')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', marginTop: 2 }}>₹{globalTotals.sales.toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('MONEY RECEIVED', 'प्राप्त धन')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--success)', marginTop: 2 }}>₹{globalTotals.received.toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('CONCESSIONS', 'छूट')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--warning)', marginTop: 2 }}>₹{globalTotals.concessions.toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('DEBT CREATED', 'आज का ऋण')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--danger)', marginTop: 2 }}>₹{globalTotals.debt.toLocaleString('en-IN')}</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('BILLS', 'बिल')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', marginTop: 2 }}>{globalTotals.bills}</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('DELIVERIES', 'डिलीवरी')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', marginTop: 2 }}>{globalTotals.deliveries}</div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('OPENING BAL', 'ओपनिंग बैलेंस')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--info)', marginTop: 2 }}>
+              {globalTotals.opening_balance === 0 && !allReports.some(r => r.opening_balance !== undefined) ? '---' : `₹${globalTotals.opening_balance.toLocaleString('en-IN')}`}
+            </div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('TOTAL PAID OUT', 'कुल भुगतान')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--danger)', marginTop: 2 }}>
+              {globalTotals.paid_out === 0 && !allReports.some(r => r.total_paid_out !== undefined) ? '---' : `₹${globalTotals.paid_out.toLocaleString('en-IN')}`}
+            </div>
+          </div>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('TOTAL EXPENSES', 'कुल खर्च')}</div>
+            <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--warning)', marginTop: 2 }}>₹{globalTotals.expenses.toLocaleString('en-IN')}</div>
           </div>
         </div>
 
@@ -441,11 +616,15 @@ export default function DailyReport() {
           <div className="card" style={{ textAlign: 'center', padding: '60px 20px' }}>
             <Moon size={40} style={{ color: 'var(--text-muted)', marginBottom: 12, opacity: 0.4 }} />
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-muted)' }}>No reports submitted yet</div>
-            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>Manager reports will appear here once submitted</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>Manager reports will appear here once submitted</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {allReports.map(report => (
+            {allReports.map(report => {
+              const isPending = report.status === 'pending_submission';
+              const displayReport = (isPending && realTimeReports[report.manager_id]) ? realTimeReports[report.manager_id] : report;
+              
+              return (
               <div key={report._id} className="card report-card-hover" style={{ overflow: 'hidden', transition: 'all 0.2s', border: expandedReport === report._id ? '1px solid var(--primary)' : '1px solid var(--border)' }}>
                 <style>{`
                   .report-card-hover:hover {
@@ -458,10 +637,10 @@ export default function DailyReport() {
                     padding: '14px 18px',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     background: expandedReport === report._id ? 'var(--bg)' : 'var(--bg-card)',
-                    cursor: (report.status !== 'pending_submission' || report.walkin_trip_summary) ? 'pointer' : 'default',
+                    cursor: 'pointer',
                     transition: 'background 0.2s',
                   }}
-                  onClick={() => (report.status !== 'pending_submission' || report.walkin_trip_summary) && setExpandedReport(expandedReport === report._id ? null : report._id)}
+                  onClick={() => handleExpand(report)}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{
@@ -487,6 +666,11 @@ export default function DailyReport() {
                             ? <><CheckCircle size={10} /> {t('Reviewed', 'समीक्षा की गई')}</> 
                             : report.status === 'pending_submission' ? <><AlertTriangle size={10} /> {adminSelectedDate < getTodayIST() ? t('Not Submitted', 'जमा नहीं किया') : t('No Report', 'कोई रिपोर्ट नहीं')}</> : <><Clock size={10} /> {t('Pending Review', 'समीक्षा लंबित')}</>}
                         </span>
+                        {isPending && displayReport.system_sales_reported !== undefined && (
+                          <span style={{ fontSize: 10, color: 'var(--info)', marginLeft: 8, fontWeight: 700 }}>
+                            (Real-Time Activity)
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
                         {new Date(report.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -512,85 +696,96 @@ export default function DailyReport() {
                     ) : report.actual_cash_reported !== report.system_cash_reported && (
                       <AlertTriangle size={16} style={{ color: 'var(--danger)' }} />
                     )}
-                    {report.status !== 'pending_submission' ? (
-                      expandedReport === report._id ? <ChevronUp size={18} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={18} style={{ color: 'var(--text-muted)' }} />
-                    ) : report.walkin_trip_summary ? (
-                      expandedReport === report._id ? <ChevronUp size={18} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={18} style={{ color: 'var(--text-muted)' }} />
-                    ) : null}
+                    {expandedReport === report._id ? <ChevronUp size={18} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={18} style={{ color: 'var(--text-muted)' }} />}
                   </div>
                 </div>
 
                 {expandedReport === report._id && (
                   <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border)' }}>
-                    {/* Summary Grid */}
-                    {report.status !== 'pending_submission' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10, marginTop: 14 }}>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('SYSTEM CASH', 'सिस्टम कैश')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)' }}>₹{report.system_cash_reported?.toLocaleString('en-IN')}</div>
+                    {loadingRealTime[report.manager_id] ? (
+                      <div style={{ padding: 30, textAlign: 'center' }}>
+                        <Loader size={20} className="spin" style={{ color: 'var(--primary)' }} />
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>Fetching real-time data...</div>
                       </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('ACTUAL CASH', 'वास्तविक नकद')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: report.actual_cash_reported === report.system_cash_reported ? 'var(--success)' : 'var(--danger)' }}>
-                          ₹{report.actual_cash_reported?.toLocaleString('en-IN')}
-                        </div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('TOTAL SALES', 'कुल बिक्री')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>₹{report.system_sales_reported?.toLocaleString('en-IN') || 0}</div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('MONEY RECEIVED', 'प्राप्त धन')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--success)' }}>₹{report.system_money_received?.toLocaleString('en-IN') || 0}</div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('DEBT CREATED', 'बनाया गया कर्ज')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>₹{report.system_debt_reported?.toLocaleString('en-IN') || 0}</div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('BILLS', 'बिल')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{report.system_bills_reported}</div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('DELIVERIES', 'वितरण')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{report.system_deliveries_reported}</div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('OPENING BAL', 'प्रारंभिक शेष')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--info)' }}>₹{report.opening_balance?.toLocaleString('en-IN')}</div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('TOTAL PAID OUT', 'कुल भुगतान')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>₹{((report.quick_entries || []).filter(e => e.type === 'payment_out').reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}</div>
-                      </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('TOTAL EXPENSES', 'कुल खर्च')}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--warning)' }}>₹{((report.quick_entries || []).filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}</div>
-                      </div>
-                    </div>
-                    )}
+                    ) : (
+                      <>
+                        {/* Summary Grid */}
+                        {(report.status !== 'pending_submission' || displayReport.system_sales_reported !== undefined) && (
+                          <div className="daily-stats-grid" style={{ marginTop: 14 }}>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('SYSTEM CASH', 'सिस्टम कैश')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)' }}>₹{displayReport.system_cash_reported?.toLocaleString('en-IN') || 0}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('ACTUAL CASH', 'वास्तविक नकद')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: report.status === 'pending_submission' ? 'var(--text-muted)' : (displayReport.actual_cash_reported === displayReport.system_cash_reported ? 'var(--success)' : 'var(--danger)') }}>
+                                {report.status === 'pending_submission' ? '---' : `₹${displayReport.actual_cash_reported?.toLocaleString('en-IN') || 0}`}
+                              </div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('TOTAL SALES', 'कुल बिक्री')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>₹{displayReport.system_sales_reported?.toLocaleString('en-IN') || 0}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('MONEY RECEIVED', 'प्राप्त धन')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--success)' }}>₹{displayReport.system_money_received?.toLocaleString('en-IN') || 0}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('CONCESSIONS', 'छूट')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--warning)' }}>₹{displayReport.system_concession_reported?.toLocaleString('en-IN') || 0}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('DEBT CREATED', 'बनाया गया कर्ज')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>₹{displayReport.system_debt_reported?.toLocaleString('en-IN') || 0}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('BILLS', 'बिल')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{displayReport.system_bills_reported || 0}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('DELIVERIES', 'वितरण')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{displayReport.system_deliveries_reported || 0}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('OPENING BAL', 'प्रारंभिक शेष')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--info)' }}>{report.status === 'pending_submission' ? '---' : `₹${displayReport.opening_balance?.toLocaleString('en-IN') || 0}`}</div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('TOTAL PAID OUT', 'कुल भुगतान')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>
+                                {report.status === 'pending_submission' ? '---' : `₹${((displayReport.quick_entries || []).filter(e => e.type === 'payment_out').reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}`}
+                              </div>
+                            </div>
+                            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+                              <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('TOTAL EXPENSES', 'कुल खर्च')}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--warning)' }}>
+                                {report.status === 'pending_submission' ? `₹${displayReport.system_expenses_reported?.toLocaleString('en-IN') || 0}` : `₹${((displayReport.quick_entries || []).filter(e => e.type === 'expense' || e.type === 'vehicle_expense').reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}`}
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
-                    {/* Cash Difference */}
-                    {report.actual_cash_reported !== report.system_cash_reported && (
-                      <div style={{
-                        marginTop: 12, padding: '10px 14px', borderRadius: 10,
-                        background: 'var(--danger-light)', border: '1px solid var(--danger)',
-                        display: 'flex', alignItems: 'center', gap: 8,
-                      }}>
-                        <AlertTriangle size={16} style={{ color: 'var(--danger)' }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
-                          {t('Cash Discrepancy:', 'नकद में अंतर:')} ₹{(report.actual_cash_reported - report.system_cash_reported).toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    )}
+                        {/* Cash Difference */}
+                        {report.status !== 'pending_submission' && displayReport.actual_cash_reported !== displayReport.system_cash_reported && (
+                          <div style={{
+                            marginTop: 12, padding: '10px 14px', borderRadius: 10,
+                            background: 'var(--danger-light)', border: '1px solid var(--danger)',
+                            display: 'flex', alignItems: 'center', gap: 8,
+                          }}>
+                            <AlertTriangle size={16} style={{ color: 'var(--danger)' }} />
+                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
+                              {t('Cash Discrepancy:', 'नकद में अंतर:')} ₹{(displayReport.actual_cash_reported - displayReport.system_cash_reported).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        )}
 
-                    {/* Notes */}
-                    {report.discrepancy_notes && (
-                      <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--bg)', fontSize: 13, color: 'var(--text)' }}>
-                        <div style={{ fontWeight: 700, fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{t("Manager's Notes", 'मैनेजर के नोट्स')}</div>
-                        {report.discrepancy_notes}
-                      </div>
-                    )}
+                        {/* Notes */}
+                        {displayReport.discrepancy_notes && (
+                          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--bg)', fontSize: 13, color: 'var(--text)' }}>
+                            <div style={{ fontWeight: 700, fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{t("Manager's Notes", 'मैनेजर के नोट्स')}</div>
+                            {displayReport.discrepancy_notes}
+                          </div>
+                        )}
 
                     {/* Walkin Trip Summary */}
                     {report.walkin_trip_summary && (report.walkin_trip_summary.initial_load?.length > 0 || report.walkin_trip_summary.remaining_items?.length > 0) && (
@@ -681,10 +876,13 @@ export default function DailyReport() {
                         <CheckCircle size={15} style={{ marginRight: 6 }} /> Mark as Reviewed
                       </button>
                     )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -729,13 +927,17 @@ export default function DailyReport() {
 
           {/* Quick summary */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, textAlign: 'left', marginBottom: 16 }}>
-            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('System Cash', 'सिस्टम नकद')}</div>
               <div style={{ fontSize: 16, fontWeight: 800 }}>₹{existingReport.system_cash_reported?.toLocaleString('en-IN')}</div>
             </div>
-            <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('Actual Cash', 'वास्तविक नकद')}</div>
               <div style={{ fontSize: 16, fontWeight: 800 }}>₹{existingReport.actual_cash_reported?.toLocaleString('en-IN')}</div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('Concessions', 'छूट')}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--warning)' }}>₹{existingReport.system_concession_reported?.toLocaleString('en-IN') || 0}</div>
             </div>
           </div>
 
@@ -754,24 +956,27 @@ export default function DailyReport() {
   return (
     <div style={{ padding: '24px 20px', maxWidth: 650, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 14,
-            background: 'linear-gradient(135deg, #1e293b, #334155)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Moon size={22} color="#fcd34d" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 900, margin: 0, letterSpacing: '-0.5px' }}>{t('End of Day Report', 'दिन के अंत की रिपोर्ट')}</h1>
-            <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+              <Moon size={22} className="text-primary" /> {t('End of Day Report', 'दिन के अंत की रिपोर्ट')}
+            </div>
+            <div className="page-subtitle" style={{ margin: 0 }}>
               {new Date(today + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' })}
-            </p>
+            </div>
           </div>
         </div>
         {user?.role !== 'walkin_manager' && (
-          <div>
+          <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
             <input 
               type="date" 
               className="form-control"
@@ -803,7 +1008,7 @@ export default function DailyReport() {
         <div className="card-body" style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {user?.role !== 'walkin_manager' && (
             <div style={{
-              background: 'var(--bg)', borderRadius: 10, padding: '12px 14px',
+              background: 'var(--bg)', borderRadius: 8, padding: '8px 10px',
               display: 'flex', alignItems: 'center', gap: 10,
             }}>
               <div style={{
@@ -833,6 +1038,7 @@ export default function DailyReport() {
           )}
           <SummaryCard icon={<DollarSign size={20} />} label={t('TOTAL SALES', 'कुल बिक्री')} value={`₹${baseSales.toLocaleString('en-IN')}`} color="var(--info)" />
           <SummaryCard icon={<CreditCard size={20} />} label={t('TOTAL MONEY RECEIVED', 'कुल प्राप्त धन')} value={`₹${totalMoneyReceived.toLocaleString('en-IN')}`} color="var(--success)" />
+          <SummaryCard icon={<DollarSign size={20} />} label={t('CONCESSIONS', 'छूट')} value={`₹${(dashData?.todayConcession || 0).toLocaleString('en-IN')}`} color="var(--warning)" />
           <SummaryCard icon={<AlertTriangle size={20} />} label={t('DEBT CREATED TODAY', 'आज का ऋण')} value={`₹${todayDebt.toLocaleString('en-IN')}`} color="var(--danger)" />
           <SummaryCard icon={<FileText size={20} />} label={t('BILLS CREATED', 'बनाए गए बिल')} value={totalBills} color="var(--primary)" />
           {user?.role !== 'walkin_manager' && <SummaryCard icon={<Truck size={20} />} label={t('DELIVERIES DONE', 'पूरी की गई डिलीवरी')} value={totalDeliveries} color="var(--warning)" />}
@@ -1254,7 +1460,7 @@ export default function DailyReport() {
 function SummaryCard({ icon, label, value, color }) {
   return (
     <div style={{
-      background: 'var(--bg)', borderRadius: 10, padding: '12px 14px',
+      background: 'var(--bg)', borderRadius: 8, padding: '8px 10px',
       display: 'flex', alignItems: 'center', gap: 10,
     }}>
       <div style={{

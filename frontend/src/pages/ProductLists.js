@@ -329,7 +329,7 @@ export default function ProductLists({ globalSearch = '', onListCountChange, tri
               <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-muted)' }}>No lists found</div>
             </div>
           ) : (
-            <div className="hide-scroll" style={{ overflowX: 'auto' }}>
+            <div className="hide-scroll" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ minWidth: '500px', width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
@@ -357,7 +357,13 @@ export default function ProductLists({ globalSearch = '', onListCountChange, tri
                     }
 
                     return (
-                      <tr key={list._id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
+                      <tr 
+                        key={list._id} 
+                        style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s', cursor: 'pointer' }} 
+                        onClick={() => setViewListModal({ list, displayProducts })}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} 
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
                         <td style={{ padding: '16px', verticalAlign: 'top' }}>
                           <div style={{ fontWeight: 700, color: list.auto_for_manager ? '#9333ea' : '#1e293b', fontSize: 14 }}>{list.name}</div>
                           {!isOwner && (
@@ -391,20 +397,12 @@ export default function ProductLists({ globalSearch = '', onListCountChange, tri
                         )}
                         <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                            <button className="btn btn-outline btn-sm" onClick={() => setViewListModal({ list, displayProducts })} style={{ padding: '4px 8px' }}>
-                              <Eye size={14} /> View
-                            </button>
                             {canEdit && (
                               <>
-                                {isAdmin && (
-                                  <button className="btn btn-outline btn-sm" onClick={() => openShare(list)} style={{ color: '#3b82f6', borderColor: '#bfdbfe', padding: '4px 8px' }}>
-                                    <Share2 size={14} /> Share
-                                  </button>
-                                )}
-                                <button className="btn btn-outline btn-sm" onClick={() => openEdit(list)} style={{ padding: '4px 8px' }}>
+                                <button className="btn btn-outline btn-sm" onClick={(e) => { e.stopPropagation(); openEdit(list); }} style={{ padding: '4px 8px' }}>
                                   <Edit size={14} />
                                 </button>
-                                <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirmId(list._id)} style={{ color: '#ef4444', padding: '4px 8px' }}>
+                                <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(list._id); }} style={{ color: '#ef4444', padding: '4px 8px' }}>
                                   <Trash2 size={14} />
                                 </button>
                               </>
@@ -553,7 +551,7 @@ export default function ProductLists({ globalSearch = '', onListCountChange, tri
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                          <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Final Price</span>
+                          <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Selling Price</span>
                           <span style={{ fontWeight: 700, color: '#1e293b', fontSize: 15 }}>₹{p.suggested_price || p.price}</span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>

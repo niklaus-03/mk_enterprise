@@ -36,6 +36,20 @@
   font-family: 'Inter', sans-serif;
 }
 
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: auto !important;
+  -moz-user-select: auto !important;
+  -ms-user-select: auto !important;
+  user-select: auto !important;
+}
+
 
 /* Premium Navigation Feature Cards */
 .feature-card {
@@ -1749,9 +1763,9 @@ body:has(.modal-overlay), body:has(.cs-modal-overlay) {
 .inv-tag {
   font-family: 'Playfair Display', 'Georgia', serif;
   color: #0f172a;
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 900;
-  letter-spacing: 2px;
+  letter-spacing: -0.5px;
   display: inline-block;
   text-transform: uppercase;
 }

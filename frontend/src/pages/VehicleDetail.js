@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { deliveryApi, productApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
-import { Truck, Calendar, ArrowLeft, CheckCircle, Clock, User, AlertTriangle, FileText, X, Check, ArrowRight, Save, LayoutGrid } from 'lucide-react';
+import { Truck, Calendar, ArrowLeft, CheckCircle, Clock, User, AlertTriangle, FileText, X, Check, ArrowRight, Save, LayoutGrid, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function VehicleDetail() {
@@ -18,7 +18,10 @@ export default function VehicleDetail() {
   const [globalQuintalCharge, setGlobalQuintalCharge] = useState('');
   const [applyingQuintal, setApplyingQuintal] = useState(false);
   const [supplierChargeApplied, setExtraChargeApplied] = useState(false);
+  const [supplierInputCharges, setSupplierInputCharges] = useState({});
+  const [supplierInputQuintals, setSupplierInputQuintals] = useState({});
   const [showDeliverModal, setShowDeliverModal] = useState(false);
+  const [showArrivedModal, setShowArrivedModal] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const fc = formatCurrency;
 
@@ -131,6 +134,7 @@ export default function VehicleDetail() {
           final_price: parseFloat(item.final_price) || 0,
           final_stock: parseFloat(item.final_stock) || parseFloat(item.quantity) || 0,
           is_new_item: !item.product_id,
+          supplier_name: item.supplier_name,
         })),
       });
       toast.success('Details saved');
@@ -145,11 +149,25 @@ export default function VehicleDetail() {
 
   const confirmDelivery = async () => {
     setShowDeliverModal(false);
-    await handleSave();
+    if (!delivery.stock_updated) {
+      await handleSave();
+    }
     setSaving(true);
     try {
       await deliveryApi.updateStatus(id, 'delivered');
-      toast.success('✅ Delivered! Stock and prices updated.');
+      toast.success('✅ Delivered! Status updated.');
+      loadDelivery();
+    } catch (err) { toast.error(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const confirmArrived = async () => {
+    setShowArrivedModal(false);
+    await handleSave();
+    setSaving(true);
+    try {
+      await deliveryApi.updateStatus(id, 'arrived');
+      toast.success('📍 Marked Arrived! Items provisionally added to inventory. You can still edit prices & quantities.');
       loadDelivery();
     } catch (err) { toast.error(err.message); }
     finally { setSaving(false); }
@@ -163,52 +181,68 @@ export default function VehicleDetail() {
 
   const statusLabels = {
     pending: '⏳ Pending', on_the_way: '🚛 On the Way',
-    arriving_soon: '⚠️ Arriving Soon', delivered: '✅ Delivered', not_delivered: '❌ Not Delivered',
+    arriving_soon: '⚠️ Arriving Soon', arrived: '📍 Arrived', delivered: '✅ Delivered', not_delivered: '❌ Not Delivered',
   };
 
   if (loading) return <div className="loading"><span className="spinner"></span></div>;
   if (!delivery) return <div className="empty-state"><div className="empty-text">Not found</div></div>;
 
   const isDelivered = delivery.status === 'delivered';
+  const isArrived = delivery.status === 'arrived';
+  const isStockUpdated = delivery.stock_updated;
+  // Editing is locked ONLY when fully delivered — arrived keeps editing open
+  const isLocked = isDelivered;
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif" }}>
-      <div className="page-header" style={{ marginBottom: 20, flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: 16 }}>
-        <div>
-          <div className="page-title" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, fontSize: isMobile ? '20px' : '24px' }}>
-            <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
-              <Truck size={24} />
-            </span>
-            <span>{(delivery.vehicle_number || '').toUpperCase()}</span>
-          </div>
-          <div className="page-subtitle" style={{ fontSize: '13.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-            {delivery.supplier && (
-              <>
-                <span style={{ fontWeight: 700, color: 'var(--text)' }}>{delivery.supplier}</span>
-                <span>·</span>
-              </>
-            )}
-            <span>{delivery.expected_arrival_ist}</span>
-            <span>·</span>
-            <span style={{ fontWeight: 700, color: delivery.status === 'delivered' ? '#059669' : '#d97706' }}>
-              {statusLabels[delivery.status]}
-            </span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, fontSize: isMobile ? '20px' : '24px', margin: 0, marginTop: '4px' }}>
+              <span style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
+                <Truck size={24} />
+              </span>
+              <span>{(delivery.vehicle_number || '').toUpperCase()}</span>
+            </div>
+            <div className="page-subtitle" style={{ fontSize: '13.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 0 }}>
+              {delivery.supplier && (
+                <>
+                  <span style={{ fontWeight: 700, color: 'var(--text)' }}>{delivery.supplier}</span>
+                  <span>·</span>
+                </>
+              )}
+              <span>{delivery.expected_arrival_ist}</span>
+              <span>·</span>
+              <span style={{ fontWeight: 700, color: delivery.status === 'delivered' ? '#059669' : '#d97706' }}>
+                {statusLabels[delivery.status]}
+              </span>
+            </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: isMobile ? '100%' : 'auto', flexWrap: 'nowrap' }}>
-          {!isDelivered && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: isMobile ? '100%' : 'auto', flexWrap: 'wrap' }}>
+          {!isLocked && (
             <>
               <button className="btn btn-outline" onClick={handleSave} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: 1, borderRadius: 8, fontSize: isMobile ? 11 : 13, padding: isMobile ? '6px 8px' : '8px 16px', whiteSpace: 'nowrap' }}>
                 <Save size={13} /> {isMobile ? 'Save' : 'Save Changes'}
               </button>
-              <button className="btn btn-success" onClick={handleMarkDelivered} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: 1.5, borderRadius: 8, fontSize: isMobile ? 11 : 13, padding: isMobile ? '6px 8px' : '8px 16px', whiteSpace: 'nowrap' }}>
-                <CheckCircle size={13} /> {isMobile ? 'Deliver' : 'Mark Delivered & Update Stock'}
+              <button className="btn btn-primary" onClick={() => setShowArrivedModal(true)} disabled={saving || isArrived} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: 1.5, borderRadius: 8, fontSize: isMobile ? 11 : 13, padding: isMobile ? '6px 8px' : '8px 16px', whiteSpace: 'nowrap', background: isArrived ? '#6366f1' : '#4338ca', color: '#fff', border: 'none', opacity: isArrived ? 0.6 : 1 }}>
+                <MapPin size={13} /> {isMobile ? (isArrived ? 'Arrived ✓' : 'Arrived') : (isArrived ? 'Arrived ✓' : 'Mark Arrived')}
               </button>
             </>
           )}
-          <Link to="/vehicle-incoming" className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: isMobile ? 0.7 : 'initial', borderRadius: 8, fontSize: isMobile ? 11 : 13, padding: isMobile ? '6px 8px' : '8px 16px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-            <ArrowLeft size={13} /> Back
-          </Link>
+          {!isDelivered && (
+            <button className="btn btn-success" onClick={handleMarkDelivered} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: 1.5, borderRadius: 8, fontSize: isMobile ? 11 : 13, padding: isMobile ? '6px 8px' : '8px 16px', whiteSpace: 'nowrap' }}>
+              <CheckCircle size={13} /> {isMobile ? 'Deliver' : 'Mark Delivered'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -218,520 +252,329 @@ export default function VehicleDetail() {
           <span>This delivery is complete. Stock and prices were updated at {delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}.</span>
         </div>
       )}
-
-      {/* Global Charges */}
-      {!isDelivered && (
-        <div className="card" style={{ marginBottom: 20, borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div className="card-body" style={{ padding: isMobile ? 12 : 18 }}>
-            <div style={{ display: 'flex', flexDirection: 'row', gap: isMobile ? 10 : 20, alignItems: 'flex-start' }}>
-
-              {/* Extra Charges */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: 'var(--text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <span>🏭</span> {isMobile ? 'Extra (₹)' : 'Extra Charges (Total ₹)'}
-                </div>
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <input
-                    type="number" min="0" step="0.01"
-                    className="form-control"
-                    style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 11.5 : 12.5, padding: isMobile ? '6px 8px' : '8px 12px', borderRadius: 6 }}
-                    value={supplierCharge}
-                    placeholder={isMobile ? "1k" : "e.g. 1000"}
-                    onChange={e => { setExtraCharge(e.target.value); setExtraChargeApplied(false); }}
-                  />
-                  <button
-                    className="btn btn-primary btn-sm"
-                    style={{ borderRadius: 6, padding: isMobile ? '6px 8px' : '8px 14px', fontSize: isMobile ? 11 : 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}
-                    onClick={() => {
-                      const totalCharge = parseFloat(supplierCharge) || 0;
-                      const validItems = items.filter(i => i.item_name);
-                      if (!validItems.length) return toast.error('No items to distribute charge to');
-
-                      const totalQty = validItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 1), 0);
-                      const chargePerQty = totalCharge / totalQty;
-
-                      setItems(prev => prev.map(item => {
-                        if (!item.item_name) return item;
-                        const qty = parseFloat(item.quantity) || 1;
-                        const perUnitExtraCharge = chargePerQty;
-
-                        const base = parseFloat(item.base_price) || 0;
-                        const weight = parseFloat(item.weight) || 0;
-                        const qc = parseFloat(item.quintal_charge) || 0;
-                        const gst = parseFloat(item.gst) || 0;
-
-                        let newFinal;
-                        if (base > 0) {
-                          const quintalAdj = qc > 0 && weight > 0 ? (qc * weight) / 100 : 0;
-                          const beforeGST = base + quintalAdj + perUnitExtraCharge;
-                          const gstAmt = (beforeGST * gst) / 100;
-                          newFinal = parseFloat((beforeGST + gstAmt).toFixed(2));
-                        } else {
-                          const existing = parseFloat(item.final_price) || 0;
-                          newFinal = parseFloat((existing + perUnitExtraCharge).toFixed(2));
-                        }
-
-                        return {
-                          ...item,
-                          supplier_charge_per_item: parseFloat(perUnitExtraCharge.toFixed(4)),
-                          final_price: newFinal,
-                        };
-                      }));
-
-                      setExtraChargeApplied(true);
-                      toast.success(`₹${totalCharge.toFixed(0)} distributed: ₹${chargePerQty.toFixed(2)}/unit across ${totalQty} total units`);
-                    }}
-                  >
-                    {isMobile ? 'Split' : 'Distribute'}
-                  </button>
-                  {supplierChargeApplied && !isMobile && (
-                    <span style={{ fontSize: 11, color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                      <Check size={12} /> Applied
-                    </span>
-                  )}
-                </div>
-                {!isMobile && (
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                    Distributed equally based on total quantity across all items (₹{(parseFloat(supplierCharge) || 0) / Math.max(1, items.reduce((sum, item) => item.item_name ? sum + (parseFloat(item.quantity) || 1) : sum, 0))} per unit)
-                  </div>
-                )}
-              </div>
-
-              {/* Quintal Charge */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: 'var(--text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <span>⚖️</span> {isMobile ? 'Quintal' : 'Quintal Charge (₹ per 100 kg)'}
-                </div>
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <input
-                    type="number" min="0" step="0.01"
-                    className="form-control"
-                    style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 11.5 : 12.5, padding: isMobile ? '6px 8px' : '8px 12px', borderRadius: 6 }}
-                    value={globalQuintalCharge}
-                    placeholder={isMobile ? "50" : "e.g. 50"}
-                    onChange={e => setGlobalQuintalCharge(e.target.value)}
-                  />
-                  <button
-                    className="btn btn-primary btn-sm"
-                    style={{ borderRadius: 6, padding: isMobile ? '6px 8px' : '8px 14px', fontSize: isMobile ? 11 : 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}
-                    onClick={() => {
-                      const qc = parseFloat(globalQuintalCharge) || 0;
-                      setApplyingQuintal(true);
-                      setItems(prev => prev.map(item => {
-                        const base = parseFloat(item.base_price) || 0;
-                        const weight = parseFloat(item.weight) || 0;
-                        const gst = parseFloat(item.gst) || 0;
-                        const scPU = parseFloat(item.supplier_charge_per_item) || 0;
-                        const quintalAdj = qc > 0 && weight > 0 ? (qc * weight) / 100 : 0;
-                        const beforeGST = base + quintalAdj + scPU;
-                        const gstAmt = (beforeGST * gst) / 100;
-                        const finalPrice = base > 0
-                          ? parseFloat((beforeGST + gstAmt).toFixed(2))
-                          : item.final_price;
-                        return { ...item, quintal_charge: String(qc), final_price: finalPrice || item.final_price };
-                      }));
-                      setTimeout(() => setApplyingQuintal(false), 300);
-                      toast.success(`₹${qc}/quintal applied to all items`);
-                    }}
-                  >
-                    {isMobile ? 'Apply' : 'Apply All'}
-                  </button>
-                </div>
-                {!isMobile && (
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                    Formula: Base + (QC × Weight ÷ 100) + ExtraCharge + GST
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+      {isArrived && (
+        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 12, padding: '12px 18px', marginBottom: 20, fontSize: 13.5, color: '#92400e', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <MapPin size={16} style={{ color: '#d97706' }} />
+          <span>🚛 Vehicle arrived! Items provisionally in inventory. <strong>Edit prices, quantities, charges below</strong> — finalize by clicking <strong>Mark Delivered</strong>.</span>
         </div>
       )}
 
-      {/* Item Details */}
-      <div className="card" style={{ borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
-        <div className="card-header" style={{ background: 'var(--bg)', padding: '12px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--text)', fontSize: '14.5px' }}>
-            <span style={{ color: '#4f46e5', display: 'flex', alignItems: 'center' }}>
-              <LayoutGrid size={16} />
-            </span>
-            <span>Item Details & Pricing</span>
-          </div>
-          {!isDelivered && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>
-              Edit weight & pricing. Selling Price is auto-calculated but editable.
+      
+      {/* Grouped by Supplier */}
+      {[...new Set(items.map(i => i.supplier_name || delivery?.supplier || 'Unknown Supplier'))].map(supplierName => {
+        const supplierItems = items.map((item, originalIndex) => ({ item, originalIndex }))
+          .filter(x => (x.item.supplier_name || delivery?.supplier || 'Unknown Supplier') === supplierName);
+        
+        if (supplierItems.length === 0) return null;
+        
+        const scValue = supplierInputCharges[supplierName] || '';
+        const qcValue = supplierInputQuintals[supplierName] || '';
+
+        return (
+          <div key={supplierName} style={{ marginBottom: 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <div style={{ background: '#e0f2fe', color: '#0369a1', padding: '6px 12px', borderRadius: 8, fontWeight: 800, fontSize: 14 }}>
+                Items for {supplierName}
+              </div>
             </div>
-          )}
-        </div>
 
-        <div className="card-body no-pad" style={{ background: 'var(--bg-card)' }}>
-          {false ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 12 }}>
-              {items.map((item, idx) => {
-                const expectedStock = (item.current_stock || 0) + (parseFloat(item.quantity) || 0);
-                const stockColor = getLowStockColor(item.current_stock || 0);
+            {/* Supplier Charges */}
+            {!isLocked && (
+              <div className="card" style={{ marginBottom: 16, borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div className="card-body" style={{ padding: isMobile ? 12 : 18 }}>
+                  <div style={{ display: 'flex', flexDirection: 'row', gap: isMobile ? 10 : 20, alignItems: 'flex-start' }}>
 
-                return (
-                  <div key={idx} style={{
-                    background: 'var(--bg-card)',
-                    borderRadius: 14,
-                    padding: 16,
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.01)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 12
-                  }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: 10 }}>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: '14.5px', color: 'var(--text)' }}>{item.item_name}</div>
-                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>Unit: {item.unit}</div>
+                    {/* Extra Charges */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: 'var(--text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <span>🏭</span> {isMobile ? 'Extra (₹)' : 'Extra Charges (Total ₹)'}
                       </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <span style={{ fontSize: 10.5, fontWeight: 700, background: 'var(--bg-hover)', color: 'var(--text-muted)', padding: '3px 8px', borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
-                          {item.label || 'Goods'}
-                        </span>
-                        {!item.product_id && (
-                          <span style={{ fontSize: 10.5, background: 'var(--warning-light)', color: '#b45309', padding: '3px 8px', borderRadius: 8, fontWeight: 700, border: '1px solid #fef3c7', fontFamily: "'Inter', sans-serif" }}>
-                            New Item
-                          </span>
-                        )}
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input
+                          type="number" min="0" step="0.01"
+                          className="form-control"
+                          style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 11.5 : 12.5, padding: isMobile ? '6px 8px' : '8px 12px', borderRadius: 6 }}
+                          value={scValue}
+                          placeholder={isMobile ? "1k" : "e.g. 1000"}
+                          onChange={e => setSupplierInputCharges(prev => ({ ...prev, [supplierName]: e.target.value }))}
+                        />
+                        <button
+                          className="btn btn-primary btn-sm"
+                          style={{ borderRadius: 6, padding: isMobile ? '6px 8px' : '8px 14px', fontSize: isMobile ? 11 : 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}
+                          onClick={() => {
+                            const totalCharge = parseFloat(scValue) || 0;
+                            const validItems = supplierItems.filter(x => x.item.item_name);
+                            if (!validItems.length) return toast.error('No items to distribute charge to');
+
+                            const totalQty = validItems.reduce((sum, x) => sum + (parseFloat(x.item.quantity) || 1), 0);
+                            const chargePerQty = totalCharge / totalQty;
+
+                            setItems(prev => prev.map((item, idx) => {
+                              // Only update items belonging to this supplier
+                              const isThisSupplier = validItems.some(v => v.originalIndex === idx);
+                              if (!isThisSupplier) return item;
+
+                              const perUnitExtraCharge = chargePerQty;
+                              const base = parseFloat(item.base_price) || 0;
+                              const weight = parseFloat(item.weight) || 0;
+                              const qc = parseFloat(item.quintal_charge) || 0;
+                              const gst = parseFloat(item.gst) || 0;
+
+                              let newFinal;
+                              if (base > 0) {
+                                const quintalAdj = qc > 0 && weight > 0 ? (qc * weight) / 100 : 0;
+                                const beforeGST = base + quintalAdj + perUnitExtraCharge;
+                                const gstAmt = (beforeGST * gst) / 100;
+                                newFinal = parseFloat((beforeGST + gstAmt).toFixed(2));
+                              } else {
+                                const existing = parseFloat(item.final_price) || 0;
+                                newFinal = parseFloat((existing + perUnitExtraCharge).toFixed(2));
+                              }
+
+                              return {
+                                ...item,
+                                supplier_charge_per_item: parseFloat(perUnitExtraCharge.toFixed(4)),
+                                final_price: newFinal,
+                              };
+                            }));
+                            toast.success(`₹${totalCharge.toFixed(0)} distributed to ${supplierName}'s items`);
+                          }}
+                        >
+                          {isMobile ? 'Split' : 'Distribute'}
+                        </button>
                       </div>
                     </div>
 
-                    {/* Stock Summary */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: 'var(--bg)', padding: 10, borderRadius: 10, fontFamily: "'Inter', sans-serif" }}>
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2 }}>Current Stock:</div>
-                        <div style={{ fontWeight: 700, fontSize: 12.5, color: stockColor }}>
-                          {item.current_stock != null ? `${item.current_stock} ${item.unit}` : (item.product_id ? 'Loading...' : '—')}
-                        </div>
+                    {/* Quintal Charge */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: 'var(--text)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <span>⚖️</span> {isMobile ? 'Quintal' : 'Quintal Charge (₹ per 100 kg)'}
                       </div>
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2 }}>Incoming Qty:</div>
-                        <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--primary)' }}>
-                          +{item.quantity} {item.unit}
-                        </div>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input
+                          type="number" min="0" step="0.01"
+                          className="form-control"
+                          style={{ flex: 1, minWidth: 0, fontSize: isMobile ? 11.5 : 12.5, padding: isMobile ? '6px 8px' : '8px 12px', borderRadius: 6 }}
+                          value={qcValue}
+                          placeholder={isMobile ? "50" : "e.g. 50"}
+                          onChange={e => setSupplierInputQuintals(prev => ({ ...prev, [supplierName]: e.target.value }))}
+                        />
+                        <button
+                          className="btn btn-primary btn-sm"
+                          style={{ borderRadius: 6, padding: isMobile ? '6px 8px' : '8px 14px', fontSize: isMobile ? 11 : 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}
+                          onClick={() => {
+                            const qc = parseFloat(qcValue) || 0;
+                            setApplyingQuintal(true);
+                            setItems(prev => prev.map((item, idx) => {
+                              const isThisSupplier = supplierItems.some(v => v.originalIndex === idx);
+                              if (!isThisSupplier) return item;
+
+                              const base = parseFloat(item.base_price) || 0;
+                              const weight = parseFloat(item.weight) || 0;
+                              const gst = parseFloat(item.gst) || 0;
+                              const scPU = parseFloat(item.supplier_charge_per_item) || 0;
+                              const quintalAdj = qc > 0 && weight > 0 ? (qc * weight) / 100 : 0;
+                              const beforeGST = base + quintalAdj + scPU;
+                              const gstAmt = (beforeGST * gst) / 100;
+                              const finalPrice = base > 0
+                                ? parseFloat((beforeGST + gstAmt).toFixed(2))
+                                : item.final_price;
+                              return { ...item, quintal_charge: String(qc), final_price: finalPrice || item.final_price };
+                            }));
+                            setTimeout(() => setApplyingQuintal(false), 300);
+                            toast.success(`₹${qc}/quintal applied to ${supplierName}'s items`);
+                          }}
+                        >
+                          {isMobile ? 'Apply' : 'Apply All'}
+                        </button>
                       </div>
                     </div>
 
-                    {isDelivered ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, background: 'var(--bg)', padding: 12, borderRadius: 10, fontFamily: "'Inter', sans-serif" }}>
-                        <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Final Stock:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
-                            {item.final_stock ?? item.quantity} {item.unit}
-                          </span>
-                        </div>
-                        <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Weight:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
-                            {item.weight ? `${item.weight} kg` : '—'}
-                          </span>
-                        </div>
-                        {user?.role === 'supervisor' && (
-                          <div>
-                            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Base Price:</span>
-                            <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
-                              {item.base_price ? fc(item.base_price) : '—'}
-                            </span>
-                          </div>
-                        )}
-                        <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Quintal:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
-                            {item.quintal_charge ? fc(item.quintal_charge) : '—'}
-                          </span>
-                        </div>
-                        <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Supplier:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
-                            {item.supplier_charge_per_item ? fc(item.supplier_charge_per_item) : '—'}
-                          </span>
-                        </div>
-                        <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>GST %:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text)', marginLeft: 6 }}>
-                            {item.gst}%
-                          </span>
-                        </div>
-                        <div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Selling Price:</span>
-                          <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--primary)', marginLeft: 6 }}>
-                            {item.final_price ? fc(item.final_price) : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 10, fontFamily: "'Inter', sans-serif" }}>
-                        
-                        {/* Final Stock */}
-                        <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Final Stock</label>
-                          <div>
-                            <input
-                              type="number" min="0" step="0.01"
-                              className="form-control"
-                              style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
-                              value={item.final_stock}
-                              onChange={e => updateItem(idx, 'final_stock', e.target.value)}
-                            />
-                            {item.current_stock != null && (
-                              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                                → {(item.current_stock + (parseFloat(item.final_stock) || 0)).toFixed(0)} total
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Weight */}
-                        <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Weight (kg)</label>
-                          <input type="number" min="0" step="0.01" className="form-control"
-                            style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
-                            value={item.weight}
-                            placeholder="0"
-                            onChange={e => updateItem(idx, 'weight', e.target.value)} />
-                        </div>
-
-                        {/* Base Price */}
-                        {user?.role === 'supervisor' && (
-                          <div style={{ gridColumn: 'span 6' }}>
-                            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Base Price ₹</label>
-                            <input type="number" min="0" step="0.01" className="form-control"
-                              style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
-                              value={item.base_price}
-                              placeholder="0.00"
-                              onChange={e => updateItem(idx, 'base_price', e.target.value)} />
-                          </div>
-                        )}
-
-                        {/* Quintal Charge */}
-                        <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Extra Charge ₹</label>
-                          <input type="number" min="0" step="0.01" className="form-control"
-                            style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
-                            value={item.supplier_charge_per_item || ''}
-                            placeholder="per unit"
-                            onChange={e => updateItem(idx, 'supplier_charge_per_item', e.target.value)} />
-                        </div>
-                        <div style={{ gridColumn: 'span 6' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Quintal Charge ₹</label>
-                          <div>
-                            <input type="number" min="0" step="0.01" className="form-control"
-                              style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
-                              value={item.quintal_charge}
-                              placeholder="per 100kg"
-                              onChange={e => updateItem(idx, 'quintal_charge', e.target.value)} />
-                            {parseFloat(item.quintal_charge) > 0 && parseFloat(item.weight) > 0 && (
-                              <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                                +{fc((parseFloat(item.quintal_charge) * parseFloat(item.weight)) / 100)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* GST % */}
-                        <div style={{ gridColumn: 'span 5' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>GST %</label>
-                          <select className="form-control" style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8 }}
-                            value={item.gst}
-                            onChange={e => updateItem(idx, 'gst', e.target.value)}>
-                            {[0, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
-                          </select>
-                        </div>
-
-                        {/* Final Price */}
-                        <div style={{ gridColumn: 'span 7' }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Selling Price ₹</label>
-                          <div>
-                            <input type="number" min="0" step="0.01" className="form-control"
-                              style={{ width: '100%', fontSize: 12.5, padding: '6px 10px', borderRadius: 8, fontWeight: 700 }}
-                              value={item.final_price}
-                              placeholder="Auto"
-                              onChange={e => updateItem(idx, 'final_price', e.target.value)} />
-                            <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 2, fontWeight: 500 }}>Auto-calculated</div>
-                          </div>
-                        </div>
-
-                      </div>
-                    )}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="table-wrap" style={{ border: 'none', borderRadius: 0, overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg)', borderBottom: '1.5px solid #e2e8f0' }}>
-                    {[
-                      'Item', 'Type', 'Current Stock', 'Incoming Qty',
-                      'Final Stock', 'Weight (kg)',
-                      ...(user?.role === 'supervisor' ? ['Base Price ₹'] : []), 'Extra Charge ₹', 'Quintal Charge ₹', 'GST %', 'Selling Price ₹'
-                    ].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, idx) => {
-                    const expectedStock = (item.current_stock || 0) + (parseFloat(item.quantity) || 0);
-                    const stockColor = getLowStockColor(item.current_stock || 0);
+                </div>
+              </div>
+            )}
 
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)', transition: 'all 0.2s' }}>
-                        {/* Item Name */}
-                        <td style={{ padding: '12px 16px', minWidth: 140, fontFamily: "'Inter', sans-serif" }}>
-                          <div style={{ fontWeight: 800, color: 'var(--text)' }}>{item.item_name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>{item.unit}</div>
-                          {!item.product_id && (
-                            <span style={{ fontSize: 10, background: 'var(--warning-light)', color: '#b45309', padding: '2px 6px', borderRadius: 6, fontWeight: 700, border: '1px solid #fef3c7', marginTop: 4, display: 'inline-block' }}>
-                              New Item
-                            </span>
-                          )}
-                        </td>
-                        {/* Label */}
-                        <td style={{ padding: '12px 16px', fontFamily: "'Inter', sans-serif" }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, background: 'var(--bg-hover)', color: 'var(--text-muted)', padding: '4px 10px', borderRadius: 8 }}>{item.label || 'Goods'}</span>
-                        </td>
-                        {/* Current Stock */}
-                        <td style={{ padding: '12px 16px', fontFamily: "'Inter', sans-serif" }}>
-                          {item.current_stock != null ? (
-                            <span style={{ fontWeight: 700, color: stockColor }}>
-                              {item.current_stock} {item.unit}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#cbd5e1', fontSize: 12 }}>
-                              {item.product_id ? 'Loading...' : '—'}
-                            </span>
-                          )}
-                        </td>
-                        {/* Incoming Qty */}
-                        <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--primary)', fontFamily: "'Inter', sans-serif" }}>
-                          +{item.quantity} {item.unit}
-                        </td>
-                        {/* Final Stock (editable) */}
-                        <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
-                          {isDelivered ? (
-                            <span style={{ fontWeight: 700 }}>{item.final_stock ?? item.quantity} {item.unit}</span>
-                          ) : (
-                            <div>
-                              <input
-                                type="number" min="0" step="0.01"
-                                className="form-control"
-                                style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
-                                value={item.final_stock}
-                                onChange={e => updateItem(idx, 'final_stock', e.target.value)}
-                              />
-                              {item.current_stock != null && (
-                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                                  → {(item.current_stock + (parseFloat(item.final_stock) || 0)).toFixed(0)} total
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        {/* Weight */}
-                        <td style={{ padding: '12px 16px', minWidth: 100, fontFamily: "'Inter', sans-serif" }}>
-                          {isDelivered ? (
-                            <span>{item.weight || '—'}</span>
-                          ) : (
-                            <input type="number" min="0" step="0.01" className="form-control"
-                              style={{ width: 85, fontSize: 12.5, borderRadius: 8 }}
-                              value={item.weight}
-                              placeholder="0"
-                              onChange={e => updateItem(idx, 'weight', e.target.value)} />
-                        )}
-                        </td>
-                        {/* Base Price */}
-                        {user?.role === 'supervisor' && (
-                          <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
-                            {isDelivered ? (
-                              <span>{item.base_price ? fc(item.base_price) : '—'}</span>
-                            ) : (
-                              <input type="number" min="0" step="0.01" className="form-control"
-                                style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
-                                value={item.base_price}
-                                placeholder="0.00"
-                                onChange={e => updateItem(idx, 'base_price', e.target.value)} />
-                            )}
-                          </td>
-                        )}
-                        {/* Quintal Charge */}
-                        <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
-                          {isDelivered ? (
-                            <span>{item.supplier_charge_per_item ? fc(item.supplier_charge_per_item) : '—'}</span>
-                          ) : (
-                            <input type="number" min="0" step="0.01" className="form-control"
-                              style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
-                              value={item.supplier_charge_per_item || ''}
-                              placeholder="per unit"
-                              onChange={e => updateItem(idx, 'supplier_charge_per_item', e.target.value)} />
-                          )}
-                        </td>
-                        <td style={{ padding: '12px 16px', minWidth: 120, fontFamily: "'Inter', sans-serif" }}>
-                          {isDelivered ? (
-                            <span>{item.quintal_charge ? fc(item.quintal_charge) : '—'}</span>
-                          ) : (
-                            <div>
-                              <input type="number" min="0" step="0.01" className="form-control"
-                                style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
-                                value={item.quintal_charge}
-                                placeholder="per 100kg"
-                                onChange={e => updateItem(idx, 'quintal_charge', e.target.value)} />
-                              {parseFloat(item.quintal_charge) > 0 && parseFloat(item.weight) > 0 && (
-                                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                                  +{fc((parseFloat(item.quintal_charge) * parseFloat(item.weight)) / 100)}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        {/* GST */}
-                        <td style={{ padding: '12px 16px', minWidth: 80, fontFamily: "'Inter', sans-serif" }}>
-                          {isDelivered ? (
-                            <span>{item.gst}%</span>
-                          ) : (
-                            <select className="form-control" style={{ width: 75, fontSize: 12.5, borderRadius: 8 }}
-                              value={item.gst}
-                              onChange={e => updateItem(idx, 'gst', e.target.value)}>
-                              {[0, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
-                            </select>
-                          )}
-                        </td>
-                        {/* Final Price */}
-                        <td style={{ padding: '12px 16px', minWidth: 120, fontFamily: "'Inter', sans-serif" }}>
-                          {isDelivered ? (
-                            <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
-                              {item.final_price ? fc(item.final_price) : '—'}
-                            </span>
-                          ) : (
-                            <div>
-                              <input type="number" min="0" step="0.01" className="form-control"
-                                style={{ width: 90, fontSize: 12.5, borderRadius: 8, fontWeight: 700 }}
-                                value={item.final_price}
-                                placeholder="Auto"
-                                onChange={e => updateItem(idx, 'final_price', e.target.value)} />
-                              <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
-                                Auto-calculated
-                              </div>
-                            </div>
-                          )}
-                        </td>
+            {/* Item Details Table */}
+            <div className="card" style={{ borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+              <div className="card-body no-pad" style={{ background: 'var(--bg-card)' }}>
+                <div className="table-wrap" style={{ border: 'none', borderRadius: 0, overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg)', borderBottom: '1.5px solid #e2e8f0' }}>
+                        {[
+                          'Item', 'Current Stock', 'Incoming Qty',
+                          'Final Stock', 'Weight (kg)',
+                          ...(user?.role === 'supervisor' ? ['Base Price ₹', 'Supplier Total ₹'] : []), 'Extra Charge ₹', 'Quintal Charge ₹', 'GST %', 'Selling Price ₹'
+                        ].map(h => (
+                          <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: "'Inter', sans-serif" }}>{h}</th>
+                        ))}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+                    </thead>
+                    <tbody>
+                      {supplierItems.map(({ item, originalIndex: idx }) => {
+                        const expectedStock = (item.current_stock || 0) + (parseFloat(item.quantity) || 0);
+                        const stockColor = getLowStockColor(item.current_stock || 0);
 
-      {/* Pricing Formula */}
-      {!isDelivered && (
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-hover)', transition: 'all 0.2s' }}>
+                            {/* Item Name */}
+                            <td style={{ padding: '12px 16px', minWidth: 140, fontFamily: "'Inter', sans-serif" }}>
+                              <div style={{ fontWeight: 800, color: 'var(--text)' }}>{item.item_name}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>{item.unit}</div>
+                              {!item.product_id && (
+                                <span style={{ fontSize: 10, background: 'var(--warning-light)', color: '#b45309', padding: '2px 6px', borderRadius: 6, fontWeight: 700, border: '1px solid #fef3c7', marginTop: 4, display: 'inline-block' }}>
+                                  New Item
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Current Stock */}
+                            <td style={{ padding: '12px 16px', fontFamily: "'Inter', sans-serif" }}>
+                              {item.current_stock != null ? (
+                                <span style={{ fontWeight: 700, color: stockColor }}>
+                                  {item.current_stock} {item.unit}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#cbd5e1', fontSize: 12 }}>
+                                  {item.product_id ? 'Loading...' : '—'}
+                                </span>
+                              )}
+                            </td>
+                            {/* Incoming Qty */}
+                            <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--primary)', fontFamily: "'Inter', sans-serif" }}>
+                              +{item.quantity} {item.unit}
+                            </td>
+                            {/* Final Stock (editable) */}
+                            <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
+                              {isLocked ? (
+                                <span style={{ fontWeight: 700 }}>{item.final_stock ?? item.quantity} {item.unit}</span>
+                              ) : (
+                                <div>
+                                  <input
+                                    type="number" min="0" step="0.01"
+                                    className="form-control"
+                                    style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
+                                    value={item.final_stock}
+                                    onChange={e => updateItem(idx, 'final_stock', e.target.value)}
+                                  />
+                                  {item.current_stock != null && (
+                                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
+                                      → {(item.current_stock + (parseFloat(item.final_stock) || 0)).toFixed(0)} total
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Weight */}
+                            <td style={{ padding: '12px 16px', minWidth: 100, fontFamily: "'Inter', sans-serif" }}>
+                              {isLocked ? (
+                                <span>{item.weight || '—'}</span>
+                              ) : (
+                                <input type="number" min="0" step="0.01" className="form-control"
+                                  style={{ width: 85, fontSize: 12.5, borderRadius: 8 }}
+                                  value={item.weight}
+                                  placeholder="0"
+                                  onChange={e => updateItem(idx, 'weight', e.target.value)} />
+                            )}
+                            </td>
+                            {/* Base Price */}
+                            {user?.role === 'supervisor' && (
+                              <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
+                                {isLocked ? (
+                                  <span>{item.base_price ? fc(item.base_price) : '—'}</span>
+                                ) : (
+                                  <input type="number" min="0" step="0.01" className="form-control"
+                                    style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
+                                    value={item.base_price}
+                                    placeholder="0.00"
+                                    onChange={e => updateItem(idx, 'base_price', e.target.value)} />
+                                )}
+                              </td>
+                            )}
+                            {/* Supplier Total */}
+                            {user?.role === 'supervisor' && (
+                              <td style={{ padding: '12px 16px', minWidth: 100, fontFamily: "'Inter', sans-serif" }}>
+                                <span style={{ fontWeight: 600, color: '#0f172a' }}>{fc((parseFloat(item.quantity) || 0) * (parseFloat(item.base_price) || 0))}</span>
+                              </td>
+                            )}
+                            {/* Extra Charge per unit */}
+                            <td style={{ padding: '12px 16px', minWidth: 110, fontFamily: "'Inter', sans-serif" }}>
+                              {isLocked ? (
+                                <span>{item.supplier_charge_per_item ? fc(item.supplier_charge_per_item) : '—'}</span>
+                              ) : (
+                                <input type="number" min="0" step="0.01" className="form-control"
+                                  style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
+                                  value={item.supplier_charge_per_item || ''}
+                                  placeholder="per unit"
+                                  onChange={e => updateItem(idx, 'supplier_charge_per_item', e.target.value)} />
+                              )}
+                            </td>
+                            {/* Quintal Charge */}
+                            <td style={{ padding: '12px 16px', minWidth: 120, fontFamily: "'Inter', sans-serif" }}>
+                              {isLocked ? (
+                                <span>{item.quintal_charge ? fc(item.quintal_charge) : '—'}</span>
+                              ) : (
+                                <div>
+                                  <input type="number" min="0" step="0.01" className="form-control"
+                                    style={{ width: 90, fontSize: 12.5, borderRadius: 8 }}
+                                    value={item.quintal_charge}
+                                    placeholder="per 100kg"
+                                    onChange={e => updateItem(idx, 'quintal_charge', e.target.value)} />
+                                  {parseFloat(item.quintal_charge) > 0 && parseFloat(item.weight) > 0 && (
+                                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
+                                      +{fc((parseFloat(item.quintal_charge) * parseFloat(item.weight)) / 100)}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            {/* GST */}
+                            <td style={{ padding: '12px 16px', minWidth: 80, fontFamily: "'Inter', sans-serif" }}>
+                              {isLocked ? (
+                                <span>{item.gst}%</span>
+                              ) : (
+                                <select className="form-control" style={{ width: 75, fontSize: 12.5, borderRadius: 8 }}
+                                  value={item.gst}
+                                  onChange={e => updateItem(idx, 'gst', e.target.value)}>
+                                  {[0, 5, 12, 18, 28].map(g => <option key={g} value={g}>{g}%</option>)}
+                                </select>
+                              )}
+                            </td>
+                            {/* Final Price */}
+                            <td style={{ padding: '12px 16px', minWidth: 120, fontFamily: "'Inter', sans-serif" }}>
+                              {isLocked ? (
+                                <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
+                                  {item.final_price ? fc(item.final_price) : '—'}
+                                </span>
+                              ) : (
+                                <div>
+                                  <input type="number" min="0" step="0.01" className="form-control"
+                                    style={{ width: 90, fontSize: 12.5, borderRadius: 8, fontWeight: 700 }}
+                                    value={item.final_price}
+                                    placeholder="Auto"
+                                    onChange={e => updateItem(idx, 'final_price', e.target.value)} />
+                                  <div style={{ fontSize: 9.5, color: 'var(--text-muted)', marginTop: 4, fontWeight: 500 }}>
+                                    Auto-calculated
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      
+{/* Pricing Formula */}
+      {!isLocked && (
         <div style={{ marginTop: 14, padding: '12px 18px', background: 'var(--primary-light)', border: '1px solid #bfdbfe', borderRadius: 12, fontSize: '13px', color: '#1e40af', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>💡</span>
           <span><strong>Pricing Formula:</strong> Selling Price = Base Price + Extra Charge + (Quintal Charge × Weight ÷ 100) + GST%. Selling Price is auto-calculated but can be manually overridden.</span>
@@ -745,11 +588,31 @@ export default function VehicleDetail() {
             <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, color: 'var(--text)' }}>Confirm Delivery</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
               Are you sure you want to mark this vehicle as delivered?<br/><br/>
-              <strong>Stock and prices will be updated automatically</strong> across your entire inventory.
+              {!isStockUpdated && delivery.temp_stock_added && <span><strong>Prices will be locked in</strong> and any quantity changes since arrival will be reconciled in inventory.</span>}
+              {!isStockUpdated && !delivery.temp_stock_added && <span><strong>Stock and prices will be updated automatically</strong> across your entire inventory.</span>}
+              {isStockUpdated && <span>Stock has already been finalized.</span>}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
               <button className="btn btn-outline" onClick={() => setShowDeliverModal(false)}>Cancel</button>
               <button className="btn btn-success" onClick={confirmDelivery}>Yes, Mark Delivered</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Arrived Confirm Modal */}
+      {showArrivedModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', padding: 24, borderRadius: 16, width: '90%', maxWidth: 400, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, color: 'var(--text)' }}>Mark Arrived</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+              Are you sure you want to mark this vehicle as arrived?<br/><br/>
+              <strong>Items will be provisionally added to inventory</strong> so you can start billing and loading vehicles immediately.<br/><br/>
+              <span style={{ color: '#059669' }}>✅ You can still edit item prices &amp; quantities until you click <strong>Mark Delivered</strong>.</span>
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button className="btn btn-outline" onClick={() => setShowArrivedModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={confirmArrived} style={{ background: '#4338ca', color: '#fff', border: 'none' }}>Yes, Mark Arrived</button>
             </div>
           </div>
         </div>

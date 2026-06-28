@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const notificationSchema = new mongoose.Schema({
   // Who should receive this notification
   recipient_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null }, // null = admin/broadcast
-  recipient_role: { type: String, enum: ['supervisor', 'manager', 'driver', 'all'], default: 'supervisor' },
+  recipient_role: { type: String, enum: ['supervisor', 'manager', 'driver', 'temp_manager', 'walkin_manager', 'admin', 'all'], default: 'supervisor' },
 
   // Who sent it
   sender_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },

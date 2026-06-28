@@ -16,12 +16,14 @@ const invoiceItemSchema = new mongoose.Schema({
   adjustment: { type: Number, default: 0 },
   return_reason: { type: String, default: '' },
   is_loose: { type: Boolean, default: false },
+  is_header: { type: Boolean, default: false },
 });
 
 const paymentSchema = new mongoose.Schema({
   mode: { type: String, enum: ['cash', 'upi', 'bank_transfer', 'cheque', 'advance_credit', 'online', 'others', 'goods_exchange'], required: true },
   amount: { type: Number, required: true, min: 0 },
   reference: { type: String, default: '' },
+  date_string: { type: String, default: '' },
 }, { _id: false });
 
 const invoiceSchema = new mongoose.Schema({

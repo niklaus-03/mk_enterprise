@@ -449,13 +449,22 @@ router.post('/merge', async (req, res) => {
       if (merged_data.address !== undefined) primary.address = merged_data.address;
       if (merged_data.gstin !== undefined) primary.gstin = merged_data.gstin;
     }
-
     // Recalculate global balance
     primary.balance = primary.manager_balances.reduce((sum, mb) => sum + mb.balance, 0);
     await primary.save();
 
     // Update references in other collections
     await Invoice.updateMany({ customer_id: { $in: secondary_ids } }, { customer_id: primary_id });
+    
+    try {
+      const Payment = require('../models/Payment');
+      await Payment.updateMany({ customer_id: { $in: secondary_ids } }, { customer_id: primary_id });
+    } catch (e) { /* ignore */ }
+
+    try {
+      const Supplier = require('../models/Supplier');
+      await Supplier.updateMany({ linked_customer_id: { $in: secondary_ids } }, { linked_customer_id: primary_id });
+    } catch (e) { /* ignore */ }
     
     // Attempt to update Orders if Order model exists
     try {

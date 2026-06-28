@@ -54,11 +54,21 @@ export default function CustomerSelectStep({
     if (c.created_by && c.created_by.role !== 'supervisor') mgrs.push(c.created_by);
     if (c.allowed_managers && c.allowed_managers.length > 0) {
       c.allowed_managers.forEach(am => {
-        if (am && am.role !== 'supervisor' && !mgrs.some(m => m._id === am._id)) mgrs.push(am);
+        // am might be an ObjectId string if not populated, or an object if populated.
+        // We only want to process it if it's populated with a username/display_name
+        if (am && typeof am === 'object' && am.role !== 'supervisor') {
+          // Check if it's already in mgrs by comparing stringified IDs
+          const amId = am._id ? am._id.toString() : am.toString();
+          if (!mgrs.some(m => (m._id ? m._id.toString() : m.toString()) === amId)) {
+            mgrs.push(am);
+          }
+        }
       });
     }
     if (mgrs.length === 0) return null;
-    return mgrs.map(m => m.display_name || m.username).join(', ');
+    const names = mgrs.map(m => m.display_name || m.username).filter(Boolean);
+    if (names.length === 0) return null;
+    return names.join(', ');
   };
 
   const filteredCustomers = useMemo(() => {
@@ -257,10 +267,12 @@ export default function CustomerSelectStep({
 
       {draftsPanel}
 
-      {/* Action Buttons */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {/* Action buttons side-by-side */}
-        <div className="cs-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+      {!showDrafts && (
+        <>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Action buttons side-by-side */}
+            <div className="cs-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <button
             onClick={() => setShowAddModal(true)}
             className="btn btn-success"
@@ -332,6 +344,9 @@ export default function CustomerSelectStep({
             if (selectedManager && customer.manager_balances) {
               const mb = customer.manager_balances.find(m => m.manager_id === selectedManager || m.manager_id?._id === selectedManager);
               displayBalance = mb ? mb.balance : 0;
+            } else if (!selectedManager && customer.manager_balances && customer.manager_balances.length > 0) {
+              // Admin view: sum all manager balances to ensure accurate aggregate total
+              displayBalance = customer.manager_balances.reduce((sum, mb) => sum + (mb.balance || 0), 0);
             }
 
             const hasBalance = displayBalance !== 0;
@@ -439,6 +454,8 @@ export default function CustomerSelectStep({
           })
         )}
       </div>
+      </>
+      )}
 
       {/* Scribble Pad */}
       {showScribble && (

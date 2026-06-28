@@ -3,15 +3,33 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { deliveryApi, notificationApi, supplierApi, settlementApi, productApi } from '../utils/api';
-import { UserCheck, X, Trash2, CheckCircle, AlertTriangle, Wallet, Smartphone, Globe, CreditCard } from 'lucide-react';
+import { UserCheck, X, Trash2, CheckCircle, AlertTriangle, Wallet, Smartphone, Globe, CreditCard, BarChart2, Scale, Save, FolderOpen } from 'lucide-react';
 
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
 export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'manager' }) {
   const { user } = useAuth();
-  const { t, fc } = useApp();
+  const { t, fc, settings } = useApp();
   const [saving, setSaving] = useState(false);
   const [submitAction, setSubmitAction] = useState('save');
+  const DRAFT_KEY = 'walkin_delivery_draft';
+
+  const [customQuintalCharge, setCustomQuintalCharge] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) return JSON.parse(saved)._customQuintalCharge || '';
+    } catch(e) {}
+    return '';
+  });
+  
+  const [customGrandTotal, setCustomGrandTotal] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) return JSON.parse(saved)._customGrandTotal || '';
+    } catch(e) {}
+    return '';
+  });
+  const [tempCustomQuintal, setTempCustomQuintal] = useState('');
 
   React.useEffect(() => {
     const originalBodyOverflow = document.body.style.overflow;
@@ -26,24 +44,80 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
     };
   }, []);
 
+  const [showDraftsMenu, setShowDraftsMenu] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [savedDraftsList, setSavedDraftsList] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('walkin_saved_drafts') || '[]'); } catch(e){ return []; }
+  });
+
+  const handleSaveDraft = () => {
+    let name = '';
+    if (form.supplier) {
+      name = form.supplier;
+      if (form.vehicle_number) name += ` - ${form.vehicle_number}`;
+    } else if (form.vehicle_number) {
+      name = `Vehicle: ${form.vehicle_number}`;
+    } else {
+      name = `Walk-in Draft`;
+    }
+    const newDrafts = [...savedDraftsList, { id: Date.now(), name, date: new Date().toLocaleString(), form, customQuintalCharge, customGrandTotal }];
+    setSavedDraftsList(newDrafts);
+    localStorage.setItem('walkin_saved_drafts', JSON.stringify(newDrafts));
+    toast.success('Draft saved successfully!');
+  };
+
+  const handleLoadDraft = (draft) => {
+    setForm(draft.form);
+    setCustomQuintalCharge(draft.customQuintalCharge || '');
+    setCustomGrandTotal(draft.customGrandTotal || '');
+    setShowDraftsMenu(false);
+    toast.success(`Loaded draft: ${draft.name}`);
+  };
+
+  const handleDeleteDraft = (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this saved draft?')) return;
+    const newDrafts = savedDraftsList.filter(d => d.id !== id);
+    setSavedDraftsList(newDrafts);
+    localStorage.setItem('walkin_saved_drafts', JSON.stringify(newDrafts));
+  };
+
+
+
   const [form, setForm] = useState(() => {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch (e) {}
+    }
     const now = new Date();
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     return {
       supplier: '',
+      vehicle_number: '',
       expected_arrival: now.toISOString().slice(0, 16),
       notes: '',
       payments: [{ amount: '', mode: 'cash' }],
-      items: [{ item_name: '', quantity: '1', unit: '', base_price: '', final_price: '' }],
+      items: [{ item_name: '', quantity: '1', unit: '', weight: '', base_price: '', final_price: '', margin: '', sell_price: '' }],
+      settle_fully: false,
+      global_extra_charge: '',
+      global_quintal_charge: '',
+      global_profit_percent: '',
     };
   });
 
-  const [supplierSuggestions, setSupplierSuggestions] = useState([]);
+  const [supplierSuggestions, setSupplierSuggestions] = useState(null);
   const [productSuggestions, setProductSuggestions] = useState([]);
   const [productSuggestIdx, setProductSuggestIdx] = useState(null);
 
+  React.useEffect(() => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...form, _customQuintalCharge: customQuintalCharge, _customGrandTotal: customGrandTotal }));
+  }, [form, customQuintalCharge, customGrandTotal]);
+
   const searchSuppliers = (q) => {
-    if (!q.trim()) { setSupplierSuggestions([]); return; }
+    if (!q.trim()) { setSupplierSuggestions(null); return; }
     supplierApi.getAll(q)
       .then(results => setSupplierSuggestions(results))
       .catch(() => {});
@@ -61,7 +135,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
     items[idx] = { ...items[idx], [field]: value };
     // Auto-add new row if we're typing the item_name of the last row
     if (field === 'item_name' && value && idx === items.length - 1) {
-      items.push({ item_name: '', quantity: '0', unit: '', base_price: '', final_price: '' });
+      items.push({ item_name: '', quantity: '0', unit: '', weight: '', base_price: '', final_price: '', margin: '', sell_price: '' });
     }
     return { ...f, items };
   });
@@ -70,15 +144,137 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
 
   const addPayment = () => setForm(f => ({ ...f, payments: [...f.payments, { amount: '', mode: 'cash' }] }));
   const removePayment = (idx) => setForm(f => ({ ...f, payments: f.payments.filter((_, i) => i !== idx) }));
+
+  const getWeightInKg = (unit, manualWeight) => {
+    if (manualWeight && parseFloat(manualWeight) > 0) return parseFloat(manualWeight);
+    const u = (unit || '').toLowerCase();
+    if (u === 'kg') return 1;
+    if (u === 'quintal') return 100;
+    if (u === 'ton') return 1000;
+    if (u === 'g') return 0.001;
+    return 0;
+  };
+
+  React.useEffect(() => {
+    setForm(f => {
+      const extraChg = parseFloat(f.global_extra_charge) || 0;
+      const qChg = parseFloat(f.global_quintal_charge) || 0;
+      const profitPct = parseFloat(f.global_profit_percent) || 0;
+      const validItems = f.items.filter(i => parseFloat(i.quantity) > 0 && i.item_name.trim());
+      const validItemsCount = validItems.length || 1;
+      let hasChanges = false;
+      
+      const newItems = f.items.map(item => {
+        const qty = parseFloat(item.quantity) || 0;
+        const base = parseFloat(item.base_price) || 0;
+        
+        if (qty > 0 && item.item_name.trim()) {
+          const supplierChargePerItem = extraChg / validItemsCount / qty;
+          const weight = getWeightInKg(item.unit, item.weight);
+          const quintalAdj = qChg > 0 && weight > 0 ? (qChg * weight) / 100 : 0;
+          const landedCost = parseFloat((base + supplierChargePerItem + quintalAdj).toFixed(2));
+          
+          if (base > 0 || supplierChargePerItem > 0 || quintalAdj > 0) {
+             let newMargin = parseFloat(item.margin) || 0;
+             let newSell = parseFloat(item.sell_price) || 0;
+             
+             // Auto-calc margin & sell from profit (only if user hasn't manually set sell_price)
+             if (profitPct > 0 && !item._manualSell) {
+               if (settings?.margin_type === 'percentage') {
+                 newMargin = parseFloat((landedCost * profitPct / 100).toFixed(2));
+               } else {
+                 newMargin = profitPct;
+               }
+               newSell = parseFloat((landedCost + newMargin).toFixed(2));
+             } else if (item._manualSell) {
+               // Reverse-calc margin from manually entered sell price
+               newMargin = parseFloat((newSell - landedCost).toFixed(2));
+             } else if (newSell > 0) {
+               newMargin = parseFloat((newSell - landedCost).toFixed(2));
+             } else if (!item._manualSell) {
+               newSell = landedCost;
+               newMargin = 0;
+             }
+             
+             const changed = parseFloat(item.final_price || 0) !== landedCost ||
+                             parseFloat(item.margin || 0) !== newMargin ||
+                             parseFloat(item.sell_price || 0) !== newSell;
+             if (changed) {
+               hasChanges = true;
+               return { ...item, final_price: String(landedCost), margin: newMargin ? String(newMargin) : '', sell_price: newSell ? String(newSell) : '' };
+             }
+          }
+        }
+        return item;
+      });
+      
+      if (hasChanges) {
+        setCustomGrandTotal('');
+        setCustomQuintalCharge('');
+        
+        let n = f.notes || '';
+        n = n.replace(/Quintal charge changed from [^|]*\|?/g, '').trim();
+        n = n.replace(/Grand total changed from [^|]*\|?/g, '').trim();
+        n = n.replace(/Quintal charge edited\|?/g, '').trim();
+        n = n.replace(/Grand total edited\|?/g, '').trim();
+        if (n.endsWith('|')) n = n.slice(0, -1).trim();
+        
+        return { ...f, items: newItems, notes: n };
+      }
+      return f;
+    });
+  }, [form.global_extra_charge, form.global_quintal_charge, form.global_profit_percent, JSON.stringify(form.items.map(i => ({ q: i.quantity, u: i.unit, w: i.weight, b: i.base_price, s: i.sell_price })))]);
+
+  // Handler for manually typing sell price (reverse-calc margin)
+  const updateSellPrice = (idx, value) => setForm(f => {
+    const items = [...f.items];
+    const item = items[idx];
+    const landedCost = parseFloat(item.final_price) || 0;
+    const sell = value === '' ? NaN : parseFloat(value);
+    const margin = !isNaN(sell) ? parseFloat((sell - landedCost).toFixed(2)) : '';
+    items[idx] = { ...item, sell_price: value, margin: margin !== '' ? String(margin) : '', _manualSell: true };
+    return { ...f, items };
+  });
+
+  // Handler for manually typing margin (forward-calc sell price)
+  const updateMargin = (idx, value) => setForm(f => {
+    const items = [...f.items];
+    const item = items[idx];
+    const landedCost = parseFloat(item.final_price) || 0;
+    const margin = value === '' ? NaN : parseFloat(value);
+    const sell = !isNaN(margin) ? parseFloat((landedCost + margin).toFixed(2)) : '';
+    items[idx] = { ...item, margin: value, sell_price: sell !== '' ? String(sell) : '', _manualSell: false };
+    return { ...f, items };
+  });
   const updatePayment = (idx, field, value) => setForm(f => {
     const payments = [...f.payments];
     payments[idx] = { ...payments[idx], [field]: value };
     return { ...f, payments };
   });
 
+  const totalBase = form.items.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
+  const totalLandedCost = form.items.reduce((s, i) => s + ((parseFloat(i.final_price) || parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
+  const totalSelling = form.items.reduce((s, i) => s + ((parseFloat(i.sell_price) || parseFloat(i.final_price) || parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
+  
+  const totalWeightQuintals = form.items.reduce((sum, item) => {
+    const qty = parseFloat(item.quantity) || 0;
+    if (qty <= 0) return sum;
+    const weight = getWeightInKg(item.unit, item.weight);
+    return sum + (weight > 0 ? (weight * qty) / 100 : 0);
+  }, 0);
+  
+  const totalQuintalCharge = totalWeightQuintals * (parseFloat(form.global_quintal_charge) || 0);
+
+  const effectiveQuintalCharge = customQuintalCharge !== '' ? parseFloat(customQuintalCharge) : totalQuintalCharge;
+  const effectiveLandedCost = totalLandedCost - totalQuintalCharge + effectiveQuintalCharge;
+  const totalFinal = effectiveLandedCost;
+  const totalProfit = totalSelling - effectiveLandedCost;
+  const effectiveGrandTotal = customGrandTotal !== '' ? parseFloat(customGrandTotal) : totalFinal;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.supplier.trim()) return toast.error('Supplier/Party name is required');
+    if (form.supplier.trim().toLowerCase() === 'btc' && !(form.vehicle_number || '').trim()) return toast.error('Vehicle Number is mandatory for BTC');
     if (!form.expected_arrival) return toast.error('Arrival date/time is required');
     
     const validItems = form.items.filter(i => i.item_name.trim() && parseFloat(i.quantity) > 0);
@@ -87,28 +283,36 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
     setSaving(true);
     try {
       // 1. Create Supplier if new
-      const existingSupplier = supplierSuggestions.find(s => s.name.toLowerCase() === form.supplier.trim().toLowerCase());
+      const existingSupplier = (supplierSuggestions || []).find(s => s.name.toLowerCase() === form.supplier.trim().toLowerCase());
       if (!existingSupplier && form.supplier.trim()) {
         try { await supplierApi.create({ name: form.supplier.trim() }); } catch (e) { }
       }
 
       // 2. Create Delivery
-      const newDelivery = await deliveryApi.create({
-        vehicle_number: 'WALK-IN',
-        supplier: form.supplier.trim(),
-        driver_name: '',
-        expected_arrival: new Date(form.expected_arrival).toISOString(),
-        items: validItems.map(i => ({
-          item_name: i.item_name.trim(),
-          quantity: parseFloat(i.quantity) || 1,
-          unit: i.unit || 'pcs',
-          base_price: i.base_price ? parseFloat(i.base_price) : 0,
-          final_price: i.final_price ? parseFloat(i.final_price) : 0,
-        })),
-        notes: form.notes,
-        payment_status: form.payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) > 0 ? 'paid' : 'unpaid',
-        delivery_type: 'walkin_delivery',
-      });
+      const invoiceTotal = effectiveGrandTotal;
+      const totalPaid = form.payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
+      let suppliersToSubmit = selectedSuppliers.length > 0 ? selectedSuppliers : [form.supplier.trim() || 'Unknown'];
+      let deliveriesCreated = [];
+      for (const suppName of suppliersToSubmit) {
+        const suppItems = selectedSuppliers.length > 0 ? validItems.filter(i => i.supplier_name === suppName) : validItems;
+        if (suppItems.length === 0 && selectedSuppliers.length > 0) continue;
+        
+        const suppTotalAmount = selectedSuppliers.length > 0 ? suppItems.reduce((sum, i) => sum + (parseFloat(i.final_price) || 0), 0) : grandTotal;
+        const suppPayments = selectedSuppliers.length > 0 ? validPayments.filter(p => p.supplier_name === suppName) : validPayments;
+        
+        const newDelivery = await deliveryApi.create({
+          ...form,
+          supplier: suppName,
+          items: suppItems,
+          payments: suppPayments,
+          total_amount: suppTotalAmount,
+          settle_fully: selectedSuppliers.length > 0 ? false : form.settle_fully // Settle fully logic is too complex for multi, turn it off
+        });
+        deliveriesCreated.push(newDelivery);
+      }
+      
+      const newDelivery = deliveriesCreated[0]; // For notifications
 
       // 3. Settlement if Paid
       for (const p of form.payments) {
@@ -117,32 +321,43 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
           if (!p.mode) return toast.error("Please select a payment mode for the amount: " + amt);
           await settlementApi.create({
             type: 'paid_to_supplier',
-            party_name: form.supplier.trim(),
+            party_name: form.supplier.trim() || 'Walk-in Customer',
             amount: amt,
             mode: p.mode,
-            notes: 'Walk-in delivery payment (Negotiated)',
+            notes: 'Walk-in delivery payment (Recorded)',
           });
         }
       }
 
-      if (submitAction === 'save') {
-        await deliveryApi.updateStatus(newDelivery._id, 'delivered');
+      if (form.settle_fully && totalPaid > 0 && invoiceTotal > totalPaid) {
+        await settlementApi.create({
+          type: 'paid_to_supplier',
+          party_name: form.supplier.trim(),
+          amount: invoiceTotal - totalPaid,
+          mode: 'discount',
+          notes: 'Negotiation Discount for Walk-in Entry',
+        });
       }
+
+      // Walk-in delivery is ALWAYS physically delivered immediately
+      await deliveryApi.updateStatus(newDelivery._id, 'delivered');
 
       // 4. Send Notification if Send to Admin
       if (submitAction === 'send') {
         toast.success('Walk-in delivery sent to Admin!');
         try {
+          const amtStr = form.items.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0).toLocaleString('en-IN');
           await notificationApi.create({
-            type: 'info',
+            type: 'general',
             title: 'Walk-in Delivery Submitted',
-            message: `Walk-in delivery for ${form.supplier || 'Walk-in Customer'} needs review.`,
-            target_roles: ['admin']
+            message: `Walk-in with supplier ${form.supplier || 'Walk-in Customer'} came and supplied ${form.items.length} items and grand total amount made of ₹${amtStr} amount`,
+            recipient_role: 'supervisor'
           });
         } catch (e) { }
-      } else {
-        toast.success('Walk-in delivery recorded!');
       }
+      
+      localStorage.removeItem(DRAFT_KEY);
+      toast.success('Walk-in delivery recorded successfully!');
 
       if (onSuccess) onSuccess();
       onClose();
@@ -153,48 +368,70 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
     }
   };
 
-  const totalBase = form.items.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
+
+  const maxItemNameLen = Math.max(16, ...form.items.map(i => (i.item_name || '').length));
+  const nameColWidth = `${maxItemNameLen + 5}ch`;
+
+  const formatNum = (num) => {
+    if (num === null || num === undefined) return '0';
+    let formatted = fc ? fc(Math.abs(num)) : Math.abs(num).toFixed(2);
+    formatted = formatted.replace(/[^\d.,]/g, '').trim();
+    if (formatted.endsWith('.00')) {
+      formatted = formatted.slice(0, -3);
+    }
+    return formatted;
+  };
+
+  const getDisplayVal = (val) => {
+    if (val === '') return '';
+    const num = Number(val);
+    if (isNaN(num)) return val;
+    return Number.isInteger(num) ? num.toString() : num.toFixed(2);
+  };
 
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ padding: '12px', zIndex: 9999 }}>
-      <div 
-        className="walkin-delivery-modal"
-        onClick={e => e.stopPropagation()} 
-        style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 650, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden', margin: '5vh auto 0' }}
-      >
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={onClose} />
+      <div className="modal-content" style={{ position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 850, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
         
         {/* Header */}
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
-          <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center' }}>
-            <UserCheck size={18} style={{ marginRight: 8, color: 'var(--primary)' }} /> Record Walk-in Delivery
+        <div style={{ padding: '24px 24px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ width: 48, height: 48, background: '#e0f2fe', color: '#0ea5e9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <UserCheck size={24} />
+            </div>
+            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>Record Walk-in Delivery</h3>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b', fontWeight: 500 }}>Entry for walk-in customer/supplier</p>
           </div>
-          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }} onClick={onClose}>
-            <X size={20} />
+          <button onClick={onClose} style={{ background: 'white', border: '1px solid #e2e8f0', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+            <X size={16} />
           </button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
-          <form id="walkin-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
-              <div className="form-group" style={{ position: 'relative' }}>
-                <label className="form-label">Supplier / Party Name *</label>
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          <form id="walkin-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr', gap: 20 }}>
+              <div style={{ position: 'relative' }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supplier / Party Name *</label>
                 <input className="form-control"
                   value={form.supplier}
                   onChange={e => {
                     setForm(f => ({ ...f, supplier: e.target.value }));
                     searchSuppliers(e.target.value);
                   }}
-                  onBlur={() => setTimeout(() => setSupplierSuggestions([]), 200)}
-                  placeholder="e.g. Ramesh Traders" autoFocus required />
+                  onBlur={() => setTimeout(() => setSupplierSuggestions(null), 200)}
+                  placeholder="Supplier Name" autoFocus required 
+                  style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500 }}
+                />
                 
                 {/* Supplier Suggestions */}
-                {form.supplier && supplierSuggestions.length > 0 && (
+                {form.supplier && supplierSuggestions !== null && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100 }}>
                     {supplierSuggestions.map(s => (
                       <div key={s._id}
                         style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
-                        onMouseDown={() => { setForm(f => ({ ...f, supplier: s.name })); setSupplierSuggestions([]); }}
+                        onMouseDown={() => { setForm(f => ({ ...f, supplier: s.name })); setSupplierSuggestions(null); }}
                         onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
                         onMouseLeave={e => e.currentTarget.style.background = ''}
                       >
@@ -205,7 +442,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                     {!supplierSuggestions.some(s => s.name.toLowerCase() === form.supplier.trim().toLowerCase()) && (
                       <div
                         style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
-                        onMouseDown={() => { setSupplierSuggestions([]); toast('Supplier will be saved', { icon: 'ℹ️' }); }}
+                        onMouseDown={() => { setSupplierSuggestions(null); toast('Supplier will be saved', { icon: 'ℹ️' }); }}
                       >
                         + Add "{form.supplier}" as new supplier
                       </div>
@@ -213,27 +450,96 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                   </div>
                 )}
               </div>
-              <div className="form-group">
-                <label className="form-label">Date & Time *</label>
-                <input type="datetime-local" className="form-control" value={form.expected_arrival} onChange={e => setForm(f => ({ ...f, expected_arrival: e.target.value }))} required />
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vehicle Number</label>
+                <input type="text" className="form-control" value={form.vehicle_number || ''} onChange={e => setForm(f => ({ ...f, vehicle_number: e.target.value.toUpperCase() }))} placeholder="Vehicle No. (Mandatory for BTC)" style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 12.5, fontWeight: 500, textTransform: 'uppercase' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date & Time *</label>
+                <input type="datetime-local" className="form-control" value={form.expected_arrival} onChange={e => setForm(f => ({ ...f, expected_arrival: e.target.value }))} required style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500 }} />
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Notes</label>
-              <input className="form-control" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any remarks..." />
-            </div>
+            {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+              <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <BarChart2 size={16} style={{ color: '#64748b' }} /> Extra Charges (₹)
+                  </label>
+                  <input type="number" min="0" step="0.01" className="form-control" value={form.global_extra_charge} onChange={e => setForm(f => ({ ...f, global_extra_charge: e.target.value }))} placeholder="e.g. 1000" style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14 }} />
+                </div>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <Scale size={16} style={{ color: '#64748b' }} /> Quintal Charge (₹)
+                  </label>
+                  <input type="number" min="0" step="0.01" className="form-control" value={form.global_quintal_charge} onChange={e => { setForm(f => ({ ...f, global_quintal_charge: e.target.value })); setCustomQuintalCharge(''); }} placeholder="e.g. 50" style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14 }} />
+                  {totalWeightQuintals > 0 && (
+                    <div style={{ fontSize: 13, color: '#ef4444', marginTop: 8, fontWeight: 700, letterSpacing: '0.2px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ whiteSpace: 'nowrap' }}>+₹</span>
+                      <input 
+                        className="summary-input"
+                        type="number" 
+                        min="0"
+                        step="0.01"
+                        value={tempCustomQuintal !== '' ? tempCustomQuintal : (customQuintalCharge !== '' ? customQuintalCharge : (totalQuintalCharge ? getDisplayVal(totalQuintalCharge) : ''))}
+                        onChange={e => {
+                          setTempCustomQuintal(e.target.value);
+                          setCustomQuintalCharge(e.target.value);
+                          setCustomGrandTotal('');
+                        }}
+                        onBlur={() => setTempCustomQuintal('')}
+                        placeholder="0"
+                        title="Type total to override applied charge"
+                        style={{ border: 'none', background: 'transparent', color: '#ef4444', fontWeight: 700, width: `${Math.max(1, String(tempCustomQuintal !== '' ? tempCustomQuintal : (customQuintalCharge !== '' ? customQuintalCharge : getDisplayVal(totalQuintalCharge))).length) + 0.5}ch`, outline: 'none', padding: 0, fontSize: 13, textAlign: 'left' }}
+                      />
+                      <span style={{ whiteSpace: 'nowrap', marginLeft: 4, fontSize: 13, color: '#f87171', fontWeight: 600 }}>
+                        {totalWeightQuintals > 0 && `(${Number((parseFloat(tempCustomQuintal !== '' ? tempCustomQuintal : (customQuintalCharge !== '' ? customQuintalCharge : totalQuintalCharge)) / totalWeightQuintals).toFixed(2))}/qtl)`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {settings?.margin_enabled !== false && (
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      📈 Profit Margin {settings?.margin_type === 'percentage' ? '%' : '₹'}
+                    </label>
+                    <input type="number" min="0" step="0.1" className="form-control" value={form.global_profit_percent} onChange={e => setForm(f => ({ ...f, global_profit_percent: e.target.value, items: f.items.map(i => ({ ...i, _manualSell: false })) }))} placeholder="e.g. 10" style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14 }} />
+                  </div>
+                )}
+              </div>
+              </>
+            )}
 
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>Order Items <span style={{ color: '#ef4444' }}>*</span></div>
-              </div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Order Items *</label>
               <datalist id="unit-options">
                 {QTY_UNITS.map(u => <option key={u} value={u} />)}
               </datalist>
               <div className="hide-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowX: 'auto', paddingBottom: 4 }}>
-                {form.items.map((item, idx) => (
-                  <div key={idx} style={{ minWidth: 550, display: 'grid', gridTemplateColumns: (user?.role === 'walkin_manager' || user?.role === 'temp_manager') ? '2fr 70px 80px 100px auto' : '2fr 70px 80px 100px 100px auto', gap: 12, alignItems: 'center' }}>
+                {selectedSuppliers.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                    {selectedSuppliers.map(supp => (
+                      <div key={supp} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center' }}>
+                          <h4 style={{ margin: 0, color: '#0f172a', fontSize: 15, fontWeight: 700 }}>Items from {supp}</h4>
+                          <button type="button" onClick={() => setForm(f => ({ ...f, items: [...f.items, { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods', supplier_name: supp }] }))} style={{ background: '#e0f2fe', border: 'none', color: '#0284c7', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>+ Add Item to {supp}</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {form.items.map((item, idx) => {
+                             if (item.supplier_name !== supp) return null;
+                             
+                  const cols = [`minmax(${nameColWidth}, 1.8fr)`, 'minmax(110px, 1fr)'];
+                  if (parseFloat(form.global_quintal_charge) > 0) cols.push('minmax(80px, 0.8fr)');
+                  if (user?.role !== 'walkin_manager' && user?.role !== 'temp_manager') {
+                    cols.push('minmax(80px, 0.8fr)', 'minmax(80px, 0.8fr)');
+                    if (settings?.margin_enabled !== false) cols.push('minmax(90px, 1fr)');
+                  }
+                  cols.push('minmax(80px, 1fr)', '32px');
+                  const gridCols = cols.join(' ');
+
+                  return (
+                  <div key={idx} style={{ minWidth: parseFloat(form.global_quintal_charge) > 0 ? 750 : 670, display: 'grid', gridTemplateColumns: gridCols, gap: 10, alignItems: 'center' }}>
                     
                     {/* Item Name */}
                     <div style={{ position: 'relative' }}>
@@ -252,8 +558,15 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                           if (match) {
                             setForm(f => {
                               const newItems = [...f.items];
-                              if (!newItems[idx].base_price && match.supplier_base_price) newItems[idx].base_price = match.supplier_base_price;
+                              if (!newItems[idx].base_price && (match.suggested_price || match.price || match.supplier_base_price)) {
+                                newItems[idx].base_price = String(match.suggested_price || match.price || match.supplier_base_price);
+                              }
+                              if (!newItems[idx].sell_price && (match.suggested_price || match.price)) {
+                                newItems[idx].sell_price = String(match.suggested_price || match.price);
+                                newItems[idx]._manualSell = true;
+                              }
                               if (match.unit) newItems[idx].unit = match.unit;
+                              if (match.weight_per_unit) newItems[idx].weight = String(match.weight_per_unit);
                               return { ...f, items: newItems };
                             });
                           }
@@ -270,9 +583,10 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                               onMouseDown={() => {
                                 setForm(f => {
                                   const items = [...f.items];
-                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || '', base_price: p.supplier_base_price || '', final_price: '' };
+                                  const sell = p.suggested_price || p.price;
+                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || '', weight: p.weight_per_unit ? String(p.weight_per_unit) : '', base_price: sell ? String(sell) : (p.supplier_base_price || ''), final_price: '', margin: '', sell_price: sell ? String(sell) : '', _manualSell: !!sell };
                                   if (idx === items.length - 1) {
-                                    items.push({ item_name: '', quantity: '0', unit: '', base_price: '', final_price: '' });
+                                    items.push({ item_name: '', quantity: '0', unit: '', weight: '', base_price: '', final_price: '', margin: '', sell_price: '' });
                                   }
                                   return { ...f, items };
                                 });
@@ -297,149 +611,597 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                       )}
                     </div>
 
-                    {/* Qty */}
+                    {/* Qty & Unit */}
                     <div>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Qty</div>}
-                      <input className="form-control" type="number" min="0" step="0.01" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} style={{ fontSize: 13, borderRadius: 6 }} />
+                      {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Qty & Unit</div>}
+                      <div style={{ display: 'flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} style={{ fontSize: 13, padding: '6px 0px 6px 6px', border: 'none', borderRight: '1px solid #cbd5e1', width: '50%', background: 'transparent', minWidth: 0, boxShadow: 'none', outline: 'none' }} />
+                        <input 
+                          className="form-control" 
+                          value={item.unit} 
+                          onChange={e => updateItem(idx, 'unit', e.target.value)} 
+                          list="unit-options"
+                          style={{ fontSize: 13, padding: '6px 6px 6px 4px', border: 'none', width: '50%', background: 'transparent', minWidth: 0, boxShadow: 'none', outline: 'none' }} 
+                          placeholder="unit"
+                        />
+                      </div>
                     </div>
 
-                    {/* Unit */}
-                    <div>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Unit</div>}
-                      <input 
-                        className="form-control" 
-                        value={item.unit} 
-                        onChange={e => updateItem(idx, 'unit', e.target.value)} 
-                        list="unit-options"
-                        style={{ fontSize: 13, borderRadius: 6 }} 
-                        placeholder="unit"
-                      />
-                    </div>
-
-                    {/* Base Price */}
-                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+                    {/* Weight (if quintal charge) */}
+                    {parseFloat(form.global_quintal_charge) > 0 && (
                       <div>
-                        {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Base (Supp.) ₹</div>}
-                        <input className="form-control" type="number" min="0" step="0.01" value={item.base_price} onChange={e => updateItem(idx, 'base_price', e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6 }} />
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Weight (kg)</div>}
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.weight} onChange={e => updateItem(idx, 'weight', e.target.value)} placeholder="0" style={{ fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }} />
                       </div>
                     )}
 
-                    {/* Final Price */}
+                    {/* Base (Supplier) Price */}
+                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+                      <div>
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Supp. ₹</div>}
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.base_price} onChange={e => updateItem(idx, 'base_price', e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6, padding: '6px 6px', border: '1px solid #cbd5e1' }} />
+                      </div>
+                    )}
+
+                    {/* Landed Cost (auto-calculated, read-only style) */}
+                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+                      <div>
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Cost ₹</div>}
+                        <div style={{ fontSize: 13, padding: '6px 6px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#f8fafc', color: '#64748b', fontWeight: 600, minHeight: 30, display: 'flex', alignItems: 'center' }}>{item.final_price || '0.00'}</div>
+                      </div>
+                    )}
+
+                    {/* Margin (per item) */}
+                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && settings?.margin_enabled !== false && (
+                      <div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', marginBottom: 6 }}>Margin {settings?.margin_type === 'percentage' ? '%' : '₹'}</div>}
+                          <input className="form-control" type="number" step="0.01" value={item.margin} onChange={e => updateMargin(idx, e.target.value)} placeholder="0" style={{ fontSize: 13, borderRadius: 6, padding: '6px 6px', border: '1px solid #a7f3d0', background: '#f0fdf4' }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sell Price (editable) */}
                     <div>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Final (Sell) ₹</div>}
-                      <input className="form-control" type="number" min="0" step="0.01" value={item.final_price} onChange={e => updateItem(idx, 'final_price', e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6 }} />
+                      {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', marginBottom: 6 }}>Sell ₹</div>}
+                      <input className="form-control" type="number" step="0.01" value={item.sell_price} onChange={e => updateSellPrice(idx, e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6, padding: '6px 6px', border: '1px solid #93c5fd', background: '#eff6ff', fontWeight: 600 }} />
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      {idx === 0 && <div style={{ fontSize: 10, height: 18, marginBottom: 4 }}>&nbsp;</div>}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {idx === 0 && <div style={{ fontSize: 11, height: 16, marginBottom: 6 }}>&nbsp;</div>}
                       {form.items.length > 1 && (
-                        <button type="button" onClick={() => removeItem(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}><Trash2 size={14} /></button>
+                        <button type="button" onClick={() => removeItem(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}><Trash2 size={16} /></button>
                       )}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                  );
+                })}
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {form.items.map((item, idx) => {
+                  const cols = [`minmax(${nameColWidth}, 1.8fr)`, 'minmax(110px, 1fr)'];
+                  if (parseFloat(form.global_quintal_charge) > 0) cols.push('minmax(80px, 0.8fr)');
+                  if (user?.role !== 'walkin_manager' && user?.role !== 'temp_manager') {
+                    cols.push('minmax(80px, 0.8fr)', 'minmax(80px, 0.8fr)');
+                    if (settings?.margin_enabled !== false) cols.push('minmax(90px, 1fr)');
+                  }
+                  cols.push('minmax(80px, 1fr)', '32px');
+                  const gridCols = cols.join(' ');
 
-            {/* Base Total Display */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '16px 4px', borderTop: '1px solid #f1f5f9', marginTop: 16 }}>
-               <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-muted)', marginRight: 12 }}>Base Total:</span>
-               <span style={{ fontWeight: 800, fontSize: 22, color: 'var(--primary)' }}>{fc ? fc(totalBase) : `₹${totalBase.toFixed(2)}`}</span>
-            </div>
-
-            {/* Payments Section */}
-            <div className="card" style={{ padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Wallet size={18} style={{ color: 'var(--success)' }} />
-                  Payment Details
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, payments: [...f.payments, { mode: 'cash', amount: '' }] }))}
-                  className="btn btn-outline"
-                  style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '8px', fontWeight: '700' }}
-                >
-                  + Add Mode
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {form.payments.map((p, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Payment Mode</label>
-                      <select 
-                        className="form-control" 
-                        value={p.mode} 
+                  return (
+                  <div key={idx} style={{ minWidth: parseFloat(form.global_quintal_charge) > 0 ? 750 : 670, display: 'grid', gridTemplateColumns: gridCols, gap: 10, alignItems: 'center' }}>
+                    
+                    {/* Item Name */}
+                    <div style={{ position: 'relative' }}>
+                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Item Name *</div>}
+                      <input className="form-control" placeholder="Type to search..." 
+                        value={item.item_name}
                         onChange={e => {
-                          const newP = [...form.payments];
-                          newP[idx].mode = e.target.value;
-                          setForm(f => ({ ...f, payments: newP }));
+                          const val = e.target.value;
+                          updateItem(idx, 'item_name', val);
+                          if (val && item.quantity === '0') updateItem(idx, 'quantity', '1');
+                          setProductSuggestIdx(idx);
+                          searchProducts(val);
                         }}
-                        style={{ height: '38px', fontSize: '13px', borderRadius: '6px' }}
-                      >
-                        <option value="cash">Cash</option>
-                        <option value="upi">UPI</option>
-                        <option value="online">Online</option>
-                        <option value="others">Others</option>
-                      </select>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px', display: 'block' }}>Paid Amount ₹</label>
-                      <input 
-                        type="number" 
-                        className="form-control" 
-                        placeholder="0.00" 
-                        value={p.amount}
-                        onChange={e => {
-                          const newP = [...form.payments];
-                          newP[idx].amount = e.target.value;
-                          setForm(f => ({ ...f, payments: newP }));
-                        }}
-                        style={{ height: '38px', fontSize: '14px', borderRadius: '6px' }}
+                        onBlur={() => setTimeout(() => { 
+                          const match = productSuggestions.find(p => p.name.toLowerCase() === item.item_name.trim().toLowerCase());
+                          if (match) {
+                            setForm(f => {
+                              const newItems = [...f.items];
+                              if (!newItems[idx].base_price && (match.suggested_price || match.price || match.supplier_base_price)) {
+                                newItems[idx].base_price = String(match.suggested_price || match.price || match.supplier_base_price);
+                              }
+                              if (!newItems[idx].sell_price && (match.suggested_price || match.price)) {
+                                newItems[idx].sell_price = String(match.suggested_price || match.price);
+                                newItems[idx]._manualSell = true;
+                              }
+                              if (match.unit) newItems[idx].unit = match.unit;
+                              if (match.weight_per_unit) newItems[idx].weight = String(match.weight_per_unit);
+                              return { ...f, items: newItems };
+                            });
+                          }
+                          setProductSuggestions([]); 
+                          setProductSuggestIdx(null); 
+                        }, 200)}
+                        style={{ fontSize: 13, borderRadius: 6 }} 
                       />
+                      {productSuggestIdx === idx && item.item_name.trim() && productSuggestions.length > 0 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto' }}>
+                          {productSuggestions.map(p => (
+                            <div key={p._id}
+                              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}
+                              onMouseDown={() => {
+                                setForm(f => {
+                                  const items = [...f.items];
+                                  const sell = p.suggested_price || p.price;
+                                  items[idx] = { ...items[idx], item_name: p.name, quantity: '1', unit: p.unit || '', weight: p.weight_per_unit ? String(p.weight_per_unit) : '', base_price: sell ? String(sell) : (p.supplier_base_price || ''), final_price: '', margin: '', sell_price: sell ? String(sell) : '', _manualSell: !!sell };
+                                  if (idx === items.length - 1) {
+                                    items.push({ item_name: '', quantity: '0', unit: '', weight: '', base_price: '', final_price: '', margin: '', sell_price: '' });
+                                  }
+                                  return { ...f, items };
+                                });
+                                setProductSuggestions([]); setProductSuggestIdx(null);
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div>
+                                <div style={{ fontWeight: 600 }}>{p.name}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Stock: {p.stock} {p.unit} · ₹{p.price}</div>
+                              </div>
+                            </div>
+                          ))}
+                          <div
+                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
+                            onMouseDown={() => { setProductSuggestions([]); setProductSuggestIdx(null); }}
+                          >
+                            + Use "{item.item_name}" as new item
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%', paddingBottom: '2px' }}>
-                      {idx === 0 ? (
-                        <button 
-                          type="button" 
-                          onClick={() => {
-                            const newP = [...form.payments];
-                            const currentOtherPaid = newP.filter((_, i) => i !== 0).reduce((sum, pay) => sum + (parseFloat(pay.amount) || 0), 0);
-                            newP[0].amount = String(Math.max(0, totalBase - currentOtherPaid));
-                            setForm(f => ({ ...f, payments: newP }));
-                          }}
-                          style={{ height: '38px', padding: '0 12px', fontSize: '12px', fontWeight: '700', borderRadius: '6px', border: '1px solid #3b82f6', background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}
-                        >
-                          Full
-                        </button>
-                      ) : (
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const newP = form.payments.filter((_, i) => i !== idx);
-                            setForm(f => ({ ...f, payments: newP }));
-                          }}
-                          style={{ height: '38px', width: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+
+                    {/* Qty & Unit */}
+                    <div>
+                      {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Qty & Unit</div>}
+                      <div style={{ display: 'flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} style={{ fontSize: 13, padding: '6px 0px 6px 6px', border: 'none', borderRight: '1px solid #cbd5e1', width: '50%', background: 'transparent', minWidth: 0, boxShadow: 'none', outline: 'none' }} />
+                        <input 
+                          className="form-control" 
+                          value={item.unit} 
+                          onChange={e => updateItem(idx, 'unit', e.target.value)} 
+                          list="unit-options"
+                          style={{ fontSize: 13, padding: '6px 6px 6px 4px', border: 'none', width: '50%', background: 'transparent', minWidth: 0, boxShadow: 'none', outline: 'none' }} 
+                          placeholder="unit"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Weight (if quintal charge) */}
+                    {parseFloat(form.global_quintal_charge) > 0 && (
+                      <div>
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Weight (kg)</div>}
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.weight} onChange={e => updateItem(idx, 'weight', e.target.value)} placeholder="0" style={{ fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }} />
+                      </div>
+                    )}
+
+                    {/* Base (Supplier) Price */}
+                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+                      <div>
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Supp. ₹</div>}
+                        <input className="form-control" type="number" min="0" step="0.01" value={item.base_price} onChange={e => updateItem(idx, 'base_price', e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6, padding: '6px 6px', border: '1px solid #cbd5e1' }} />
+                      </div>
+                    )}
+
+                    {/* Landed Cost (auto-calculated, read-only style) */}
+                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
+                      <div>
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Cost ₹</div>}
+                        <div style={{ fontSize: 13, padding: '6px 6px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#f8fafc', color: '#64748b', fontWeight: 600, minHeight: 30, display: 'flex', alignItems: 'center' }}>{item.final_price || '0.00'}</div>
+                      </div>
+                    )}
+
+                    {/* Margin (per item) */}
+                    {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && settings?.margin_enabled !== false && (
+                      <div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', marginBottom: 6 }}>Margin {settings?.margin_type === 'percentage' ? '%' : '₹'}</div>}
+                          <input className="form-control" type="number" step="0.01" value={item.margin} onChange={e => updateMargin(idx, e.target.value)} placeholder="0" style={{ fontSize: 13, borderRadius: 6, padding: '6px 6px', border: '1px solid #a7f3d0', background: '#f0fdf4' }} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sell Price (editable) */}
+                    <div>
+                      {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', marginBottom: 6 }}>Sell ₹</div>}
+                      <input className="form-control" type="number" step="0.01" value={item.sell_price} onChange={e => updateSellPrice(idx, e.target.value)} placeholder="0.00" style={{ fontSize: 13, borderRadius: 6, padding: '6px 6px', border: '1px solid #93c5fd', background: '#eff6ff', fontWeight: 600 }} />
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {idx === 0 && <div style={{ fontSize: 11, height: 16, marginBottom: 6 }}>&nbsp;</div>}
+                      {form.items.length > 1 && (
+                        <button type="button" onClick={() => removeItem(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}><Trash2 size={16} /></button>
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Notes Section */}
+            <div style={{ marginTop: 24, borderTop: '1px solid #e2e8f0', paddingTop: 24 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Notes <span style={{ color: '#94a3b8', fontWeight: 500 }}>(Optional)</span></label>
+              <input type="text" className="form-control" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Any remarks..." style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14 }} />
+            </div>
+
+            {/* 2-Column Bottom Layout */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginTop: 16, alignItems: 'start' }}>
+              
+              {/* Left Column: Payments */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Payments Section */}
+                <div style={{ background: '#f8fafc', padding: 24, borderRadius: 16, border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Wallet size={18} style={{ color: '#10b981' }} />
+                      Payment Details
+                    </h4>
+                    <button 
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, payments: [...f.payments, { mode: 'cash', amount: '' }] }))}
+                      style={{ background: 'white', border: '1px solid #e2e8f0', padding: '6px 12px', fontSize: 12, fontWeight: 700, color: '#475569', borderRadius: 8, cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      + Add Mode
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {form.payments.map((p, idx) => (
+                      <div key={idx} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20, position: 'relative' }}>
+                        {idx > 0 && (
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              const newP = form.payments.filter((_, i) => i !== idx);
+                              setForm(f => ({ ...f, payments: newP }));
+                            }}
+                            style={{ position: 'absolute', top: -10, right: -10, width: 24, height: 24, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)' }}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                        
+                        <div style={{ marginBottom: 16 }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 8, display: 'block', letterSpacing: '0.5px' }}>Payment Mode</label>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                            {['cash', 'upi', 'online'].map(mode => (
+                              <div 
+                                key={mode} 
+                                onClick={() => {
+                                  const newP = [...form.payments];
+                                  newP[idx].mode = mode;
+                                  setForm(f => ({ ...f, payments: newP }));
+                                }}
+                                style={{ 
+                                  padding: '10px 8px', border: `2px solid ${p.mode === mode ? '#ef4444' : '#e2e8f0'}`, borderRadius: 10, cursor: 'pointer', textAlign: 'center', fontWeight: 600, fontSize: 13, color: p.mode === mode ? '#ef4444' : '#64748b', background: p.mode === mode ? '#fef2f2' : 'white', transition: 'all 0.2s' 
+                                }}
+                              >
+                                {mode.toUpperCase().replace('_', ' ')}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 8, display: 'block', letterSpacing: '0.5px' }}>Paid Amount ₹</label>
+                          <div style={{ position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: '#ef4444', fontWeight: 600 }}>₹</span>
+                            <input 
+                              type="number" 
+                              placeholder="0.00" 
+                              value={p.amount}
+                              onChange={e => {
+                                const newP = [...form.payments];
+                                newP[idx].amount = e.target.value;
+                                setForm(f => ({ ...f, payments: newP }));
+                              }}
+                              style={{ width: '100%', padding: '14px 14px 14px 40px', fontSize: 20, fontWeight: 800, border: '2px solid #e2e8f0', borderRadius: 10, outline: 'none', color: '#0f172a', transition: 'border-color 0.2s', boxSizing: 'border-box' }}
+                            />
+                            {idx === 0 && (
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  const newP = [...form.payments];
+                                  const currentOtherPaid = newP.filter((_, i) => i !== 0).reduce((sum, pay) => sum + (parseFloat(pay.amount) || 0), 0);
+                                  newP[0].amount = String(Math.max(0, totalFinal - currentOtherPaid));
+                                  setForm(f => ({ ...f, payments: newP }));
+                                }}
+                                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', height: 32, padding: '0 12px', fontSize: 12, fontWeight: 700, borderRadius: 6, border: '1px solid #bae6fd', background: '#f0f9ff', color: '#0284c7', cursor: 'pointer' }}
+                              >
+                                Pay Full
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {(() => {
+                      const totalPaid = form.payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+                      if (totalPaid > 0 && totalPaid < totalFinal) {
+                        return (
+                          <div style={{ marginTop: 4, padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 10, textTransform: 'uppercase' }}>Payment Action</div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 12 }}>
+                              <input 
+                                type="radio" 
+                                name="recordEntryAction"
+                                checked={form.settle_fully === true} 
+                                onChange={() => setForm(f => ({ ...f, settle_fully: true }))} 
+                                style={{ width: 16, height: 16, cursor: 'pointer' }}
+                              />
+                              <span style={{ fontSize: 13, color: '#334155' }}><strong>Negotiated Settlement</strong> (Mark fully paid & log discount)</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                              <input 
+                                type="radio" 
+                                name="recordEntryAction"
+                                checked={!form.settle_fully} 
+                                onChange={() => setForm(f => ({ ...f, settle_fully: false }))} 
+                                style={{ width: 16, height: 16, cursor: 'pointer' }}
+                              />
+                              <span style={{ fontSize: 13, color: '#334155' }}><strong>Partial Payment</strong> (Leave remainder due)</span>
+                            </label>
+                          </div>
+                        );
+                      }
+                      if (totalPaid > totalFinal) {
+                        return (
+                          <div style={{ marginTop: 4, padding: '12px 16px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8 }}>
+                            <span style={{ fontSize: 13, color: '#047857', fontWeight: 600 }}>You are paying extra. The difference will automatically be stored as an advance in the supplier ledger.</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Order Summary */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 8, columnGap: 16, padding: '24px', background: '#f8fafc', borderRadius: 16, border: '1px solid #e2e8f0', height: 'fit-content', alignItems: 'center' }}>
+                 <style>{`
+                   .summary-input::-webkit-inner-spin-button, .summary-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+                   .summary-input { -moz-appearance: textfield; font-variant-numeric: tabular-nums; }
+                 `}</style>
+
+                 {/* Purchase Total */}
+                 <div style={{ textAlign: 'right', fontWeight: 600, fontSize: 13, color: '#64748b' }}>Purchase Total:</div>
+                 <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 15, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>₹{formatNum(totalBase)}</div>
+                 
+                 {/* Extra Charges */}
+                 {parseFloat(form.global_extra_charge) > 0 && (
+                   <>
+                     <div style={{ textAlign: 'right', fontWeight: 600, fontSize: 13, color: '#64748b' }}>Extra Charges:</div>
+                     <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 15, color: '#ef4444', fontVariantNumeric: 'tabular-nums' }}>+₹{formatNum(form.global_extra_charge)}</div>
+                   </>
+                 )}
+
+                 {/* Quintal Charges */}
+                 {totalQuintalCharge > 0 && (
+                   <>
+                     <div style={{ textAlign: 'right', fontWeight: 600, fontSize: 13, color: '#64748b' }}>Quintal Charges:</div>
+                     <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 15, color: '#ef4444', fontVariantNumeric: 'tabular-nums' }}>
+                       +₹
+                       <input 
+                         className="summary-input"
+                         type="number"
+                         value={tempCustomQuintal !== '' ? tempCustomQuintal : (customQuintalCharge !== '' ? customQuintalCharge : getDisplayVal(totalQuintalCharge))}
+                         onChange={e => {
+                           const newVal = e.target.value;
+                           setTempCustomQuintal(newVal);
+                           setCustomQuintalCharge(newVal);
+                           setCustomGrandTotal(''); // Reset to allow auto calculation
+                           setForm(f => {
+                             let n = f.notes || '';
+                             if (newVal === '') {
+                               n = n.replace(/Quintal charge changed from [^|]*\|?/g, '').trim();
+                               n = n.replace(/Quintal charge edited\|?/g, '').trim();
+                               if (n.endsWith('|')) n = n.slice(0, -1).trim();
+                             } else {
+                               const msg = `Quintal charge changed from ${getDisplayVal(totalQuintalCharge)} to ${newVal}`;
+                               if (n.includes('Quintal charge changed from')) {
+                                 n = n.replace(/Quintal charge changed from [0-9.]+ to [^|]*/, msg);
+                               } else if (n.includes('Quintal charge edited')) {
+                                 n = n.replace('Quintal charge edited', msg);
+                               } else {
+                                 n = n ? n + (n.endsWith(' | ') ? '' : ' | ') + msg : msg;
+                               }
+                             }
+                             return { ...f, notes: n };
+                           });
+                         }}
+                         onBlur={() => setTempCustomQuintal('')}
+                         style={{ width: `${Math.max(1, String(tempCustomQuintal !== '' ? tempCustomQuintal : (customQuintalCharge !== '' ? customQuintalCharge : getDisplayVal(totalQuintalCharge))).length) + 0.2}ch`, border: 'none', background: 'transparent', color: 'inherit', fontWeight: 'inherit', fontSize: 'inherit', outline: 'none', textAlign: 'right', padding: 0 }}
+                       />
+                     </div>
+                   </>
+                 )}
+
+                 {/* Landed Cost */}
+                 <div style={{ textAlign: 'right', fontWeight: 600, fontSize: 13, color: '#64748b' }}>Landed Cost:</div>
+                 <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 15, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>₹{formatNum(effectiveLandedCost)}</div>
+
+                 {/* Selling Total */}
+                 {totalSelling > 0 && (
+                   <>
+                     <div style={{ textAlign: 'right', fontWeight: 600, fontSize: 13, color: '#64748b' }}>Selling Total:</div>
+                     <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 15, color: '#0284c7', fontVariantNumeric: 'tabular-nums' }}>₹{formatNum(totalSelling)}</div>
+                   </>
+                 )}
+
+                 {/* Profit */}
+                 {totalProfit !== 0 && (
+                   <>
+                     <div style={{ textAlign: 'right', fontWeight: 600, fontSize: 13, color: '#64748b' }}>Profit:</div>
+                     <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 15, color: totalProfit >= 0 ? '#10b981' : '#ef4444', fontVariantNumeric: 'tabular-nums' }}>
+                       {totalProfit >= 0 ? '+₹' : '-₹'}{formatNum(totalProfit)}
+                     </div>
+                   </>
+                 )}
+
+                 {/* Divider */}
+                 <div style={{ gridColumn: '1 / -1', borderTop: '1px dashed #cbd5e1', paddingTop: 16, marginTop: 12 }}></div>
+
+                 {/* Grand Total */}
+                 <div style={{ textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Grand Total:</div>
+                 <div style={{ textAlign: 'right', fontWeight: 900, fontSize: 24, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+                   ₹
+                   <input 
+                     className="summary-input"
+                     type="number"
+                     value={customGrandTotal !== '' ? customGrandTotal : getDisplayVal(totalFinal)}
+                     onChange={e => {
+                       const newVal = e.target.value;
+                       setCustomGrandTotal(newVal);
+                       setForm(f => {
+                         let n = f.notes || '';
+                         if (newVal === '') {
+                           n = n.replace(/Grand total changed from [^|]*\|?/g, '').trim();
+                           n = n.replace(/Grand total edited\|?/g, '').trim();
+                           if (n.endsWith('|')) n = n.slice(0, -1).trim();
+                         } else {
+                           const msg = `Grand total changed from ${getDisplayVal(totalFinal)} to ${newVal}`;
+                           if (n.includes('Grand total changed from')) {
+                             n = n.replace(/Grand total changed from [0-9.]+ to [^|]*/, msg);
+                           } else if (n.includes('Grand total edited')) {
+                             n = n.replace('Grand total edited', msg);
+                           } else {
+                             n = n ? n + (n.endsWith(' | ') ? '' : ' | ') + msg : msg;
+                           }
+                         }
+                         return { ...f, notes: n };
+                       });
+                     }}
+                     style={{ width: `${Math.max(1, String(customGrandTotal !== '' ? customGrandTotal : getDisplayVal(totalFinal)).length) + 0.2}ch`, border: 'none', background: 'transparent', color: 'inherit', fontWeight: 'inherit', fontSize: 'inherit', outline: 'none', textAlign: 'right', padding: 0 }}
+                   />
+                 </div>
               </div>
             </div>
 
             </form>
-          </div> {/* End Scrollable Body */}
+          </div>
 
-          {/* Footer Actions */}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center', padding: '16px 22px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', flexShrink: 0 }}>
-            <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
-            <button type="submit" form="walkin-form" className="btn btn-primary" onClick={() => setSubmitAction('save')} disabled={saving}>
-              {saving && submitAction === 'save' ? 'Saving...' : '✓ Save Entry'}
+          <div style={{ padding: '20px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 12, flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
+              <button 
+                type="button" 
+                onClick={() => setShowClearConfirm(true)}
+                style={{ padding: '12px 16px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 12, color: '#475569', fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }}
+                title="Clear current form"
+              >
+                <Trash2 size={16} /> Clear
+              </button>
+              
+              {showClearConfirm && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                  <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)', width: 320, padding: 24, animation: 'fadeIn 0.2s ease-out' }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                      <div style={{ background: '#fee2e2', color: '#ef4444', padding: 12, borderRadius: '50%' }}>
+                        <AlertTriangle size={24} />
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a', marginBottom: 8, textAlign: 'center' }}>
+                      Clear this entry?
+                    </div>
+                    <div style={{ fontSize: 13, color: '#64748b', textAlign: 'center', marginBottom: 24 }}>
+                      Are you sure you want to completely clear this form? All unsaved data will be lost.
+                    </div>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <button type="button" onClick={() => setShowClearConfirm(false)} style={{ flex: 1, padding: '10px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 10, color: '#475569', fontWeight: 700, fontSize: 14, cursor: 'pointer', transition: 'all 0.2s' }}>
+                        Cancel
+                      </button>
+                      <button type="button" onClick={() => {
+                        localStorage.removeItem(DRAFT_KEY);
+                        const now = new Date();
+                        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                        setForm({ supplier: '', vehicle_number: '', expected_arrival: now.toISOString().slice(0, 16), notes: '', payments: [{ amount: '', mode: 'cash' }], items: [{ item_name: '', quantity: '1', unit: '', weight: '', base_price: '', final_price: '', margin: '', sell_price: '' }], settle_fully: false, global_extra_charge: '', global_quintal_charge: '', global_profit_percent: '' });
+                        setCustomGrandTotal('');
+                        setCustomQuintalCharge('');
+                        setShowClearConfirm(false);
+                        toast.success('Form cleared successfully');
+                      }} style={{ flex: 1, padding: '10px', background: '#ef4444', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(239, 68, 68, 0.2)' }}>
+                        Yes, Clear
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button 
+                type="button" 
+                onClick={handleSaveDraft}
+                style={{ padding: '12px 16px', background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 12, color: '#0369a1', fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }}
+                title="Save this form as a reusable template"
+              >
+                <Save size={16} /> Save Draft
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setShowDraftsMenu(!showDraftsMenu)}
+                style={{ padding: '12px 16px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 12, color: '#b45309', fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }}
+                title="Load a saved draft"
+              >
+                <FolderOpen size={16} /> Load Draft
+              </button>
+              
+              {showDraftsMenu && (
+                <div style={{ position: 'absolute', bottom: '110%', left: 0, background: '#fff', borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.15)', border: '1px solid #e2e8f0', width: 320, zIndex: 100, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, fontSize: 14, color: '#0f172a', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    Saved Drafts
+                    <X size={16} style={{ cursor: 'pointer', color: '#64748b' }} onClick={() => setShowDraftsMenu(false)} />
+                  </div>
+                  <div style={{ maxHeight: 200, overflowY: 'auto', padding: 8 }}>
+                    {savedDraftsList.length === 0 ? (
+                      <div style={{ padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: 13, fontWeight: 500 }}>No drafts saved yet.</div>
+                    ) : (
+                      savedDraftsList.map(draft => (
+                        <div key={draft.id} onClick={() => handleLoadDraft(draft)} style={{ padding: '10px 12px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'background 0.2s', borderBottom: '1px solid #f1f5f9' }} className="draft-item" onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                          <div style={{ overflow: 'hidden' }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{draft.name}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{draft.date}</div>
+                          </div>
+                          <button type="button" onClick={(e) => handleDeleteDraft(draft.id, e)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6 }}>
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button 
+              type="button" 
+              onClick={onClose}
+              style={{ flex: 1, padding: '12px 24px', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer', transition: 'all 0.2s' }}
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              form="walkin-form"
+              onClick={() => setSubmitAction('save')} 
+              disabled={saving}
+              style={{ flex: 2, padding: '12px 24px', background: '#0284c7', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 15, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)', opacity: saving ? 0.7 : 1, transition: 'all 0.2s' }}
+            >
+              {saving && submitAction === 'save' ? 'Saving...' : <><CheckCircle size={18} /> Confirm Entry</>}
             </button>
           </div>
       </div>

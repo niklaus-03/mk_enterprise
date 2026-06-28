@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { Bell, Heart, Package, FileText, AlertTriangle, Clock, Truck, ChevronLeft } from 'lucide-react';
+import { Bell, Heart, Package, FileText, AlertTriangle, Clock, Truck, ChevronLeft, ArrowLeft } from 'lucide-react';
 import { notificationApi, orderApi } from '../utils/api';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -158,27 +158,40 @@ export default function NotificationsPage() {
   const groupedNotifs = groupNotifications(filteredNotifs);
 
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto', background: 'var(--bg-card)', minHeight: '100vh', fontFamily: "'-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
+    <div style={{ fontFamily: "'-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
       
-      {/* Instagram style header */}
-      <div style={{ display: 'flex', alignItems: 'center', height: 44, padding: '0 16px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10 }}>
-        <button onClick={() => navigate(-1)} style={{ background: 'transparent', border: 'none', padding: '8px 0', cursor: 'pointer', color: 'var(--text)', display: 'flex', alignItems: 'center' }}>
-          <ChevronLeft size={28} strokeWidth={1.5} />
-        </button>
-        <h1 style={{ flex: 1, margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)', textAlign: 'center', paddingRight: 28 }}>
-          {lang ? 'सूचनाएं' : 'Notifications'}
-        </h1>
+      {/* Standardized header */}
+      <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title d-flex align-items-center gap-2" style={{ margin: 0, marginTop: '4px', fontSize: '1.25rem', fontWeight: 600 }}>
+              <Bell size={22} className="text-primary" /> {lang ? 'सूचनाएं' : 'Notifications'}
+            </div>
+            <div className="page-subtitle" style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13 }}>
+              {unreadCount > 0 ? `${unreadCount} unread notifications` : 'All caught up!'}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', padding: '12px 16px', gap: 8 }}>
+      <div style={{ display: 'flex', padding: '0 0 16px 0', gap: 8 }}>
         <button 
           onClick={() => setFilter('all')}
           style={{
             padding: '6px 16px', borderRadius: 20, fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer',
-            background: filter === 'all' ? 'var(--text)' : 'var(--bg)',
+            background: filter === 'all' ? 'var(--text)' : 'var(--bg-card)',
             color: filter === 'all' ? 'var(--bg-card)' : 'var(--text)',
-            transition: 'all 0.2s'
+            transition: 'all 0.2s',
+            boxShadow: filter === 'all' ? 'none' : '0 1px 2px rgba(0,0,0,0.05)'
           }}
         >
           All
@@ -187,16 +200,17 @@ export default function NotificationsPage() {
           onClick={() => setFilter('unread')}
           style={{
             padding: '6px 16px', borderRadius: 20, fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer',
-            background: filter === 'unread' ? 'var(--text)' : 'var(--bg)',
+            background: filter === 'unread' ? 'var(--text)' : 'var(--bg-card)',
             color: filter === 'unread' ? 'var(--bg-card)' : 'var(--text)',
-            transition: 'all 0.2s'
+            transition: 'all 0.2s',
+            boxShadow: filter === 'unread' ? 'none' : '0 1px 2px rgba(0,0,0,0.05)'
           }}
         >
           Unread {unreadCount > 0 && <span>({unreadCount})</span>}
         </button>
       </div>
 
-      <div style={{ paddingBottom: 40 }}>
+      <div className="card" style={{ paddingBottom: 40, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
         {filter === 'all' && orders.length > 0 && (
           <div>
             <div style={{ padding: '16px 16px 8px', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>

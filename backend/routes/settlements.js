@@ -10,6 +10,9 @@ router.use(auth);
 
 // Helper: managers see only their own settlements
 function ownerFilter(req) {
+  if (req.user.role === 'supervisor' && req.query.manager_id) {
+    return { created_by: req.query.manager_id };
+  }
   if (['manager', 'temp_manager', 'walkin_manager'].includes(req.user.role)) {
     return { created_by: req.user.id };
   }

@@ -11,8 +11,9 @@ const supplierSchema = new mongoose.Schema({
   notes: { type: String, default: '', trim: true },
   balance: { type: Number, default: 0 },
   is_active: { type: Boolean, default: true },
-  linked_customer_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
+  linked_customer_ids: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Customer' }],
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+  assigned_managers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }],
 }, { timestamps: true });
 
 supplierSchema.index({ name: 1 });

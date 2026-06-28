@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { stockApi, productApi } from '../utils/api';
 import { formatIST } from '../utils/helpers';
-import { Package, Plus, Filter, ArrowDownRight, ArrowUpRight, FileText, Settings2, RefreshCcw, Truck, User, AlignLeft, Calendar, Info, Layers, CheckCircle2, X } from 'lucide-react';
+import { Package, Plus, Filter, ArrowDownRight, ArrowUpRight, FileText, Settings2, RefreshCcw, Truck, User, AlignLeft, Calendar, Info, Layers, CheckCircle2, X, ArrowLeft, Search } from 'lucide-react';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
@@ -16,22 +16,36 @@ export default function StockMovements() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState({ type: '', source: '', product_id: location.state?.filterProductId || '' });
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ product_id: '', type: 'incoming', qty: '', qty_unit: 'pcs', vehicle_number: '', driver_name: '', supplier: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(location.state?.searchQuery || '');
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [todayCount, setTodayCount] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const load = () => {
     setLoading(true);
-    stockApi.getAll({ ...filter, page, limit: 50 })
+    stockApi.getAll({ ...filter, search, page, limit: 50 })
       .then(d => { setMovements(d.movements); setTotal(d.total); })
       .catch(e => toast.error(e.message))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { productApi.getAll().then(setProducts).catch(() => {}); }, []);
-  useEffect(() => { load(); }, [filter, page]);
+  useEffect(() => { 
+    productApi.getAll().then(setProducts).catch(() => {});
+    stockApi.getToday().then(res => setTodayCount(res.length || 0)).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [filter, page, search]);
 
   const refreshPage = useCallback(() => {
     productApi.getAll().then(setProducts).catch(() => {});
@@ -65,15 +79,22 @@ export default function StockMovements() {
   return (
     <div>
       {/* ── HEADER ── */}
-      <div className="page-header" style={{ marginBottom: 24 }}>
-        <div>
-          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ background: 'var(--warning-light)', color: '#d97706', padding: 8, borderRadius: 12, display: 'flex' }}>
-              <Layers size={24} strokeWidth={2.5} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button 
+            onClick={() => navigate(-1)}
+            className="btn btn-outline" 
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+              <Layers size={22} className="text-warning" /> Stock Ledger
             </div>
-            <span>Stock Ledger</span>
+            <div className="page-subtitle" style={{ margin: 0 }}>Track all incoming and outgoing inventory movements</div>
           </div>
-          <div className="page-subtitle" style={{ marginLeft: 50 }}>Track all incoming and outgoing inventory movements</div>
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <button 
@@ -86,46 +107,93 @@ export default function StockMovements() {
         </div>
       </div>
 
-      {/* ── FILTERS ── */}
-      <div className="card" style={{ marginBottom: 24, borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-        <div className="card-body" style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', background: 'var(--bg)', borderRadius: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Filter size={16} /> Filters
-            </span>
-            <select
-              className="form-control"
-              value={filter.type}
-              onChange={e => setFilter(f => ({ ...f, type: e.target.value }))}
-              style={{ width: 140, borderRadius: 8, fontSize: 13 }}
-            >
-              <option value="">All Types</option>
-              <option value="incoming">Incoming</option>
-              <option value="outgoing">Outgoing</option>
-            </select>
-            <select
-              className="form-control"
-              value={filter.source}
-              onChange={e => setFilter(f => ({ ...f, source: e.target.value }))}
-              style={{ width: 140, borderRadius: 8, fontSize: 13 }}
-            >
-              <option value="">All Sources</option>
-              <option value="invoice">Invoice</option>
-              <option value="manual">Manual</option>
-              <option value="return">Return</option>
-            </select>
+      {/* ── FILTERS & SEARCH ── */}
+      <div className="hide-scroll" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1.5px solid #e2e8f0', marginBottom: 24, padding: '0 4px', flexWrap: 'nowrap', gap: 12, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+          <div style={{ padding: '8px 2px', borderBottom: '2.5px solid var(--primary)', fontWeight: 700, color: 'var(--primary)', marginBottom: -1.5, whiteSpace: 'nowrap', fontSize: 13 }}>
+            {todayCount} Movement{todayCount !== 1 ? 's' : ''} Today
           </div>
+        </div>
 
-          <div style={{ marginLeft: 'auto', background: 'var(--bg-card)', padding: '6px 12px', borderRadius: 20, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {filter.product_id && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 10, borderRight: '1px solid #e2e8f0', color: 'var(--text)' }}>
-                Product Filter Active 
-                <button onClick={() => setFilter(f => ({ ...f, product_id: '' }))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                  <X size={14} />
-                </button>
-              </span>
+        <div style={{ display: 'flex', gap: 8, paddingBottom: 6, flexWrap: 'nowrap', flex: 1, minWidth: 100 }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', minWidth: 60 }}>
+            <span style={{ position: 'absolute', left: 8, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
+              <Search size={14} />
+            </span>
+            <input
+              className="form-control"
+              placeholder="Search movements..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); }}
+              style={{ paddingLeft: 28, fontSize: 13, borderRadius: 8, height: 34, width: '100%' }}
+            />
+            {search && (
+              <button
+                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                onClick={() => { setSearch(''); }}
+              >✕</button>
             )}
-            {total} Records Found
+          </div>
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="btn btn-outline" 
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '8px 10px' : '8px 14px', background: 'white' }}
+            >
+              <Filter size={14} /> 
+              {!isMobile && (
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  Filters
+                </span>
+              )}
+            </button>
+            
+            {showFilterMenu && (
+              <>
+                <div 
+                  style={{ position: 'fixed', inset: 0, zIndex: 40 }} 
+                  onClick={() => setShowFilterMenu(false)} 
+                />
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 8, background: '#fff', 
+                  border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                  zIndex: 50, minWidth: 200, padding: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 12
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>Movement Type</div>
+                  <select
+                    className="form-control"
+                    value={filter.type}
+                    onChange={e => setFilter(f => ({ ...f, type: e.target.value }))}
+                    style={{ borderRadius: 8, fontSize: 13 }}
+                  >
+                    <option value="">All Types</option>
+                    <option value="incoming">Incoming</option>
+                    <option value="outgoing">Outgoing</option>
+                  </select>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', marginTop: 4 }}>Source</div>
+                  <select
+                    className="form-control"
+                    value={filter.source}
+                    onChange={e => setFilter(f => ({ ...f, source: e.target.value }))}
+                    style={{ borderRadius: 8, fontSize: 13 }}
+                  >
+                    <option value="">All Sources</option>
+                    <option value="invoice">Invoice</option>
+                    <option value="manual">Manual</option>
+                    <option value="return">Return</option>
+                  </select>
+
+                  {filter.product_id && (
+                     <button className="btn btn-outline" onClick={() => setFilter(f => ({ ...f, product_id: '' }))} style={{ marginTop: 4, color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                       Clear Product Filter
+                     </button>
+                  )}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)', textAlign: 'center', marginTop: 4 }}>
+                    {total} Records Found
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -147,10 +215,10 @@ export default function StockMovements() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--bg)', borderBottom: '2px solid #e2e8f0' }}>
                 <tr>
-                  {['Date (IST)', 'Product', 'Type', 'Source', 'Qty', 'Unit', 'Before', 'Balance', 'Vehicle / Driver', 'Notes'].map((h, i) => (
+                  {['Date (IST)', 'Product', 'Type', 'Qty', 'Unit', 'Before', 'Balance', 'Notes'].map((h, i) => (
                     <th key={h} style={{
                       padding: '16px 20px',
-                      textAlign: (i === 4 || i === 6 || i === 7) ? 'right' : 'left',
+                      textAlign: (i === 3 || i === 5 || i === 6) ? 'right' : 'left',
                       fontSize: 11.5, fontWeight: 800, color: 'var(--text-muted)',
                       textTransform: 'uppercase', letterSpacing: '0.5px'
                     }}>{h}</th>
@@ -187,19 +255,6 @@ export default function StockMovements() {
                         </span>
                       </td>
 
-                      <td style={{ padding: '14px 20px' }}>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          color: 'var(--text-muted)',
-                          fontSize: 12, fontWeight: 600, textTransform: 'capitalize'
-                        }}>
-                          <span style={{ color: m.source === 'invoice' ? '#6366f1' : m.source === 'manual' ? '#94a3b8' : '#f59e0b', display: 'flex' }}>
-                            {m.source === 'invoice' ? <FileText size={14} /> : m.source === 'manual' ? <Settings2 size={14} /> : <RefreshCcw size={14} />}
-                          </span>
-                          {m.source}
-                        </span>
-                      </td>
-
                       <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 800, fontSize: 15, fontFamily: 'monospace', color: isIncoming ? '#16a34a' : '#dc2626' }}>
                         {isIncoming ? '+' : '−'}{m.qty}
                       </td>
@@ -217,26 +272,24 @@ export default function StockMovements() {
                       </td>
 
                       <td style={{ padding: '14px 20px' }}>
-                        {(m.vehicle_number || m.driver_name) ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {m.vehicle_number && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {(m.vehicle_number || '').toUpperCase()}</span>}
-                            {m.driver_name && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.driver_name}</span>}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4, fontStyle: 'italic' }}>
-                            <User size={12} /> Self Pickup
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 220 }}>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            color: m.source === 'invoice' ? (m.notes === 'Invoice edited' ? '#9333ea' : '#6366f1') : (m.source === 'manual' || m.source === 'walkin_loading') ? '#94a3b8' : '#f59e0b',
+                            fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px'
+                          }}>
+                            {m.source === 'invoice' ? <FileText size={12} /> : (m.source === 'manual' || m.source === 'walkin_loading') ? <Settings2 size={12} /> : <RefreshCcw size={12} />}
+                            {m.source === 'invoice' ? (m.notes === 'Invoice edited' ? 'Invoice Edited' : 'Invoice Made') : m.source}
                           </span>
-                        )}
-                      </td>
-
-                      <td style={{ padding: '14px 20px' }}>
-                        {(m.notes || m.supplier || m.created_by) ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 180 }}>
-                            {m.supplier && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{m.supplier}</span>}
-                            {m.notes && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'flex-start', gap: 4 }}><AlignLeft size={12} style={{ marginTop: 2, flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notes}</span></span>}
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {m.source === 'invoice' && m.invoice_number && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Inv: {m.invoice_number}</span>}
+                            {(m.source === 'manual' || m.source === 'walkin_loading') && m.supplier && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.supplier}</span>}
+                            {m.vehicle_number && m.vehicle_number.toUpperCase() !== 'WALK-IN' && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {(m.vehicle_number || '').toUpperCase()}</span>}
+                            {m.notes && m.notes !== 'Invoice created' && m.notes !== 'Invoice edited' && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'flex-start', gap: 4 }}><AlignLeft size={12} style={{ marginTop: 2, flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', maxWidth: 180 }} title={m.notes}>{m.notes}</span></span>}
                             {m.created_by && <span style={{ fontSize: 11, color: '#4f46e5', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> By: {m.created_by.display_name || m.created_by.username}</span>}
                           </div>
-                        ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                        </div>
                       </td>
 
                     </tr>

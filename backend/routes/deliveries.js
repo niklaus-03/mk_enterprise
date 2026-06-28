@@ -106,7 +106,7 @@ router.get('/', async (req, res) => {
  */
 router.post('/', checkProductEditPermission, async (req, res) => {
   try {
-    const { vehicle_number, driver_name, supplier, expected_arrival, items, notes, delivery_type, payment_status } = req.body;
+    const { vehicle_number, driver_name, supplier, expected_arrival, items, notes, delivery_type, payment_status, grand_total } = req.body;
     if (!vehicle_number || !expected_arrival || !items?.length) {
       return res.status(400).json({ error: 'vehicle_number, expected_arrival, and items are required' });
     }
@@ -123,17 +123,12 @@ router.post('/', checkProductEditPermission, async (req, res) => {
       expected_arrival: arrivalDate,
       expected_arrival_ist: formatISTDateTime(arrivalDate),
       arrival_date_ist: getISTDateStr(arrivalDate),
-      items: items.map(i => ({
-        item_name: i.item_name,
-        quantity: parseFloat(i.quantity) || 0,
-        unit: i.unit || 'pcs',
-        product_id: i.product_id || null,
-        base_price: parseFloat(i.base_price) || 0,
-        final_price: parseFloat(i.final_price) || 0,
-      })),
+      items: items, // Persist directly
+      suppliers_data: req.body.suppliers_data || [],
       notes: (notes || '').trim(),
       delivery_type: delivery_type || 'vehicle_incoming',
       payment_status: payment_status || 'unpaid',
+      grand_total: grand_total !== undefined ? grand_total : null,
       created_by: req.user?.id || req.user?._id || req.admin?.id || req.admin?._id || null,
     });
 
@@ -218,17 +213,24 @@ router.patch('/:id/status', checkProductEditPermission, async (req, res) => {
 
     // When marked delivered — update stock for each item
     // On delivery: create new products, update stock & price
-      // Auto-create supplier if not exists when marked delivered
-      if (status === 'delivered' && delivery.supplier && !delivery.stock_updated) {
+      // Auto-create suppliers if not exists when marked delivered
+      if (status === 'delivered' && !delivery.stock_updated) {
         const Supplier = require('../models/Supplier');
-        const existingSupplier = await Supplier.findOne({
-          name: { $regex: `^${delivery.supplier.trim()}$`, $options: 'i' },
-          is_active: true,
-        });
-        if (!existingSupplier) {
-          try {
-            await Supplier.create({ name: delivery.supplier.trim(), is_active: true, created_by: req.user?.id || req.user?._id || req.admin?.id || req.admin?._id || null });
-          } catch (e) { /* ignore duplicate */ }
+        const supplierNames = new Set();
+        if (delivery.supplier) delivery.supplier.split(',').map(s => s.trim()).filter(Boolean).forEach(s => supplierNames.add(s));
+        if (delivery.items) delivery.items.forEach(item => { if (item.supplier_name) supplierNames.add(item.supplier_name.trim()); });
+        if (delivery.suppliers_data) delivery.suppliers_data.forEach(sd => { if (sd.supplier_name) supplierNames.add(sd.supplier_name.trim()); });
+        
+        for (const sName of supplierNames) {
+          const existingSupplier = await Supplier.findOne({
+            name: { $regex: `^${sName}$`, $options: 'i' },
+            is_active: true,
+          });
+          if (!existingSupplier) {
+            try {
+              await Supplier.create({ name: sName, is_active: true, created_by: req.user?.id || req.user?._id || req.admin?.id || req.admin?._id || null });
+            } catch (e) { /* ignore duplicate */ }
+          }
         }
       }
 
@@ -277,17 +279,25 @@ router.patch('/:id/status', checkProductEditPermission, async (req, res) => {
             product.supplier_base_price = parseFloat(item.base_price);
           }
 
-          // Fix: Update final price in product — priority: final_price > calculated
+          // Fix: Update final price and selling price in product
           if (item.final_price > 0) {
-            product.price = parseFloat(item.final_price);
             product.last_delivery_final_price = parseFloat(item.final_price);
+            product.price = parseFloat(item.sell_price) || parseFloat(item.final_price);
+            if (item.sell_price) {
+              product.suggested_price = parseFloat(item.sell_price);
+            }
+            if (item.margin) {
+              product.profit_margin = parseFloat(item.margin);
+            }
           } else if (item.base_price > 0) {
             const quintalAdj = (item.quintal_charge > 0 && item.weight > 0)
               ? (item.quintal_charge * item.weight) / 100
               : 0;
             const beforeGST = item.base_price + quintalAdj;
             const gstAmt = (beforeGST * (item.gst || 0)) / 100;
-            product.price = parseFloat((beforeGST + gstAmt).toFixed(2));
+            const fallbackPrice = parseFloat((beforeGST + gstAmt).toFixed(2));
+            product.last_delivery_final_price = fallbackPrice;
+            product.price = parseFloat(item.sell_price) || fallbackPrice;
           }
 
           // Update GST if provided
@@ -350,23 +360,11 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
       delivery.expected_arrival_ist = formatISTDateTime(arrivalDate);
       delivery.arrival_date_ist = getISTDateStr(arrivalDate);
     }
-    if (items?.length) {
-      delivery.items = items.map(i => ({
-        item_name: i.item_name,
-        quantity: parseFloat(i.quantity) || 0,
-        unit: i.unit || 'pcs',
-        product_id: i.product_id || null,
-        // Pricing fields — persist across saves
-        weight: parseFloat(i.weight) || 0,
-        base_price: parseFloat(i.base_price) || 0,
-        quintal_charge: parseFloat(i.quintal_charge) || 0,
-        supplier_charge_per_item: parseFloat(i.supplier_charge_per_item) || 0,
-        gst: parseFloat(i.gst) || 0,
-        final_price: parseFloat(i.final_price) || 0,
-        final_stock: i.final_stock != null ? parseFloat(i.final_stock) : null,
-        label: i.label || 'Goods',
-        is_new_item: i.is_new_item || false,
-      }));
+    if (items) {
+      delivery.items = items; // Persist frontend items directly since they are already fully mapped
+    }
+    if (req.body.suppliers_data) {
+      delivery.suppliers_data = req.body.suppliers_data;
     }
 
     await delivery.save();

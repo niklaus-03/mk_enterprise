@@ -220,7 +220,17 @@ export default function EditInvoice() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, idx) => (
+                  {items.map((item, idx) => {
+                    if (item.is_header) {
+                      return (
+                        <tr key={item._key || idx} style={{ background: '#f8fafc' }}>
+                          <td colSpan={gstEnabled ? 8 : 7} style={{ textAlign: 'center', fontWeight: 800, color: '#334155', padding: '12px', fontSize: 13, letterSpacing: '0.5px' }}>
+                            {item.product_name}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return (
                     <tr key={item._key || idx} style={{ background: item.returned_qty > 0 || item.is_defective ? '#fefce8' : '' }}>
                       <td>
                         <ProductAutocomplete
@@ -287,7 +297,8 @@ export default function EditInvoice() {
                         <button className="btn btn-danger btn-sm d-flex align-items-center justify-content-center" style={{ padding: '6px' }} onClick={() => removeItem(idx)} title="Remove Item"><Trash2 size={16} /></button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
               <button className="btn btn-outline btn-sm mt-3" onClick={addItem}>+ Add Row</button>

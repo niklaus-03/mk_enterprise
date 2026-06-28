@@ -438,6 +438,132 @@ router.delete('/managers/:id', auth, requireSupervisor, async (req, res) => {
   }
 });
 
+// ─── POST /api/auth/managers/:id/clone ────────────────────────────────────────
+// Clone a manager: create new account + copy all data visibility from source
+router.post('/managers/:id/clone', auth, requireSupervisor, async (req, res) => {
+  try {
+    const sourceManager = await Admin.findOne({ _id: req.params.id, role: { $in: ['manager', 'temp_manager', 'walkin_manager'] } });
+    if (!sourceManager) return res.status(404).json({ error: 'Source manager not found.' });
+
+    const { username, phone, password, display_name } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    // Check duplicate username
+    const exists = await Admin.findOne({ username: username.toLowerCase().trim() });
+    if (exists) {
+      return res.status(400).json({ error: 'Username already taken.' });
+    }
+
+    // 1. Create the new manager with same role & permissions
+    const newManager = await Admin.create({
+      username: username.toLowerCase().trim(),
+      password,
+      phone: (phone || '').replace(/\D/g, ''),
+      display_name: display_name || username,
+      role: sourceManager.role,
+      assigned_managers: sourceManager.assigned_managers || [],
+      is_active: true,
+      created_by: req.user.id,
+      can_edit_products: sourceManager.can_edit_products,
+    });
+
+    const sourceId = sourceManager._id.toString();
+    const newId = newManager._id;
+    const stats = { customers: 0, products: 0, suppliers: 0, invoices: 0, customerLists: 0, productLists: 0 };
+
+    // 2. Copy Customer access: add new manager to allowed_managers of all customers where source exists
+    const Customer = require('../models/Customer');
+    const customerResult = await Customer.updateMany(
+      { allowed_managers: sourceManager._id },
+      { $addToSet: { allowed_managers: newId } }
+    );
+    stats.customers = customerResult.modifiedCount || 0;
+
+    // 3. Copy Product access: add new manager to allowed_managers of all products where source exists
+    const Product = require('../models/Product');
+    const productResult = await Product.updateMany(
+      { allowed_managers: sourceManager._id },
+      { $addToSet: { allowed_managers: newId } }
+    );
+    stats.products = productResult.modifiedCount || 0;
+
+    // 4. Copy Supplier access: find suppliers created by source manager or shared with source
+    const Supplier = require('../models/Supplier');
+    // Suppliers don't have allowed_managers yet, so we track via created_by
+    // We don't change created_by, but we'll count them for info
+    const supplierCount = await Supplier.countDocuments({ created_by: sourceManager._id });
+    stats.suppliers = supplierCount;
+
+    // 5. Copy Invoice shared_with: add new manager to shared_with of all invoices where source is creator or shared
+    const Invoice = require('../models/Invoice');
+    const invoiceResult = await Invoice.updateMany(
+      { $or: [{ created_by: sourceManager._id }, { shared_with: sourceManager._id }] },
+      { $addToSet: { shared_with: newId } }
+    );
+    stats.invoices = invoiceResult.modifiedCount || 0;
+
+    // 6. Copy CustomerList access: for each list that has source manager in shares, add new manager
+    const CustomerList = require('../models/CustomerList');
+    const custLists = await CustomerList.find({ 'shares.manager_id': sourceManager._id });
+    for (const list of custLists) {
+      const alreadyShared = list.shares.some(s => s.manager_id.toString() === newId.toString());
+      if (!alreadyShared) {
+        list.shares.push({ manager_id: newId, overrides: [] });
+        await list.save();
+        stats.customerLists++;
+      }
+    }
+
+    // 7. Copy ProductList access: for each list that has source manager in shares, add new manager
+    const ProductList = require('../models/ProductList');
+    const prodLists = await ProductList.find({ 'shares.manager_id': sourceManager._id });
+    for (const list of prodLists) {
+      const alreadyShared = list.shares.some(s => s.manager_id.toString() === newId.toString());
+      if (!alreadyShared) {
+        list.shares.push({ manager_id: newId, overrides: [] });
+        await list.save();
+        stats.productLists++;
+      }
+    }
+
+    // 8. Also create the auto ProductList for new manager (same as normal creation, but with same products as source)
+    const sourceProductList = await ProductList.findOne({ auto_for_manager: sourceManager._id });
+    const allProductIds = sourceProductList
+      ? sourceProductList.products
+      : (await Product.find({}, '_id')).map(p => p._id);
+    
+    // Check if auto list already created by above steps
+    const existingAutoList = await ProductList.findOne({ auto_for_manager: newId });
+    if (!existingAutoList) {
+      await ProductList.create({
+        name: newManager.display_name || newManager.username,
+        created_by: req.user.id,
+        auto_for_manager: newId,
+        products: allProductIds,
+        shares: [{ manager_id: newId, overrides: [] }]
+      });
+    }
+
+    const result = newManager.toObject();
+    delete result.password;
+    delete result.secret_key;
+
+    res.status(201).json({
+      success: true,
+      message: `Manager "${newManager.display_name || newManager.username}" cloned from "${sourceManager.display_name || sourceManager.username}" successfully!`,
+      manager: result,
+      stats,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /api/auth/recovery-requests ─────────────────────────────────────────
 router.get('/recovery-requests', auth, requireSupervisor, async (req, res) => {
   try {

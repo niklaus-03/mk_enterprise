@@ -13,6 +13,7 @@ const dailyReportSchema = new mongoose.Schema({
   system_bills_reported: { type: Number, required: true, default: 0 },
   system_deliveries_reported: { type: Number, required: true, default: 0 },
   system_expenses_reported: { type: Number, default: 0 },
+  system_concession_reported: { type: Number, default: 0 },
   discrepancy_notes: { type: String, default: '' },
   quick_entries: [{
     type: { type: String, enum: ['bill', 'payment_in', 'payment_out', 'expense', 'vehicle_expense'] },

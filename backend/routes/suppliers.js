@@ -120,7 +120,12 @@ router.get('/:id/history', async (req, res) => {
     // Get all settlement entries for this supplier name
     const { date, all } = req.query;
     let query = { party_name: { $regex: new RegExp(`^${supplier.name}$`, 'i') }, type: { $in: ['paid_to_supplier', 'other_expense', 'walkin_delivery'] } };
-    let deliveryQuery = { supplier: { $regex: new RegExp(`^${supplier.name}$`, 'i') }, status: { $in: ['delivered'] } };
+    let deliveryQuery = {
+      $or: [
+        { supplier: { $regex: new RegExp(`^${supplier.name}$`, 'i') } },
+        { "suppliers_data.supplier_name": { $regex: new RegExp(`^${supplier.name}$`, 'i') } }
+      ]
+    };
 
     if (all !== 'true' && date) {
       const start = new Date(new Date(date + 'T00:00:00.000+05:30').getTime());
@@ -146,7 +151,10 @@ router.get('/:id/history', async (req, res) => {
       })),
       ...deliveries.map(d => {
         let amount = 0;
-        d.items.forEach(i => {
+        const sData = d.suppliers_data && d.suppliers_data.find(s => s.supplier_name.toLowerCase() === supplier.name.toLowerCase());
+        const itemsToUse = (sData && sData.items && sData.items.length > 0) ? sData.items : d.items;
+        
+        itemsToUse.forEach(i => {
           amount += (i.final_price || (i.quantity * i.base_price) || 0);
         });
         return {
@@ -154,13 +162,14 @@ router.get('/:id/history', async (req, res) => {
           _id: d._id,
           date: d.delivered_at || d.createdAt,
           amount: amount,
-          items: d.items,
-          notes: d.notes || d.vehicle_number || d.delivery_type,
+          items: itemsToUse,
+          notes: d.notes ? `[${d.status.toUpperCase()}] ${d.vehicle_number} - ${d.notes}` : `[${d.status.toUpperCase()}] ${d.vehicle_number}`,
           created_by: d.created_by,
           ist_date: d.arrival_date_ist,
           ist_formatted: d.delivered_at_ist || d.expected_arrival_ist,
           payment_status: d.payment_status,
-          payment_mode: d.payment_mode
+          payment_mode: d.payment_mode,
+          status: d.status
         };
       })
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -168,7 +177,9 @@ router.get('/:id/history', async (req, res) => {
     const totalPaid = settlements.reduce((s, h) => s + (h.amount || 0), 0);
     const totalPurchases = deliveries.reduce((s, d) => {
       let amt = 0;
-      d.items.forEach(i => amt += (i.final_price || (i.quantity * i.base_price) || 0));
+      const sData = d.suppliers_data && d.suppliers_data.find(sup => sup.supplier_name.toLowerCase() === supplier.name.toLowerCase());
+      const itemsToUse = (sData && sData.items && sData.items.length > 0) ? sData.items : d.items;
+      itemsToUse.forEach(i => amt += (i.final_price || (i.quantity * i.base_price) || 0));
       return s + amt;
     }, 0);
 

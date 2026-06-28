@@ -22,6 +22,14 @@ const vehicleTripSchema = new mongoose.Schema({
     quantity: Number
   }],
   total_sales_amount: { type: Number, default: 0 },
+  // Reinforcement vehicle — a secondary vehicle sent by admin to resupply the manager mid-trip
+  reinforcement: {
+    vehicle_number: { type: String, default: '' },
+    driver_name: { type: String, default: '' },
+    assigned_at: { type: Date, default: null },
+    assigned_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+    note: { type: String, default: '' }
+  },
   started_at: { type: Date, default: Date.now },
   completed_at: { type: Date, default: null }
 }, { timestamps: true });

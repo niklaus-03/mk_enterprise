@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import toast from 'react-hot-toast';
 import { invoiceApi, managerApi, driverApi, notificationApi, tripApi } from '../utils/api';
@@ -58,6 +58,11 @@ export default function InvoiceView() {
   const [scale, setScale] = useState(1);
   const [zoomIn, setZoomIn] = useState(false);
   const [driverWarningModal, setDriverWarningModal] = useState(null);
+  
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const viewParam = searchParams.get('view');
+  const [isTransportFormat, setIsTransportFormat] = useState(user?.role === 'driver' || viewParam === 'csn');
   const containerRef = useRef(null);
   
   const [showEditNameModal, setShowEditNameModal] = useState(false);
@@ -122,9 +127,17 @@ export default function InvoiceView() {
     };
   }, [invoice, zoomIn]);
 
+  const masterBalanceParam = searchParams.get('masterBalance');
+
   useEffect(() => {
-    invoiceApi.get(id).then(setInvoice).catch(e => { toast.error(e.message); navigate('/invoices'); }).finally(() => setLoading(false));
-  }, [id]);
+    invoiceApi.get(id).then(data => {
+      if (masterBalanceParam !== null) {
+        data.previous_balance = Number(masterBalanceParam);
+        data.total_with_prev_balance = data.total + data.previous_balance;
+      }
+      setInvoice(data);
+    }).catch(e => { toast.error(e.message); navigate('/invoices'); }).finally(() => setLoading(false));
+  }, [id, masterBalanceParam]);
 
   useEffect(() => {
     if (showSendModal) {
@@ -383,42 +396,14 @@ export default function InvoiceView() {
 
       console.log("STEP 5: Opening WhatsApp...");
 
-      const msg = encodeURIComponent(
-        lang ? 
-        `नमस्कार ${invoice.customer_name},
+      const msgText = lang ? 
+        `नमस्कार ${invoice.customer_name},\n\nयह आपका ${isTransportFormat ? 'डिलीवरी चालान' : 'बिल'} है।\nकृपया यहाँ देखें:\n${window.location.origin}/invoices/view/${invoice._id}${isTransportFormat ? '?view=csn' : ''}\n\nधन्यवाद!` :
+        `Hello ${invoice.customer_name},\n\nPlease find your ${isTransportFormat ? 'consignment note' : 'invoice'} (${invoice.invoice_number}) link below:\n${window.location.origin}/invoices/view/${invoice._id}${isTransportFormat ? '?view=csn' : ''}\n` +
+        (!isTransportFormat && invoice.total ? `\nTotal: ₹${invoice.total.toFixed(2)}` : '') +
+        (invoice.vehicle_number ? `\nVehicle: ${invoice.vehicle_number}` : '') +
+        `\n\nThank you!`;
 
-यह आपका बिल है।
-
-🧾 बिल नं: ${invoice.invoice_number}
-📅 दिनांक: ${invoice.ist_formatted}
-💰 कुल: ₹${invoice.total.toFixed(2)}
-💳 प्राप्त: ₹${invoice.amount_received.toFixed(2)}
-${overallBalanceDue > 0.01 ? `📌 बकाया: ₹${overallBalanceDue.toFixed(2)}\n` : ''}
-
-👉 अपना बिल देखने के लिए यहाँ क्लिक करें:
-${pdfUrl}
-
-⚠️ नोट: यह बिल लिंक 7 दिन बाद हटा दिया जाएगा।
-
-धन्यवाद! 🙏` 
-        : 
-        `Dear ${invoice.customer_name},
-
-This is your invoice.
-
-🧾 Invoice No: ${invoice.invoice_number}
-📅 Date: ${invoice.ist_formatted}
-💰 Total: ₹${invoice.total.toFixed(2)}
-💳 Received: ₹${invoice.amount_received.toFixed(2)}
-${overallBalanceDue > 0.01 ? `📌 Balance: ₹${overallBalanceDue.toFixed(2)}\n` : ''}
-
-👉 Click here to view your invoice:
-${pdfUrl}
-
-⚠️ Note: This invoice link will be deleted after 7 days.
-
-Thank you! 🙏`
-      );
+      const msg = encodeURIComponent(msgText);
 
       let phone = invoice.customer_phone;
 
@@ -600,19 +585,24 @@ Thank you! 🙏`
           <div>
             <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> {invoice.invoice_number}</div>
           <div className="page-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {istDisplay} · 
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              fontSize: 11,
-              fontWeight: 700,
-              color: paymentStatusColor,
-              background: paymentStatusBackground,
-              border: paymentStatusBorder,
-              padding: '2px 8px',
-              borderRadius: 6,
-              textTransform: 'uppercase'
-            }}>{paymentStatusText}</span>
+            {istDisplay}
+            {!isTransportFormat && (
+              <>
+                {' · '}
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: paymentStatusColor,
+                  background: paymentStatusBackground,
+                  border: paymentStatusBorder,
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  textTransform: 'uppercase'
+                }}>{paymentStatusText}</span>
+              </>
+            )}
           </div>
         </div>
         </div>
@@ -681,9 +671,10 @@ Thank you! 🙏`
           </div>
           <div style={{ textAlign: 'right' }}>
             <div className="inv-tag">
-              {invoice.is_manual_bill ? 'MANUAL BILL' : 
+              {isTransportFormat ? 'CONSIGNMENT NOTE' : 
+               invoice.is_manual_bill ? 'MANUAL BILL' : 
                (invoice.source_entries && invoice.source_entries.length > 0) ? 'CONSOLIDATED INVOICE' : 
-               'INVOICE'}
+               'TAX INVOICE'}
             </div>
             <table className="inv-meta-table" style={{ marginTop: 10, marginLeft: 'auto' }}>
               <tbody>
@@ -726,7 +717,7 @@ Thank you! 🙏`
             </div>
           </div>
           <div style={{ width: 'auto', flexShrink: 0 }}>
-            {overallBalanceDue > 0.01 ? (
+            {!isTransportFormat && (overallBalanceDue > 0.01 ? (
               <div style={{ 
                 background: 'var(--danger-light)', 
                 border: '1.5px solid #fca5a5', 
@@ -748,7 +739,7 @@ Thank you! 🙏`
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase' }}>Status</div>
                 <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><CheckCircle size={16} /> PAID</div>
               </div>
-            )}
+            ))}
           </div>
         </div>
 
@@ -762,83 +753,80 @@ Thank you! 🙏`
                 <th style={{ width: invoice.gst_enabled ? '3%' : '4%' }}>#</th>
                 <th style={{ width: invoice.gst_enabled ? '40%' : '40%', textAlign: 'left' }}>{t('Item Description', 'आइटम विवरण')}</th>
                 <th style={{ width: invoice.gst_enabled ? '5%' : '8%', textAlign: 'center' }}>{t('Qty', 'मात्रा')}</th>
-                <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Rate', 'दर')}</th>
-                <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th>
-                {invoice.gst_enabled && <>
+                {!isTransportFormat && <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Rate', 'दर')}</th>}
+                {!isTransportFormat && <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th>}
+                {!isTransportFormat && invoice.gst_enabled && <>
                   <th style={{ width: '5%', textAlign: 'center' }}>{t('GST %', 'जीएसटी %')}</th>
                   <th style={{ width: '8%', textAlign: 'right' }}>{t('CGST', 'सीजीएसटी')}</th>
                   <th style={{ width: '8%', textAlign: 'right' }}>{t('SGST', 'एसजीएसटी')}</th>
                 </>}
-                <th style={{ width: invoice.gst_enabled ? '15%' : '16%', textAlign: 'right' }}>{t('Total', 'कुल')}</th>
+                {!isTransportFormat && <th style={{ width: invoice.gst_enabled ? '15%' : '16%', textAlign: 'right' }}>{t('Total', 'कुल')}</th>}
               </tr>
             </thead>
             <tbody>
-              {invoice.items.map((item, i) => (
-                <tr key={item._id || i}>
-                  <td style={{ color: '#9ca3af' }}>{i + 1}</td>
-                  <td>
-                    <strong>{item.product_name}</strong>
-                    {item.returned_qty > 0 && <span className="badge badge-warning" style={{ marginLeft: 6, fontSize: 10 }}>Returned: {item.returned_qty}</span>}
-                    {item.is_defective && <span className="badge badge-danger" style={{ marginLeft: 6, fontSize: 10 }}>Defective</span>}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>{item.qty} {item.unit || 'bag'}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.price)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.taxable_amount)}</td>
-                  {invoice.gst_enabled && <>
-                    <td style={{ textAlign: 'center' }}>{item.gst}%</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.cgst)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.sgst)}</td>
-                  </>}
-                  <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fc(item.total)}</td>
-                </tr>
-              ))}
+              {(() => {
+                let rowIndex = 1;
+                return invoice.items.map((item, i) => {
+                  if (item.is_header) {
+                    return (
+                      <tr key={item._id || i} style={{ background: '#f8fafc' }}>
+                        <td colSpan={invoice.gst_enabled ? (isTransportFormat ? 3 : 7) : (isTransportFormat ? 3 : 4)} style={{ textAlign: 'center', fontWeight: 800, color: '#334155', padding: '12px', fontSize: 13, letterSpacing: '0.5px' }}>
+                          {item.product_name}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const currentIndex = rowIndex++;
+                  return (
+                    <tr key={item._id || i}>
+                      <td style={{ color: '#9ca3af' }}>{currentIndex}</td>
+                      <td>
+                      <strong>{item.product_name}</strong>
+                      {item.returned_qty > 0 && <span className="badge badge-warning" style={{ marginLeft: 6, fontSize: 10 }}>Returned: {item.returned_qty}</span>}
+                      {item.is_defective && <span className="badge badge-danger" style={{ marginLeft: 6, fontSize: 10 }}>Defective</span>}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>{item.qty} {item.unit || 'bag'}</td>
+                    {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.price)}</td>}
+                    {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.taxable_amount)}</td>}
+                    {!isTransportFormat && invoice.gst_enabled && <>
+                      <td style={{ textAlign: 'center' }}>{item.gst}%</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.cgst)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.sgst)}</td>
+                    </>}
+                    {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fc(item.total)}</td>}
+                  </tr>
+                );
+              });
+            })()}
             </tbody>
           </table>
         </div>
 
         {/* GST Summary + Totals */}
-        <div className="gst-totals-container" style={{ display: 'flex', flexDirection: 'row', justifyContent: invoice.gst_enabled && Object.keys(gstSummary).length > 0 ? 'space-between' : 'flex-end', gap: 24, alignItems: 'flex-start', marginBottom: 14, width: '100%' }}>
-          {invoice.gst_enabled && Object.keys(gstSummary).length > 0 && (
-            <div style={{ width: '55%' }}>
-              <div className="inv-section-title">{t('GST Summary', 'जीएसटी सारांश')}</div>
-              <div className="inv-table-wrapper" style={{ width: '100%' }}>
-                <table className="gst-summary-table" style={{ width: '100%', tableLayout: 'fixed' }}>
-                  <thead><tr><th style={{ textAlign: 'left' }}>{t('GST Rate', 'जीएसटी दर')}</th><th style={{ textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th><th style={{ textAlign: 'right' }}>{t('CGST', 'सीजीएसटी')}</th><th style={{ textAlign: 'right' }}>{t('SGST', 'एसजीएसटी')}</th></tr></thead>
-                  <tbody>
-                    {Object.entries(gstSummary).map(([rate, g]) => (
-                      <tr key={rate}><td>{rate}%</td><td style={{ fontFamily: 'monospace', textAlign: 'right' }}>{fc(g.taxable)}</td><td style={{ fontFamily: 'monospace', textAlign: 'right' }}>{fc(g.cgst)}</td><td style={{ fontFamily: 'monospace', textAlign: 'right' }}>{fc(g.sgst)}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          <div className="inv-totals-box" style={{ width: invoice.gst_enabled && Object.keys(gstSummary).length > 0 ? '40%' : '100%', minWidth: 280, marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <div style={{ width: '100%', maxWidth: 320 }}>
-
-              <div className="inv-total-row"><span className="text-muted">{t('Subtotal', 'उप-कुल')}</span><span className="mono">{fc(invoice.subtotal)}</span></div>
-            {invoice.gst_enabled && <>
-              <div className="inv-total-row"><span className="text-muted">{t('CGST', 'सीजीएसटी')}</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
-              <div className="inv-total-row"><span className="text-muted">{t('SGST', 'एसजीएसटी')}</span><span className="mono">{fc(invoice.gst_total / 2)}</span></div>
-            </>}
-            {invoice.discount > 0 && <div className="inv-total-row text-success"><span>{t('Discount', 'छूट')}</span><span className="mono">- {fc(invoice.discount)}</span></div>}
-            {/* Enhancement 5: vehicle charge line */}
-            {invoice.vehicle_charge > 0 && (
-              <div className="inv-total-row text-warning">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} /> {t('Vehicle Charge', 'वाहन शुल्क')}</span>
-                <span className="mono">+ {fc(invoice.vehicle_charge)}</span>
-              </div>
-            )}
-            {invoice.labour_charge > 0 && (
-              <div className="inv-total-row text-warning">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><User size={12} /> {t('Labour Charge', 'श्रम शुल्क')}</span>
-                <span className="mono">+ {fc(invoice.labour_charge)}</span>
-              </div>
-            )}
-            <div className="inv-total-row grand"><span>{t('Grand Total', 'कुल राशि')}</span><span className="mono">{fc(invoice.total)}</span></div>
-            {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ color: 'var(--warning)', fontWeight: 600 }}><span>{t('+ Prev. Balance', '+ पिछला बकाया')}</span><span className="mono">{fc(invoice.previous_balance)}</span></div>}
             {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ fontWeight: 800 }}><span>{t('Net Payable', 'कुल देय')}</span><span className="mono">{fc(invoice.total_with_prev_balance)}</span></div>}
-            {(invoice.amount_received > 0) && <div className="inv-total-row rcvd"><span>{t('Amount Received', 'प्राप्त राशि')}</span><span className="mono">{fc(invoice.amount_received)}</span></div>}
+            {(invoice.amount_received > 0) && (
+              <>
+                <div className="inv-total-row rcvd" style={{ marginBottom: invoice.payments?.length ? 4 : 0 }}>
+                  <span>{t('Amount Received', 'प्राप्त राशि')}</span>
+                  <span className="mono">{fc(invoice.amount_received)}</span>
+                </div>
+                {invoice.payments && invoice.payments.length > 0 && (
+                  <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', marginTop: 4 }}>
+                    <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Payment Breakdown</div>
+                    {invoice.payments.map((p, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#334155', padding: '2px 0' }}>
+                        <span>
+                          {p.date_string ? <strong style={{ color: '#0f172a' }}>({p.date_string}) </strong> : ''}
+                          <span style={{ textTransform: 'capitalize' }}>{(p.mode || 'cash').replace('_', ' ')}</span>
+                          {p.reference ? ` - ${p.reference}` : ''}
+                        </span>
+                        <span className="mono" style={{ fontWeight: 600 }}>{fc(p.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
             
             {invoice.ledger_payments && invoice.ledger_payments.length > 0 && (
               <div style={{ marginTop: 12, padding: '6px 8px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
@@ -855,10 +843,6 @@ Thank you! 🙏`
                 })}
               </div>
             )}
-            </div>
-          </div>
-        </div>
-
         {/* Amount in words */}
         <div className="inv-words">
           <span style={{ color: '#6b7280', fontWeight: 600 }}>{t('Amount in Words:', 'शब्दों में राशि:')} </span>
@@ -897,7 +881,7 @@ Thank you! 🙏`
         {/* Bank Details & QR Combined Block */}
         <div className="inv-footer" style={{ alignItems: 'flex-end' }}>
           <div style={{ flex: 1, maxWidth: '60%' }}>
-            {(hasBankDetails || upiId) && (
+            {!isTransportFormat && (hasBankDetails || upiId) && (
               <div style={{ display: 'flex', gap: 16, background: 'var(--bg)', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px', alignItems: 'center' }}>
                 <div style={{ flex: 1, fontSize: 11 }}>
                   {hasBankDetails && (
@@ -951,10 +935,20 @@ Thank you! 🙏`
         <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <div className="modal-header">
-              <div className="modal-title d-flex align-items-center gap-2"><Share2 size={18} /> Share Invoice {invoice.invoice_number}</div>
+              <div className="modal-title d-flex align-items-center gap-2"><Share2 size={18} /> Share {isTransportFormat ? 'CSN' : 'Invoice'} {invoice.invoice_number}</div>
               <button className="modal-close" onClick={() => setShowShareModal(false)}>✕</button>
             </div>
             <div className="modal-body">
+
+              <div style={{ marginBottom: 18, background: 'var(--bg-light)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={isTransportFormat} onChange={e => setIsTransportFormat(e.target.checked)} style={{ width: 16, height: 16 }} />
+                  Share as Transportation Copy (Hide Prices)
+                </label>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginLeft: 24 }}>
+                  Generates a Consignment Note format suitable for drivers
+                </div>
+              </div>
 
               {/* ── WhatsApp ── */}
               <div style={{ marginBottom: 18 }}>

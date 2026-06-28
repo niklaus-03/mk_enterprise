@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 mongoose.connect('mongodb://127.0.0.1:27017/mk_enterprise').then(async () => {
-  const Product = require('./models/Product');
-  const docs = await Product.find({ name: { $in: ['Watch', 'Mobile', 'Earbud'] } });
-  console.log(docs.map(d => ({name: d.name, stock: d.stock, created: d.created_from_order, custom: d.is_custom})));
-  process.exit();
+  const d = await mongoose.connection.collection('deliveries').updateMany({ expected_arrival_ist: /01:12 pm/ }, { $set: { status: 'delivered', stock_updated: true } });
+  console.log(d);
+  process.exit(0);
 });

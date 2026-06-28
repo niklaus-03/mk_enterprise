@@ -136,6 +136,7 @@ router.post('/daily', async (req, res) => {
       date, opening_balance, system_cash_reported, actual_cash_reported,
       system_bills_reported, system_deliveries_reported, system_expenses_reported,
       system_sales_reported, system_money_received, system_debt_reported,
+      system_concession_reported,
       discrepancy_notes, quick_entries,
     } = req.body;
 
@@ -295,6 +296,7 @@ router.post('/daily', async (req, res) => {
       system_bills_reported,
       system_deliveries_reported,
       system_expenses_reported: system_expenses_reported || 0,
+      system_concession_reported: system_concession_reported || 0,
       discrepancy_notes,
       quick_entries: quick_entries || [],
       total_quick_entries: (quick_entries || []).length,

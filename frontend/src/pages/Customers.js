@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { customerApi, managerApi } from '../utils/api';
+import { customerApi, managerApi, supplierApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +29,8 @@ export default function Customers() {
   const [sortBy, setSortBy] = useState('High Due First');
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [addressFocused, setAddressFocused] = useState(false);
+  const [filterManagerId, setFilterManagerId] = useState('all');
+  const [managerDropdownOpen, setManagerDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (showModal || showMergeModal) {
@@ -76,6 +78,36 @@ export default function Customers() {
   
   const nameRef = useRef(null);
   const phoneRef = useRef(null);
+  const [supplierPhoneMatch, setSupplierPhoneMatch] = useState(null);
+
+  useEffect(() => {
+    const checkPhones = async () => {
+      if (!showModal) return;
+      const numbers = [];
+      if (form.phone && form.phone.length >= 10) numbers.push(form.phone);
+      if (form.alternate_phones) {
+        form.alternate_phones.forEach(p => {
+          if (p && p.length >= 10) numbers.push(p);
+        });
+      }
+      if (numbers.length === 0) {
+        setSupplierPhoneMatch(null);
+        return;
+      }
+      try {
+        const allSuppliers = await supplierApi.getAll();
+        const list = Array.isArray(allSuppliers) ? allSuppliers : (allSuppliers.data || []);
+        const matched = list.find(s => {
+          return numbers.some(num => s.phone === num || (s.contact_numbers && s.contact_numbers.some(c => c.number === num)));
+        });
+        setSupplierPhoneMatch(matched || null);
+      } catch {
+        setSupplierPhoneMatch(null);
+      }
+    };
+    const timeoutId = setTimeout(checkPhones, 400);
+    return () => clearTimeout(timeoutId);
+  }, [form.phone, form.alternate_phones, showModal]);
   const balanceRef = useRef(null);
   const addressRef = useRef(null);
 
@@ -367,6 +399,12 @@ export default function Customers() {
     return 0;
   });
 
+  const filteredAndSortedCustomers = sortedCustomers.filter(c => {
+    if (filterManagerId === 'all') return true;
+    if (filterManagerId === 'admin') return c.added_by_admin || (c.created_by && c.created_by.role === 'supervisor');
+    return c.created_by && c.created_by._id === filterManagerId;
+  });
+
   const allAddressesList = [...new Set(customers.map(c => c.address?.trim()).filter(Boolean))];
   const filteredAddressList = form.address
     ? allAddressesList.filter(a => a.toLowerCase().includes(form.address.toLowerCase()) && a.toLowerCase() !== form.address.toLowerCase())
@@ -374,24 +412,29 @@ export default function Customers() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 16 }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, flex: 1 }}>
           <button 
             onClick={() => navigate(-1)}
             className="btn btn-outline" 
-            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
             title="Back"
           >
             <ArrowLeft size={18} />
           </button>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
-              <Users size={22} className="text-primary" /> Customers Directory
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: '4px', minWidth: 0 }}>
+            <Users size={22} className="text-primary" style={{ flexShrink: 0, marginTop: isMobile ? 2 : 4 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div className="page-title" style={{ margin: 0, lineHeight: 1.2 }}>
+                Customers{isMobile ? <br /> : ' '}Directory
+              </div>
+              <div className="page-subtitle" style={{ margin: 0, marginTop: '2px', color: 'var(--text-muted)', whiteSpace: 'normal', wordBreak: 'break-word', fontSize: isMobile ? 12 : 14, lineHeight: 1.3 }}>
+                {customers.length} customers · Total dues: {fc(totalDue)}
+              </div>
             </div>
-            <div className="page-subtitle" style={{ margin: 0 }}>{customers.length} customers · Total dues: {fc(totalDue)}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: isMobile ? 6 : 12, flexShrink: 0, flexDirection: isMobile ? 'column' : 'row' }}>
+        <div style={{ display: 'flex', gap: isMobile ? 6 : 12, flexShrink: 0, marginTop: isMobile ? 8 : 0 }}>
           {isAdmin && selectedCustomers.length >= 2 ? (
             <button 
               className="btn btn-primary" 
@@ -408,33 +451,55 @@ export default function Customers() {
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap' }}>
+        <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'nowrap', backgroundColor: '#fafafa', borderTopLeftRadius: '12px', borderTopRightRadius: '12px' }}>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 60 }}>
-            <span style={{ position: 'absolute', left: 8, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#94a3b8' }}>
-              <Search size={14} />
+            <span style={{ position: 'absolute', left: 12, display: 'flex', alignItems: 'center', pointerEvents: 'none', color: '#64748b' }}>
+              <Search size={16} />
             </span>
             <input 
               className="form-control" 
               placeholder="Search by name or phone..." 
               value={search} 
               onChange={e=> { setSearch(e.target.value); }} 
-              style={{ paddingLeft: 28, fontSize: 13, borderRadius: 8, height: 34, width: '100%' }} 
+              style={{ 
+                paddingLeft: 36, 
+                paddingRight: search ? 32 : 12, 
+                fontSize: 14, 
+                borderRadius: 10, 
+                height: 40, 
+                width: '100%',
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                transition: 'all 0.2s',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+              }}
+              onFocus={e => {
+                e.target.style.borderColor = '#3b82f6';
+                e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+              }}
+              onBlur={e => {
+                e.target.style.borderColor = '#e2e8f0';
+                e.target.style.boxShadow = '0 1px 2px rgba(0,0,0,0.03)';
+              }}
             />
             {search && (
               <button
-                style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: '#f1f5f9', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 14, width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}
                 onClick={() => setSearch('')}
               >✕</button>
             )}
           </div>
           
-          <div style={{ position: 'relative' }}>
-            <button 
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+              <button 
               className="btn btn-outline" 
               onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '8px 10px' : '8px 14px', background: 'white' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 10, padding: isMobile ? '0 12px' : '0 16px', height: 40, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.03)', color: '#334155', transition: 'all 0.2s' }}
+              onMouseOver={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+              onMouseOut={e => e.currentTarget.style.backgroundColor = 'white'}
             >
-              <ArrowUpDown size={14} /> 
+              <ArrowUpDown size={16} color="#64748b" /> 
               {!isMobile && <span style={{ fontSize: 13, fontWeight: 600 }}>{sortBy}</span>}
             </button>
             
@@ -444,7 +509,7 @@ export default function Customers() {
                   style={{ position: 'fixed', inset: 0, zIndex: 40 }} 
                   onClick={() => setSortDropdownOpen(false)} 
                 />
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 180, overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 180 }}>
                   {[
                     { label: 'High Due First', icon: '↓' },
                     { label: 'Low Due First', icon: '↑' },
@@ -454,22 +519,72 @@ export default function Customers() {
                   ].map(opt => (
                     <div 
                       key={opt.label}
-                      onClick={() => { setSortBy(opt.label); setSortDropdownOpen(false); }}
+                      onClick={() => { setSortBy(opt.label); setFilterManagerId('all'); setSortDropdownOpen(false); }}
                       style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: sortBy === opt.label ? '#f8fafc' : 'white', fontWeight: sortBy === opt.label ? 600 : 500, color: sortBy === opt.label ? 'var(--primary)' : 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}
                     >
                       <span style={{ width: 14, textAlign: 'center', fontSize: 14 }}>{opt.icon}</span>
                       {opt.label}
                     </div>
                   ))}
+                  {isAdmin && (
+                    <div 
+                      style={{ borderTop: '1px solid #e2e8f0', position: 'relative' }}
+                      onMouseEnter={() => setManagerDropdownOpen(true)}
+                      onMouseLeave={() => setManagerDropdownOpen(false)}
+                    >
+                      <div 
+                        onClick={(e) => { e.stopPropagation(); setManagerDropdownOpen(!managerDropdownOpen); }}
+                        style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: sortBy.startsWith('Manager:') ? '#f8fafc' : 'white', fontWeight: sortBy.startsWith('Manager:') ? 600 : 500, color: sortBy.startsWith('Manager:') ? 'var(--primary)' : 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 14, textAlign: 'center', fontSize: 14 }}>👤</span> Manager
+                        </div>
+                        <ChevronDown size={14} style={{ transform: 'rotate(90deg)', transition: 'transform 0.2s', opacity: 0.5 }} />
+                      </div>
+                      {managerDropdownOpen && (
+                        <div 
+                          style={{ 
+                            position: 'absolute', right: '100%', bottom: 0, marginRight: 0, 
+                            background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, 
+                            boxShadow: '-4px 10px 15px -3px rgba(0,0,0,0.1)', padding: '4px 0',
+                            minWidth: 160, maxHeight: 300, overflowY: 'auto'
+                          }}
+                        >
+                          <div 
+                            onClick={(e) => { e.stopPropagation(); setFilterManagerId('all'); setSortBy('Manager: All'); setSortDropdownOpen(false); setManagerDropdownOpen(false); }}
+                            style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: filterManagerId === 'all' ? '#f8fafc' : 'white', color: filterManagerId === 'all' ? 'var(--primary)' : 'var(--text)', fontWeight: filterManagerId === 'all' ? 600 : 500 }}
+                          >
+                            All Managers
+                          </div>
+                          <div 
+                            onClick={(e) => { e.stopPropagation(); setFilterManagerId('admin'); setSortBy('Manager: Admin'); setSortDropdownOpen(false); setManagerDropdownOpen(false); }}
+                            style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: filterManagerId === 'admin' ? '#f8fafc' : 'white', color: filterManagerId === 'admin' ? 'var(--primary)' : 'var(--text)', fontWeight: filterManagerId === 'admin' ? 600 : 500 }}
+                          >
+                            Admin
+                          </div>
+                          {managers.map(m => (
+                            <div 
+                              key={m._id}
+                              onClick={(e) => { e.stopPropagation(); setFilterManagerId(m._id); setSortBy(`Manager: ${m.display_name || m.username}`); setSortDropdownOpen(false); setManagerDropdownOpen(false); }}
+                              style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', background: filterManagerId === m._id ? '#f8fafc' : 'white', color: filterManagerId === m._id ? 'var(--primary)' : 'var(--text)', fontWeight: filterManagerId === m._id ? 600 : 500 }}
+                            >
+                              {m.display_name || m.username}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             )}
+            </div>
           </div>
         </div>
         <div className="card-body no-pad">
           {loading ? (
             <div className="loading"><span className="spinner"></span></div>
-          ) : sortedCustomers.length === 0 ? (
+          ) : filteredAndSortedCustomers.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 24px', textAlign: 'center' }}>
               <div style={{ color: '#cbd5e1', marginBottom: 12, display: 'flex', justifyContent: 'center' }}><Users size={48} /></div>
               <div className="empty-text" style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-muted)' }}>{search ? `No customers match "${search}"` : 'No customers yet'}</div>
@@ -496,15 +611,39 @@ export default function Customers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedCustomers.map(c => (
+                  {filteredAndSortedCustomers.map(c => {
+                    const bal = c.balance || 0;
+                    const isSelected = selectedCustomers.includes(c._id);
+                    const isHighlighted = highlightId === c._id;
+                    
+                    let rowBg = 'transparent';
+                    let hoverBg = '#f8fafc';
+                    if (isHighlighted) {
+                      rowBg = 'var(--warning-light)';
+                      hoverBg = 'var(--warning-light)';
+                    } else if (isSelected) {
+                      rowBg = 'var(--primary-light)';
+                      hoverBg = 'var(--primary-light)';
+                    } else {
+                      rowBg = bal > 0 ? '#fffaf5' : bal < 0 ? '#f0fdf4' : 'transparent';
+                      hoverBg = bal > 0 ? '#fff7ed' : bal < 0 ? '#dcfce7' : '#f8fafc';
+                      if (c.linked_supplier_id) {
+                        rowBg = '#f8fafc';
+                        hoverBg = '#f1f5f9';
+                      }
+                    }
+
+                    return (
                       <tr id={`customer-${c._id}`} key={c._id} style={{ 
                         borderBottom: '1px solid #f1f5f9', 
                         cursor: isAdmin ? 'pointer' : 'default', 
                         transition: 'background-color 0.5s ease',
-                        background: highlightId === c._id ? 'var(--warning-light)' : selectedCustomers.includes(c._id) ? 'var(--primary-light)' : 'transparent',
+                        background: rowBg,
                         userSelect: 'none',
                         WebkitUserSelect: 'none'
                       }} 
+                        onMouseEnter={e => { if(!isSelected && !isHighlighted) e.currentTarget.style.background = hoverBg }}
+                        onMouseLeave={e => { if(!isSelected && !isHighlighted) e.currentTarget.style.background = rowBg }} 
                         onDoubleClick={() => { if (!isMobile && isAdmin && selectedCustomers.length === 0) toggleSelectCustomer(c._id); }}
                         onTouchStart={() => { if (isAdmin) handlePressStart(c._id); }}
                         onTouchEnd={handlePressEnd}
@@ -512,85 +651,104 @@ export default function Customers() {
                         onMouseDown={() => { if (isMobile && isAdmin) handlePressStart(c._id); }}
                         onMouseUp={handlePressEnd}
                         onMouseLeave={handlePressEnd}
-                        onClick={() => { if (isAdmin && selectedCustomers.length > 0) toggleSelectCustomer(c._id); }}
+                        onClick={(e) => { 
+                          if (isAdmin && selectedCustomers.length > 0) {
+                            toggleSelectCustomer(c._id); 
+                          } else {
+                            if (e.target.closest('td:last-child') || e.target.closest('a') || e.target.closest('button')) return;
+                            if (user?.role !== 'temp_manager') {
+                              navigate(`/customers/${c._id}/history`);
+                            }
+                          }
+                        }}
                       >
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <div style={{ fontWeight: 700, color: 'var(--text)' }}>
-                              {c.name}
-                            </div>
-                            {c.created_by && c.created_by.role !== 'supervisor' && user?.role === 'supervisor' && (
-                              <div style={{ fontSize: 11, color: '#4f46e5', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                                <User size={12} /> {c.added_by_admin ? 'Admin -> ' : 'By: '} {c.created_by.display_name || c.created_by.username}
+                        {isAdmin && (
+                          <td style={{ padding: '12px 16px', width: 40, textAlign: 'center' }}>
+                            {selectedCustomers.includes(c._id) && (
+                              <div style={{ width: 16, height: 16, borderRadius: 4, background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>
+                                ✓
                               </div>
                             )}
+                          </td>
+                        )}
+                        <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15, flexShrink: 0, boxShadow: '0 2px 4px rgba(67, 56, 202, 0.1)' }}>
+                              {c.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 14 }}>
+                                {c.name}
+                              </div>
+                              {c.created_by && c.created_by.role !== 'supervisor' && user?.role === 'supervisor' && (
+                                <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                                  <User size={12} /> {c.added_by_admin ? 'Admin -> ' : 'By: '} {c.created_by.display_name || c.created_by.username}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <td style={{ padding: '16px', verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             {c.phone ? (
-                              <a href={`tel:${c.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
-                                <Phone size={12} /> {c.phone}
+                              <a href={`tel:${c.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#2563eb', textDecoration: 'none', fontWeight: 600, fontSize: 12, background: '#eff6ff', padding: '2px 8px', borderRadius: 16, width: 'fit-content', border: '1px solid #dbeafe', transition: 'all 0.2s' }}>
+                                <Phone size={11} /> {c.phone}
                               </a>
                             ) : (
-                              <span style={{ color: '#cbd5e1' }}>—</span>
+                              <span style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic', paddingLeft: 4 }}>Not provided</span>
                             )}
                             {c.alternate_phones && c.alternate_phones.map((p, idx) => (
-                              <a key={idx} href={`tel:${p}`} style={{ fontSize: 11, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 600, paddingLeft: 16 }}>
-                                {p}
+                              <a key={idx} href={`tel:${p}`} style={{ fontSize: 12, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', fontWeight: 500, paddingLeft: 12 }}>
+                                ↳ {p}
                               </a>
                             ))}
                           </div>
                         </td>
-                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }} title={c.address}>
-                          {c.address ? (c.address.length > 40 ? `${c.address.substring(0, 40)}...` : c.address) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                        <td style={{ padding: '16px', color: '#475569', fontSize: 13, verticalAlign: 'middle', lineHeight: 1.4 }} title={c.address}>
+                          {c.address ? (c.address.length > 40 ? `${c.address.substring(0, 40)}...` : c.address) : <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>—</span>}
                         </td>
                         {user?.role !== 'walkin_manager' && (
-                          <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{c.gstin || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                          <td style={{ padding: '16px', color: '#475569', fontSize: 13, verticalAlign: 'middle', fontWeight: 500 }}>
+                            {c.gstin ? <span style={{ background: '#f8fafc', padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontFamily: 'monospace' }}>{c.gstin}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}
+                          </td>
                         )}
-                        <td style={{ padding: '12px 16px' }} className="tr">{balanceCell(c.balance)}</td>
-                        <td style={{ padding: '12px 16px' }}>
+                        <td style={{ padding: '16px', verticalAlign: 'middle' }} className="tr">{balanceCell(c.balance)}</td>
+                        <td style={{ padding: '16px', verticalAlign: 'middle' }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'nowrap' }}>
                             {user?.role === 'temp_manager' && (
-                              <Link to={`/invoices/new?customer_id=${c._id}`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#16a34a', borderColor: '#bbf7d0' }}>
-                                <FileText size={12} /> New Bill
-                              </Link>
-                            )}
-                            {user?.role !== 'temp_manager' && (
-                              <Link to={`/customers/${c._id}/history`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                                <Clock size={12} /> History
+                              <Link to={`/invoices/new?customer_id=${c._id}`} className="btn btn-outline btn-sm" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 0 : 4, padding: isMobile ? 0 : '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#16a34a', borderColor: '#bbf7d0', background: 'white', width: isMobile ? 32 : undefined, height: isMobile ? 32 : undefined }}>
+                                <FileText size={isMobile ? 14 : 12} /> {!isMobile && 'New Bill'}
                               </Link>
                             )}
                             {c.balance > 0 ? (
-                              <Link to={`/customers/${c._id}/history`} state={{ openCollect: true }} className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 700, background: '#16a34a', color: '#fff', border: 'none', width: 85 }}>
-                                <CreditCard size={12} /> Collect
+                              <Link to={`/customers/${c._id}/history`} state={{ openCollect: true }} className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 0 : 4, padding: isMobile ? 0 : '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 700, background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', width: isMobile ? 32 : 85, height: isMobile ? 32 : undefined }}>
+                                <CreditCard size={isMobile ? 14 : 12} /> {!isMobile && 'Collect'}
                               </Link>
                             ) : (
-                              <button disabled className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, background: '#f8fafc', color: '#94a3b8', border: '1px dashed #cbd5e1', cursor: 'not-allowed', width: 85 }}>
-                                <Check size={12} /> Cleared
+                              <button disabled className="btn btn-sm" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 0 : 4, padding: isMobile ? 0 : '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, background: '#f8fafc', color: '#94a3b8', border: '1px dashed #cbd5e1', cursor: 'not-allowed', width: isMobile ? 32 : 85, height: isMobile ? 32 : undefined }}>
+                                <Check size={isMobile ? 14 : 12} /> {!isMobile && 'Cleared'}
                               </button>
                             )}
                             {user?.role !== 'walkin_manager' && (
-                              <button className="btn btn-outline btn-sm" onClick={() => setShareModal(c)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#3b82f6', borderColor: '#bfdbfe' }}>
-                                <Share2 size={12} /> Share
+                              <button className="btn btn-outline btn-sm" onClick={() => setShareModal(c)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 0 : 4, padding: isMobile ? 0 : '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, color: '#3b82f6', borderColor: '#bfdbfe', background: 'white', width: isMobile ? 32 : undefined, height: isMobile ? 32 : undefined }}>
+                                <Share2 size={isMobile ? 14 : 12} /> {!isMobile && 'Share'}
                               </button>
                             )}
                             {user?.role !== 'temp_manager' && (
-                              <>
-                                <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600 }}>
-                                  <Edit size={12} />{t('Edit', 'संपादित करें')}</button>
-                                {user?.role !== 'walkin_manager' && (
-                                  <button className="btn btn-ghost btn-sm" style={{ color: '#ef4444', padding: '6px', borderRadius: 6 }} onClick={() => handleDelete(c)} title="Delete">
-                                    <Trash2 size={14} />
-                                  </button>
-                                )}
-                              </>
+                              <button className="btn btn-outline btn-sm" onClick={() => openEdit(c)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 0 : 4, padding: isMobile ? 0 : '5px 10px', fontSize: 12, borderRadius: 6, fontWeight: 600, background: 'white', width: isMobile ? 32 : undefined, height: isMobile ? 32 : undefined }}>
+                                <Edit size={isMobile ? 14 : 12} /> {!isMobile && t('Edit', 'संपादित करें')}
+                              </button>
+                            )}
+                            {user?.role !== 'temp_manager' && user?.role !== 'walkin_manager' && (
+                              <button className={isMobile ? "btn btn-outline btn-sm" : "btn btn-ghost btn-sm"} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 0 : 4, padding: isMobile ? 0 : '6px', fontSize: 12, borderRadius: 6, color: '#ef4444', borderColor: isMobile ? '#fca5a5' : undefined, background: isMobile ? 'white' : '#fef2f2', width: isMobile ? 32 : undefined, height: isMobile ? 32 : undefined }} onClick={() => handleDelete(c)} title="Delete">
+                                <Trash2 size={14} />
+                              </button>
                             )}
                           </div>
                         </td>
                       </tr>
-                    ))
-                  }
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -674,11 +832,17 @@ export default function Customers() {
                       type="tel" 
                       maxLength={10} 
                       value={form.phone} 
-                      onChange={e => setForm({ ...form, phone: e.target.value })} 
+                      onChange={e => { setForm({ ...form, phone: e.target.value }); }} 
                       onKeyDown={e => handleKeyDown(e, balanceRef)}
                       placeholder="10-digit mobile" 
                       style={{ borderRadius: 8 }} 
                     />
+                    {supplierPhoneMatch && (
+                      <div style={{ marginTop: 6, padding: '8px 12px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, fontWeight: 600, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        ⚠️ A supplier "{supplierPhoneMatch.name}" already exists with this phone number.
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#b45309' }}>You can link them from the ledger page.</span>
+                      </div>
+                    )}
                     {form.alternate_phones && form.alternate_phones.length > 0 && (
                       <div style={{ marginTop: 12 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>ALTERNATE PHONES:</div>

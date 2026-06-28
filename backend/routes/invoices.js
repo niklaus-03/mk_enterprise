@@ -11,6 +11,7 @@ const Settlement = require('../models/Settlement');
 const auth = require('../middleware/auth');
 const { logActivity } = require('./activityLogs');
 const { formatIST } = require('../utils/timeUtils');
+const globalStockLock = require('../utils/stockLock');
 
 router.use(auth);
 
@@ -32,7 +33,7 @@ function ownerFilter(req, extra = {}) {
 async function getProductOwnerFilter(req) {
   if (!req.user) return {};
   if (req.user.role === 'walkin_manager') {
-    return { created_by: req.user.id };
+    return { 'manager_stock.manager_id': req.user.id };
   }
   
   if (['manager', 'temp_manager'].includes(req.user.role)) {
@@ -105,7 +106,7 @@ router.get('/', async (req, res) => {
       return res.json({ invoices: [], total: 0 }); // Temp managers cannot view invoice history
     }
   try {
-    const { limit = 50, page = 1, customer_id, search } = req.query;
+    const { limit = 50, page = 1, customer_id, search, date, manager_id } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     let query = ownerFilter(req, { status: { $ne: 'cancelled' }, is_ledger_entry: { $ne: true } });
     if (customer_id) {
@@ -124,6 +125,28 @@ router.get('/', async (req, res) => {
         query.customer_id = customer_id;
       }
     }
+    if (date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      query.date = { $gte: start, $lte: end };
+    }
+    if (manager_id) {
+      const mongoose = require('mongoose');
+      let mId;
+      try {
+        mId = new mongoose.Types.ObjectId(manager_id);
+      } catch (e) {
+        mId = manager_id;
+      }
+      const managerCondition = { $or: [{ created_by: mId }, { actual_creator: mId }] };
+      if (query.$and) {
+        query.$and.push(managerCondition);
+      } else {
+        query.$and = [managerCondition];
+      }
+    }
     if (search) {
       const searchOr = [
         { customer_name: { $regex: search, $options: 'i' } },
@@ -132,10 +155,13 @@ router.get('/', async (req, res) => {
         { vehicle_number: { $regex: search, $options: 'i' } },
       ];
       if (query.$or) {
-        query.$and = [{ $or: query.$or }, { $or: searchOr }];
+        if (!query.$and) query.$and = [];
+        query.$and.push({ $or: query.$or });
+        query.$and.push({ $or: searchOr });
         delete query.$or;
       } else {
-        query.$or = searchOr;
+        if (!query.$and) query.$and = [];
+        query.$and.push({ $or: searchOr });
       }
     }
     const [invoices, total] = await Promise.all([
@@ -274,6 +300,7 @@ router.post('/batch-share', async (req, res) => {
 
 // ── POST create invoice (no transactions) ─────────────────────────────────────
 router.post('/', async (req, res) => {
+  const releaseLock = await globalStockLock.acquire();
   try {
     const now = new Date();
     const istDate = new Date(
@@ -355,7 +382,11 @@ router.post('/', async (req, res) => {
           return res.status(400).json({ error: `Product not found: ${item.product_name}` });
         }
         
-        let stockToUse = item.is_loose ? product.loose_stock : product.stock;
+        
+        const isWalkin = req.user && req.user.role === 'walkin_manager';
+        const ms = isWalkin ? product.manager_stock.find(m => m.manager_id.toString() === req.user.id) : null;
+        let stockToUse = item.is_loose ? product.loose_stock : (isWalkin && ms ? ms.stock : product.stock);
+
         
         // Handle list override if provided
         if (req.body.product_list_id) {
@@ -394,7 +425,7 @@ router.post('/', async (req, res) => {
               await StockMovement.create({
                 product_id: product._id, product_name: product.name,
                 type: 'outgoing', qty: bulkUnitsNeeded, qty_unit: product.unit || 'pcs',
-                stock_before: bulkBefore, stock_after: product.stock,
+                stock_before: bulkBefore, stock_after: (isWalkin && ms ? ms.stock : product.stock),
                 source: 'conversion', notes: `Auto-converted for invoice: ${bulkUnitsNeeded} ${product.unit} → ${looseQtyToAdd} ${product.loose_unit}`,
                 ist_formatted: formatIST(new Date()), created_by: invoiceCreatorId,
               });
@@ -492,7 +523,9 @@ router.post('/', async (req, res) => {
     let generatedInvoiceNumber = null;
     try {
       let prefix = 'INV-';
-      if (is_ledger_entry) {
+      if (req.body.is_transportation_invoice) {
+        prefix = 'CSN-';
+      } else if (is_ledger_entry) {
         prefix = 'CH-';
       } else if (req.user) {
         const Admin = require('../models/Admin');
@@ -502,16 +535,16 @@ router.post('/', async (req, res) => {
             prefix = 'INV-';
           } else if (actualUser.role === 'manager') {
             const nameToUse = actualUser.display_name || actualUser.username || 'M';
-            const initials = nameToUse.split(' ').filter(n => n).map(n => n.charAt(0).toUpperCase()).join('');
+            const initials = nameToUse.split(' ').filter(n => n).map(n => n.charAt(0).toLowerCase()).join('');
             prefix = `${initials}INV-`;
           } else if (actualUser.role === 'temp_manager') {
             const bookletOwner = await Admin.findById(invoiceCreatorId);
             const nameToUse = bookletOwner ? (bookletOwner.display_name || bookletOwner.username || 'M') : 'M';
-            const initials = nameToUse.split(' ').filter(n => n).map(n => n.charAt(0).toUpperCase()).join('');
+            const initials = nameToUse.split(' ').filter(n => n).map(n => n.charAt(0).toLowerCase()).join('');
             prefix = `TEMP-${initials}INV-`;
           } else if (actualUser.role === 'walkin_manager') {
             const nameToUse = actualUser.display_name || actualUser.username || 'M';
-            const initials = nameToUse.split(' ').filter(n => n).map(n => n.charAt(0).toUpperCase()).join('');
+            const initials = nameToUse.split(' ').filter(n => n).map(n => n.charAt(0).toLowerCase()).join('');
             prefix = `wm${initials}INV-`;
           }
         }
@@ -607,14 +640,23 @@ router.post('/', async (req, res) => {
               stock_after: product.loose_stock,
               reference: invoice._id.toString(),
               source: 'invoice',
+              notes: 'Invoice created',
               vehicle_number: vehicle_number || '',
               driver_name: driver_name || '',
               ist_formatted: formatIST(invoiceDate),
               created_by: invoiceCreatorId,
             });
           } else {
-            const stock_before = product.stock;
-            product.stock = Math.max(0, product.stock - item.qty);
+            
+            const isWalkin = req.user && req.user.role === 'walkin_manager';
+            const ms = isWalkin ? product.manager_stock.find(m => m.manager_id.toString() === req.user.id) : null;
+            const stock_before = isWalkin && ms ? ms.stock : product.stock;
+            if (isWalkin && ms) {
+              ms.stock = Math.max(0, ms.stock - item.qty);
+            } else {
+              product.stock = Math.max(0, product.stock - item.qty);
+            }
+
             await product.save();
             
             // Deduct from list override custom_stock if applicable
@@ -641,9 +683,10 @@ router.post('/', async (req, res) => {
               qty: item.qty,
               qty_unit: product.unit || 'pcs',
               stock_before,
-              stock_after: product.stock,
+              stock_after: (isWalkin && ms ? ms.stock : product.stock),
               reference: invoice._id.toString(),
               source: 'invoice',
+              notes: 'Invoice created',
               vehicle_number: vehicle_number || '',
               driver_name: driver_name || '',
               ist_formatted: formatIST(invoiceDate),
@@ -734,11 +777,14 @@ router.post('/', async (req, res) => {
     }
   } catch (err) {
     res.status(400).json({ error: err.message });
+  } finally {
+    releaseLock();
   }
 });
 
 // ── PUT edit invoice (no transactions) ────────────────────────────────────────
 router.put('/:id', async (req, res) => {
+  const releaseLock = await globalStockLock.acquire();
   try {
     const original = await Invoice.findById(req.params.id);
     if (!original) return res.status(404).json({ error: 'Invoice not found' });
@@ -777,12 +823,20 @@ router.put('/:id', async (req, res) => {
                 created_by: req.user ? req.user.id : null,
               });
             } else {
-              const stock_before = product.stock;
-              product.stock += netDeducted;
+              
+              const isWalkin = req.user && req.user.role === 'walkin_manager';
+              const ms = isWalkin ? product.manager_stock.find(m => m.manager_id.toString() === req.user.id) : null;
+              const stock_before = isWalkin && ms ? ms.stock : product.stock;
+              if (isWalkin && ms) {
+                ms.stock += netDeducted;
+              } else {
+                product.stock += netDeducted;
+              }
+
               await product.save();
               await StockMovement.create({
                 product_id: product._id, product_name: product.name, type: 'incoming', qty: netDeducted, qty_unit: product.unit || 'pcs',
-                stock_before, stock_after: product.stock, reference: original._id.toString(),
+                stock_before, stock_after: (isWalkin && ms ? ms.stock : product.stock), reference: original._id.toString(),
                 source: 'return', notes: 'Invoice edit - restoring stock', ist_formatted: formatIST(new Date()),
                 created_by: req.user ? req.user.id : null,
               });
@@ -799,7 +853,11 @@ router.put('/:id', async (req, res) => {
         const product = await Product.findOne({ _id: item.product_id, ...pFilter });
         if (!product) return res.status(400).json({ error: `Product not found: ${item.product_name}` });
         const netQty = (parseFloat(item.qty) || 0) - (parseFloat(item.returned_qty) || 0);
-        let stockToUse = item.is_loose ? product.loose_stock : product.stock;
+        
+        const isWalkin = req.user && req.user.role === 'walkin_manager';
+        const ms = isWalkin ? product.manager_stock.find(m => m.manager_id.toString() === req.user.id) : null;
+        let stockToUse = item.is_loose ? product.loose_stock : (isWalkin && ms ? ms.stock : product.stock);
+
 
         if (netQty > 0 && stockToUse < netQty) {
           if (item.is_loose && product.has_loose) {
@@ -840,7 +898,7 @@ router.put('/:id', async (req, res) => {
                 await StockMovement.create({
                   product_id: product._id, product_name: product.name,
                   type: 'outgoing', qty: bulkUnitsNeeded, qty_unit: product.unit || 'pcs',
-                  stock_before: bulkBefore, stock_after: product.stock,
+                  stock_before: bulkBefore, stock_after: (isWalkin && ms ? ms.stock : product.stock),
                   source: 'conversion', notes: `Auto-converted on edit: ${bulkUnitsNeeded} ${product.unit} → ${looseQtyToAdd} ${product.loose_unit}`,
                   ist_formatted: formatIST(new Date()), created_by: req.user ? req.user.id : null,
                 });
@@ -863,12 +921,20 @@ router.put('/:id', async (req, res) => {
                 created_by: req.user ? req.user.id : null,
               });
             } else {
-              const stock_before = product.stock;
-              product.stock -= netQty;
+              
+              const isWalkin = req.user && req.user.role === 'walkin_manager';
+              const ms = isWalkin ? product.manager_stock.find(m => m.manager_id.toString() === req.user.id) : null;
+              const stock_before = isWalkin && ms ? ms.stock : product.stock;
+              if (isWalkin && ms) {
+                ms.stock -= netQty;
+              } else {
+                product.stock -= netQty;
+              }
+
               await product.save();
               await StockMovement.create({
                 product_id: product._id, product_name: product.name, type: 'outgoing', qty: netQty, qty_unit: product.unit || 'pcs',
-                stock_before, stock_after: product.stock, reference: original._id.toString(),
+                stock_before, stock_after: (isWalkin && ms ? ms.stock : product.stock), reference: original._id.toString(),
                 source: 'invoice', notes: 'Invoice edited', ist_formatted: formatIST(new Date()),
                 created_by: req.user ? req.user.id : null,
               });
@@ -992,11 +1058,14 @@ router.put('/:id', async (req, res) => {
     }
   } catch (err) {
     res.status(400).json({ error: err.message });
+  } finally {
+    releaseLock();
   }
 });
 
 // ── DELETE cancel invoice (no transactions) ────────────────────────────────────
 router.delete('/:id', async (req, res) => {
+  const releaseLock = await globalStockLock.acquire();
   try {
     const invoice = await Invoice.findById(req.params.id);
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -1008,12 +1077,20 @@ router.delete('/:id', async (req, res) => {
         const product = await Product.findById(item.product_id);
         if (product) {
           const netQty = item.qty - (item.returned_qty || 0);
-          const stock_before = product.stock;
-          product.stock += netQty;
+          
+          const isWalkin = req.user && req.user.role === 'walkin_manager';
+          const ms = isWalkin ? product.manager_stock.find(m => m.manager_id.toString() === req.user.id) : null;
+          const stock_before = isWalkin && ms ? ms.stock : product.stock;
+          if (isWalkin && ms) {
+            ms.stock += netQty;
+          } else {
+            product.stock += netQty;
+          }
+
           await product.save();
           await StockMovement.create({
             product_id: product._id, product_name: product.name, type: 'incoming', qty: netQty,
-            stock_before, stock_after: product.stock, reference: invoice._id.toString(),
+            stock_before, stock_after: (isWalkin && ms ? ms.stock : product.stock), reference: invoice._id.toString(),
             source: 'return', notes: 'Invoice cancelled', ist_formatted: formatIST(new Date()),
             created_by: req.user ? req.user.id : null,
           });
@@ -1052,6 +1129,8 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  } finally {
+    releaseLock();
   }
 });
 
@@ -1080,14 +1159,50 @@ router.post('/consolidate', async (req, res) => {
     let totalLabour = 0;
     let totalDiscount = 0;
 
+    let lastDateStr = null;
+
     for (const entry of entries) {
-      const entryDateStr = new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-      const entryItems = entry.items.map(item => ({
-        ...item.toObject(),
-        product_name: `${item.product_name} (${entryDateStr})`
+      const entryDateStr = new Date(entry.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      
+      // Push date header item only if date changes
+      if (entryDateStr !== lastDateStr) {
+        combinedItems.push({
+          product_name: entryDateStr,
+          qty: 0,
+          price: 0,
+          is_header: true
+        });
+        lastDateStr = entryDateStr;
+      }
+
+      for (const item of entry.items) {
+        const itemObj = item.toObject ? item.toObject() : item;
+        let found = false;
+        
+        for (let i = combinedItems.length - 1; i >= 0; i--) {
+          if (combinedItems[i].is_header) break;
+          
+          if (combinedItems[i].product_name === itemObj.product_name && combinedItems[i].price === itemObj.price) {
+            combinedItems[i].qty += itemObj.qty;
+            combinedItems[i].taxable_amount += itemObj.taxable_amount;
+            combinedItems[i].total += itemObj.total;
+            combinedItems[i].returned_qty = (combinedItems[i].returned_qty || 0) + (itemObj.returned_qty || 0);
+            found = true;
+            break;
+          }
+        }
+        
+        if (!found) {
+          combinedItems.push(itemObj);
+        }
+      }
+      
+      const entryPayments = (entry.payments || []).map(p => ({
+        ...p.toObject ? p.toObject() : p,
+        date_string: entryDateStr
       }));
-      combinedItems = combinedItems.concat(entryItems);
-      combinedPayments = combinedPayments.concat(entry.payments || []);
+      combinedPayments = combinedPayments.concat(entryPayments);
+      
       totalVehicle += (entry.vehicle_charge || 0);
       totalLabour += (entry.labour_charge || 0);
       totalDiscount += (entry.discount || 0);
@@ -1099,9 +1214,9 @@ router.post('/consolidate', async (req, res) => {
     const amount_received = combinedPayments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
     const balance_due = Math.max(0, total - amount_received);
 
-    let prefix = is_ledger_entry ? 'CH-' : 'INV-';
+    let prefix = 'INV-';
     try {
-      if (req.user && !is_ledger_entry) {
+      if (req.user) {
         const Admin = require('../models/Admin');
         const actualUser = await Admin.findById(req.user.id);
         if (actualUser && actualUser.role === 'manager') {

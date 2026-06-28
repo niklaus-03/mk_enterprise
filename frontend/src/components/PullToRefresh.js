@@ -19,7 +19,14 @@ export default function PullToRefresh({ children }) {
   const wheelAccum = useRef(0);
   const wheelTimer = useRef(null);
 
-  const isAtTop = useCallback(() => {
+  const isAtTop = useCallback((e) => {
+    if (e) {
+      let el = e.target;
+      while (el && el !== document.body && el !== document.documentElement) {
+        if (el.scrollTop > 0) return false;
+        el = el.parentElement;
+      }
+    }
     return window.scrollY <= 0;
   }, []);
 
@@ -45,14 +52,14 @@ export default function PullToRefresh({ children }) {
   useEffect(() => {
     const onTouchStart = (e) => {
       if (refreshing) return;
-      if (!isAtTop()) return;
+      if (!isAtTop(e)) return;
       touchStartY.current = e.touches[0].clientY;
       isPulling.current = true;
     };
 
     const onTouchMove = (e) => {
       if (!isPulling.current || refreshing) return;
-      if (!isAtTop()) {
+      if (!isAtTop(e)) {
         isPulling.current = false;
         setPullDistance(0);
         setPhase('idle');
@@ -96,7 +103,7 @@ export default function PullToRefresh({ children }) {
   useEffect(() => {
     const onWheel = (e) => {
       if (refreshing) return;
-      if (!isAtTop()) {
+      if (!isAtTop(e)) {
         wheelAccum.current = 0;
         return;
       }

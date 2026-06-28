@@ -12,14 +12,21 @@ const productSchema = new mongoose.Schema({
   unit: { type: String, default: 'pcs', trim: true },
   weight_per_unit: { type: Number, default: 0 },   // kg per unit (e.g. 1 bag = 50 kg)
   suggested_price: { type: Number, default: 0 },
+  profit_margin: { type: Number, default: 0 },     // % profit margin
   is_active: { type: Boolean, default: true },
   // Enhancement 1: per-product low stock threshold (overrides global setting if set)
   custom_low_stock: { type: Number, default: null },
   // Phase 2: Visibility — which managers can see this product
   allowed_managers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Admin' }],
+  // Track specific stock for each walk-in manager vehicle
+  manager_stock: [{
+    manager_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+    stock: { type: Number, default: 0 }
+  }],
   created_from_order: { type: Boolean, default: false }, // True if auto-created from New Order
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   last_updated_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
+  last_manual_edit_at: { type: Date, default: null },
   // Single-Product Loose Item Tracking
   has_loose: { type: Boolean, default: false },
   loose_stock: { type: Number, default: 0, min: 0 },

@@ -4,6 +4,8 @@ const Product = require('../models/Product');
 const StockMovement = require('../models/StockMovement');
 const Setting = require('../models/Setting');
 const Notification = require('../models/Notification');
+const fs = require('fs');
+const globalStockLock = require('../utils/stockLock');
 const auth = require('../middleware/auth');
 const { logActivity } = require('./activityLogs');
 const { formatIST } = require('../utils/timeUtils');
@@ -82,7 +84,16 @@ async function getOwnerFilter(req, extra = {}) {
       ],
     };
   }
-  return extra; // supervisor sees all
+  
+  // supervisor/admin sees all except walk-in managers' clones
+  const Admin = require('../models/Admin');
+  const walkinManagers = await Admin.find({ role: 'walkin_manager' }).select('_id').lean();
+  const walkinManagerIds = walkinManagers.map(m => m._id);
+  
+  return {
+    ...extra,
+    created_by: { $nin: walkinManagerIds }
+  };
 }
 
 
@@ -145,8 +156,8 @@ router.get('/', async (req, res) => {
         }
         return res.json([]);
       }
-      // Walkin managers can only see products they've loaded into their vehicle (created_by them) in the main grid
-      query.created_by = req.user.id;
+      // Walkin managers can only see products they've loaded into their vehicle in the main grid
+      query['manager_stock.manager_id'] = req.user.id;
     } else {
       query = { ...query, ...(await getOwnerFilter(req)) };
     }
@@ -188,6 +199,13 @@ router.get('/', async (req, res) => {
         Product.countDocuments(query)
       ]);
       
+      if (req.user && req.user.role === 'walkin_manager') {
+        products.forEach(p => {
+          const ms = p.manager_stock?.find(m => m.manager_id.toString() === req.user.id);
+          p.stock = ms ? ms.stock : 0;
+        });
+      }
+
       return res.json({ 
         products, 
         total, 
@@ -209,6 +227,13 @@ router.get('/', async (req, res) => {
       products = await applyListOverrides(req, products, list_id);
     }
     
+    if (req.user && req.user.role === 'walkin_manager') {
+      products.forEach(p => {
+        const ms = p.manager_stock?.find(m => m.manager_id.toString() === req.user.id);
+        p.stock = ms ? ms.stock : 0;
+      });
+    }
+
     res.json(products);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -291,7 +316,7 @@ router.post('/', checkProductEditPermission, async (req, res) => {
   try {
     const { 
       name, price, stock, gst, unit, hsn_code, custom_low_stock, 
-      weight_per_unit, suggested_price, allowed_managers, category,
+      weight_per_unit, suggested_price, profit_margin, allowed_managers, category,
       has_loose, loose_stock, loose_price, loose_unit, loose_name, loose_conversion_factor
     } = req.body;
     if (!name || price === undefined || stock === undefined || gst === undefined)
@@ -308,6 +333,7 @@ router.post('/', checkProductEditPermission, async (req, res) => {
         custom_low_stock: final_low_stock,
         weight_per_unit: parseFloat(weight_per_unit) || 0,
         suggested_price: parseFloat(suggested_price) || 0,
+        profit_margin: parseFloat(profit_margin) || 0,
         category: (category || '').trim(),
         has_loose: !!has_loose,
         loose_stock: parseFloat(loose_stock) || 0,
@@ -407,12 +433,13 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
     const checkProduct = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!checkProduct) return res.status(404).json({ error: 'Product not found or access denied' });
 
-    const { custom_low_stock, weight_per_unit, suggested_price, category, has_loose, loose_stock, loose_price, loose_name, loose_unit, loose_conversion_factor, ...rest } = req.body;
+    const { custom_low_stock, weight_per_unit, suggested_price, profit_margin, category, has_loose, loose_stock, loose_price, loose_name, loose_unit, loose_conversion_factor, ...rest } = req.body;
     const updateData = {
       ...rest,
       custom_low_stock: (custom_low_stock != null && custom_low_stock !== '') ? parseFloat(custom_low_stock) : null,
       weight_per_unit: parseFloat(weight_per_unit) || 0,
       suggested_price: parseFloat(suggested_price) || 0,
+      profit_margin: parseFloat(profit_margin) || 0,
       category: category !== undefined ? (category || '').trim() : undefined,
       has_loose: has_loose !== undefined ? !!has_loose : undefined,
       loose_stock: loose_stock !== undefined ? parseFloat(loose_stock) || 0 : undefined,
@@ -421,6 +448,7 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
       loose_unit: loose_unit !== undefined ? loose_unit : undefined,
       loose_conversion_factor: loose_conversion_factor !== undefined ? parseFloat(loose_conversion_factor) || 0 : undefined,
       last_updated_by: req.user.id,
+      last_manual_edit_at: new Date(),
     };
     if (loose_stock !== undefined) {
       updateData.loose_stock = parseFloat(loose_stock) || 0;
@@ -498,6 +526,7 @@ router.put('/:id', checkProductEditPermission, async (req, res) => {
 
 // PATCH stock adjustment
 router.patch('/:id/stock', checkProductEditPermission, async (req, res) => {
+  const releaseLock = await globalStockLock.acquire();
   try {
     const product = await Product.findOne({ _id: req.params.id, ...(await getOwnerFilter(req)) });
     if (!product) return res.status(404).json({ error: 'Product not found or access denied' });
@@ -532,6 +561,7 @@ router.patch('/:id/stock', checkProductEditPermission, async (req, res) => {
 
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
+  finally { releaseLock(); }
 });
 
 // POST delegate product to another manager
@@ -571,6 +601,7 @@ router.post('/:id/delegate', async (req, res) => {
 
 // POST /:id/open-box — Convert bulk stock to loose stock (open boxes)
 router.post('/:id/open-box', checkProductEditPermission, async (req, res) => {
+  const releaseLock = await globalStockLock.acquire();
   try {
     const { qty } = req.body; // how many boxes to open
     if (!qty || parseFloat(qty) <= 0) return res.status(400).json({ error: 'Quantity to open is required' });
@@ -617,10 +648,12 @@ router.post('/:id/open-box', checkProductEditPermission, async (req, res) => {
 
     res.json({ success: true, product });
   } catch (err) { res.status(500).json({ error: err.message }); }
+  finally { releaseLock(); }
 });
 
 // POST /:id/pack-box — Convert loose stock back to bulk stock
 router.post('/:id/pack-box', checkProductEditPermission, async (req, res) => {
+  const releaseLock = await globalStockLock.acquire();
   try {
     const { qty } = req.body; // number of boxes to form
     if (!qty || parseFloat(qty) <= 0) return res.status(400).json({ error: 'Quantity to pack is required' });
@@ -667,6 +700,7 @@ router.post('/:id/pack-box', checkProductEditPermission, async (req, res) => {
 
     res.json({ success: true, product });
   } catch (err) { res.status(500).json({ error: err.message }); }
+  finally { releaseLock(); }
 });
 
 // DELETE (soft)
