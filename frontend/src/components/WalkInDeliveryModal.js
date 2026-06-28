@@ -11,6 +11,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
   const { user } = useAuth();
   const { t, fc, settings } = useApp();
   const [saving, setSaving] = useState(false);
+  const [selectedSuppliers, setSelectedSuppliers] = useState([]);
   const [submitAction, setSubmitAction] = useState('save');
   const DRAFT_KEY = 'walkin_delivery_draft';
 
