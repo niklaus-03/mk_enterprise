@@ -296,7 +296,7 @@ export default function AdminDashboard() {
   const [selectedLowLists, setSelectedLowLists] = useState([]);
 
   const [deliveryForm, setDeliveryForm] = useState({
-    vehicle_number: '', driver_name: '', supplier: '',
+    vehicle_number: '', driver_name: '', driver_cash: '', supplier: '',
     expected_arrival: getNowDateTimeLocal(), // default = today now
     notes: '',
     items: [
@@ -308,6 +308,8 @@ export default function AdminDashboard() {
   const [editDeliveryId, setEditDeliveryId] = useState(null);
   const [supplierSuggestions, setSupplierSuggestions] = useState(null);
   const [selectedSuppliers, setSelectedSuppliers] = useState([]);
+  const [vehicleFocus, setVehicleFocus] = useState(false);
+  const [driverFocus, setDriverFocus] = useState(false);
 
   // Sync selectedSuppliers with deliveryForm.suppliers_data
   useEffect(() => {
@@ -434,6 +436,17 @@ export default function AdminDashboard() {
       .catch(() => {});
   }, []);
 
+  // Prevent background scrolling when major modals are open
+  const isModalOpen = showDeliveryForm || showWalkinModal || showStatement || showAddSettlement || showProducts || showSuppliers || showPartyList;
+  useEffect(() => {
+    if (isModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isModalOpen]);
+
   const handleSaveDelivery = async () => {
     if (!deliveryForm.vehicle_number) return toast.error('Vehicle number required');
     if (!deliveryForm.expected_arrival) return toast.error('Expected arrival time required');
@@ -479,7 +492,7 @@ export default function AdminDashboard() {
         }
       }
 
-      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }, { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }] });
+      setDeliveryForm({ vehicle_number: '', driver_name: '', driver_cash: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }, { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }] });
       setSelectedSuppliers([]);
       setShowDeliveryForm(false);
       setEditDeliveryId(null);
@@ -527,6 +540,7 @@ export default function AdminDashboard() {
     setDeliveryForm({
       vehicle_number: d.vehicle_number,
       driver_name: d.driver_name || '',
+      driver_cash: d.driver_cash || '',
       supplier: d.supplier || '',
       expected_arrival: localStr,
       notes: d.notes || '',
@@ -1433,8 +1447,8 @@ export default function AdminDashboard() {
       {/* Departure / Incoming Goods Panel */}
       {showDeparture && (
         <div className="card" style={{ marginBottom: 20 }} ref={departureRef}>
-          <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
-            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="card-header incoming-header-flex">
+            <div className="card-title incoming-header-title">
               <Truck size={18} /> Incoming Goods
               {activeDeliveries.length > 0 && (
                 <span className="badge badge-warning" style={{ marginLeft: 8, fontSize: 11 }}>
@@ -1447,7 +1461,7 @@ export default function AdminDashboard() {
                 </span>
               )}
             </div>
-            <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+            <div className="incoming-header-actions">
               {/* Calendar with OK button inside dropdown */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px' }}>
@@ -1486,13 +1500,7 @@ export default function AdminDashboard() {
               >
                 <UserCheck size={14} /> Walk-in Delivery
               </button>
-              <button
-                className="btn btn-sm"
-                style={{ background: '#2563eb', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
-                onClick={() => setShowWalkinManagerModal(true)}
-              >
-                <Truck size={14} /> Manager Assign Items
-              </button>
+
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => {
@@ -1512,22 +1520,24 @@ export default function AdminDashboard() {
                 {showDeliveryForm && !editDeliveryId ? '✕ Cancel' : '+ Add Vehicle'}
               </button>
 
-              <SortDropdown
-                options={[
-                  { key: 'time_asc', label: '↑ Expected Time' },
-                  { key: 'time_desc', label: '↓ Expected Time' },
-                  { key: 'supplier_asc', label: 'A-Z Supplier' },
-                  { key: 'items_desc', label: '↓ Most Items' },
-                  { key: 'delivered_first', label: '✓ Delivered First' },
-                  { key: 'pending_first', label: '⧗ Pending First' },
-                ]}
-                value={vehicleSort}
-                onChange={v => { setVehicleSort(v); setVehicleSortOpen(false); }}
-                open={vehicleSortOpen}
-                onToggle={() => { closeAllSortMenus('vehicle'); setVehicleSortOpen(o => !o); }}
-              />
+              </div>
+              <div className="incoming-header-sort">
+                <SortDropdown
+                  options={[
+                    { key: 'time_asc', label: '↑ Expected Time' },
+                    { key: 'time_desc', label: '↓ Expected Time' },
+                    { key: 'supplier_asc', label: 'A-Z Supplier' },
+                    { key: 'items_desc', label: '↓ Most Items' },
+                    { key: 'delivered_first', label: '✓ Delivered First' },
+                    { key: 'pending_first', label: '⧗ Pending First' },
+                  ]}
+                  value={vehicleSort}
+                  onChange={v => { setVehicleSort(v); setVehicleSortOpen(false); }}
+                  open={vehicleSortOpen}
+                  onToggle={() => { closeAllSortMenus('vehicle'); setVehicleSortOpen(o => !o); }}
+                />
+              </div>
             </div>
-          </div>
 
           <div className="card-body">
 
@@ -1537,33 +1547,50 @@ export default function AdminDashboard() {
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }} />
                 <div className="modal-content" style={{ position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 650, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
                   
-                  <div style={{ padding: '24px 24px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ width: 48, height: 48, background: '#e0f2fe', color: '#0ea5e9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                  <div style={{ padding: '20px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ width: 48, height: 48, background: '#e0f2fe', color: '#0ea5e9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {editDeliveryId ? <Edit2 size={24} /> : <Plus size={24} />}
                       </div>
-                      <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{editDeliveryId ? 'Edit Delivery Entry' : 'New Incoming Vehicle'}</h3>
-                      <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b', fontWeight: 500 }}>{editDeliveryId ? 'Update details' : 'Record incoming goods transport'}</p>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{editDeliveryId ? 'Edit Delivery Entry' : 'New Incoming Vehicle'}</h3>
+                        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b', fontWeight: 500 }}>{editDeliveryId ? 'Update details' : 'Record incoming goods transport'}</p>
+                      </div>
                     </div>
                     <button onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }} style={{ background: 'white', border: '1px solid #e2e8f0', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                       <X size={16} />
                     </button>
                   </div>
                   
-                  <div style={{ padding: '24px', overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  <div style={{ padding: '20px', overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div className="incoming-form-grid" style={{ flex: 1 }}>
                   <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vehicle Number *</label>
                     <input className="form-control"
                       value={deliveryForm.vehicle_number}
                       onChange={e => setDeliveryForm(f => ({ ...f, vehicle_number: e.target.value.toUpperCase() }))}
-                      placeholder="e.g. UK07AB1234"
-                      list="saved-vehicles-list"
-                      style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'monospace', width: '100%', boxSizing: 'border-box' }} />
-                    <datalist id="saved-vehicles-list">
-                      {savedVehicles.map((v, i) => <option key={i} value={v} />)}
-                    </datalist>
+                      onFocus={() => setVehicleFocus(true)}
+                      onBlur={() => setTimeout(() => setVehicleFocus(false), 200)}
+                      placeholder="UK05 4199"
+                      style={{ padding: '12px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13.5, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: 'monospace', width: '100%', boxSizing: 'border-box' }} />
+                    {vehicleFocus && savedVehicles.filter(v => v.toLowerCase().includes(deliveryForm.vehicle_number.toLowerCase())).length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto', marginTop: 4 }}>
+                        {savedVehicles.filter(v => v.toLowerCase().includes(deliveryForm.vehicle_number.toLowerCase())).map((v, i) => (
+                          <div key={i}
+                            style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13.5, fontWeight: 500, fontFamily: 'monospace' }}
+                            onMouseDown={() => {
+                              setDeliveryForm(f => ({ ...f, vehicle_number: v }));
+                              setVehicleFocus(false);
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = ''}
+                          >
+                            {v}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Driver Name</label>
@@ -1573,26 +1600,64 @@ export default function AdminDashboard() {
                         const val = e.target.value.replace(/\b\w/g, c => c.toUpperCase());
                         setDeliveryForm(f => ({ ...f, driver_name: val }));
                       }}
-                      list="saved-drivers-list"
-                      placeholder="e.g. Pankaj Singh"
-                      style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
-                    <datalist id="saved-drivers-list">
-                      {savedDrivers.map((d, i) => <option key={i} value={d} />)}
-                    </datalist>
-                  </div>
-                  <div style={{ position: 'relative' }}>
-                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supplier / Party {!editDeliveryId && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>(select multiple)</span>}</label>
-                    {/* Selected supplier chips */}
-                    {!editDeliveryId && selectedSuppliers.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                        {selectedSuppliers.map((name, idx) => (
-                          <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#e0f2fe', color: '#0369a1', borderRadius: 20, fontSize: 12.5, fontWeight: 600 }}>
-                            {name}
-                            <button onClick={() => setSelectedSuppliers(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369a1', padding: 0, display: 'flex', alignItems: 'center', fontSize: 14, fontWeight: 700, lineHeight: 1 }}>&times;</button>
-                          </span>
+                      onFocus={() => setDriverFocus(true)}
+                      onBlur={() => setTimeout(() => setDriverFocus(false), 200)}
+                      placeholder="Driver Name"
+                      style={{ padding: '12px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13.5, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
+                    {driverFocus && savedDrivers.filter(d => d.toLowerCase().includes(deliveryForm.driver_name.toLowerCase())).length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto', marginTop: 4 }}>
+                        {savedDrivers.filter(d => d.toLowerCase().includes(deliveryForm.driver_name.toLowerCase())).map((d, i) => (
+                          <div key={i}
+                            style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13.5, fontWeight: 500 }}
+                            onMouseDown={() => {
+                              setDeliveryForm(f => ({ ...f, driver_name: d }));
+                              setDriverFocus(false);
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = ''}
+                          >
+                            {d}
+                          </div>
                         ))}
                       </div>
                     )}
+                  </div>
+                  <div className="desktop-only" style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cash Given to Driver</label>
+                    <input className="form-control" type="number" min="0" step="1"
+                      value={deliveryForm.driver_cash}
+                      onChange={e => setDeliveryForm(f => ({ ...f, driver_cash: e.target.value }))}
+                      placeholder="₹ Amount"
+                      style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                  <div className="mobile-only" style={{ alignSelf: 'end' }}>
+                    <div 
+                      onClick={() => {
+                        const dateInput = document.getElementById('mobile-incoming-date');
+                        if (dateInput && typeof dateInput.showPicker === 'function') {
+                          try { dateInput.showPicker(); } catch(e) {}
+                        }
+                      }}
+                      style={{ position: 'relative', width: 46.6, height: 46.6, background: '#f1f5f9', borderRadius: 10, border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    >
+                      <Calendar size={20} color="#475569" />
+                      <input id="mobile-incoming-date" type="datetime-local" value={deliveryForm.expected_arrival} onChange={e => setDeliveryForm(f => ({ ...f, expected_arrival: e.target.value }))} required style={{ position: 'fixed', top: '40%', left: '0%', width: 0, height: 0, opacity: 0 }} title="Set Date & Time" />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mobile-only" style={{ position: 'relative' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cash Given to Driver</label>
+                  <input className="form-control" type="number" min="0" step="1"
+                    value={deliveryForm.driver_cash}
+                    onChange={e => setDeliveryForm(f => ({ ...f, driver_cash: e.target.value }))}
+                    placeholder="₹ Amount"
+                    style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supplier Names {!editDeliveryId && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>(select multiple)</span>}</label>
+
                     <input className="form-control"
                       value={deliveryForm.supplier}
                       onChange={e => {
@@ -1647,31 +1712,33 @@ export default function AdminDashboard() {
                         )}
                       </div>
                     )}
+                    {/* Selected supplier chips */}
+                    {!editDeliveryId && selectedSuppliers.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {selectedSuppliers.map((name, idx) => (
+                          <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#e0f2fe', color: '#0369a1', borderRadius: 20, fontSize: 12.5, fontWeight: 600 }}>
+                            {name}
+                            <button onClick={() => setSelectedSuppliers(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369a1', padding: 0, display: 'flex', alignItems: 'center', fontSize: 14, fontWeight: 700, lineHeight: 1 }}>&times;</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ position: 'relative' }}>
-                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Expected Arrival Date & Time *</label>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+
+                  <div className="desktop-only" style={{ flex: 1, position: 'relative', display: 'flex', justifyContent: 'flex-end' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Expected Arrival Date & Time *</label>
                       <input className="form-control" type="datetime-local"
                         value={deliveryForm.expected_arrival}
                         onChange={e => setDeliveryForm(f => ({ ...f, expected_arrival: e.target.value }))}
-                        style={{ flex: 1, padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, boxSizing: 'border-box' }}
+                        style={{ padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13.5, fontWeight: 500, width: 'fit-content', minWidth: '220px', boxSizing: 'border-box' }}
                       />
                       {deliveryForm.expected_arrival && (
-                        <button
-                          type="button"
-                          onClick={() => toast.success(
-                            `Set: ${new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
-                            { duration: 2000 }
-                          )}
-                          style={{ padding: '0 12px', height: 44, borderRadius: 10, background: '#10b981', color: 'white', fontWeight: 700, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        >✓ OK</button>
+                        <div style={{ fontSize: 11, color: '#10b981', marginTop: 6, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Calendar size={13} /> {new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </div>
                       )}
                     </div>
-                    {deliveryForm.expected_arrival && (
-                      <div style={{ fontSize: 11, color: '#10b981', marginTop: 6, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Calendar size={13} /> {new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -1685,7 +1752,7 @@ export default function AdminDashboard() {
                             <Package size={18} style={{ color: '#0ea5e9' }} /> Items for {supplierObj.supplier_name}
                           </h4>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <label style={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Advance Cash Given:</label>
+                            <label style={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Cash Given:</label>
                             <input className="form-control" type="number"
                               value={supplierObj.cash_given || ''}
                               onChange={e => {
@@ -1697,21 +1764,217 @@ export default function AdminDashboard() {
                               }}
                               placeholder="₹ Amount"
                               style={{ width: 120, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }} />
+                            {/* Fetch Low Stock Button for Supplier */}
+                            <div style={{ position: 'relative' }}>
+                              <div 
+                                onClick={() => setShowLowStockMenu(showLowStockMenu === `supplier_${sIdx}` ? false : `supplier_${sIdx}`)}
+                                style={{
+                                  padding: '8px 12px',
+                                  border: '1px solid #fcd34d',
+                                  borderRadius: 8,
+                                  background: '#fffbf1',
+                                  color: '#d97706',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  fontSize: 12,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  whiteSpace: 'nowrap',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                }}
+                              >
+                                <span className="desktop-only">{selectedLowLists.length ? `${selectedLowLists.length} list(s) selected` : 'Fetch Low Stock'}</span>
+                                <span className="mobile-only"><Package size={14} style={{ marginRight: 4 }}/> {selectedLowLists.length ? selectedLowLists.length : 'Stock'}</span>
+                                <span style={{ marginLeft: 6 }}>▾</span>
+                              </div>
+
+                              {showLowStockMenu === `supplier_${sIdx}` && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  marginTop: 8,
+                                  background: 'white',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: 12,
+                                  boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                                  zIndex: 100,
+                                  width: 240,
+                                  maxHeight: 320,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: 800, fontSize: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select Lists</span>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        if (selectedLowLists.length === 0) {
+                                          setShowLowStockMenu(false);
+                                          return;
+                                        }
+                                        
+                                        const threshold = parseInt(settings?.low_stock_threshold) || 10;
+                                        let lowItems = data?.lowStockProducts || [];
+
+                                        if (!selectedLowLists.includes('ALL')) {
+                                          let allSelectedProductIds = new Set();
+                                          productLists.forEach(l => {
+                                            if (selectedLowLists.includes(l._id)) {
+                                              (l.products || []).forEach(p => allSelectedProductIds.add(p._id || p));
+                                            }
+                                          });
+                                          lowItems = lowItems.filter(p => allSelectedProductIds.has(p._id));
+                                        }
+
+                                        if (!lowItems.length && !selectedLowLists.includes('ALL')) {
+                                          toast('No low stock items found in selected list(s).', { icon: 'ℹ️' });
+                                          return;
+                                        } else if (!lowItems.length) {
+                                          toast('No low stock items found. All products adequately stocked.', { icon: '✓' });
+                                          return;
+                                        }
+
+                                        const mapped = lowItems.filter(p => p.saved_order_qty !== -1).map(p => {
+                                          const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
+                                            ? p.custom_low_stock : threshold;
+                                          const neededQty = p.saved_order_qty > 0
+                                            ? p.saved_order_qty
+                                            : Math.max(1, minStock - p.stock);
+                                          return {
+                                            item_name: p.name,
+                                            quantity: String(neededQty),
+                                            unit: p.unit || 'unit',
+                                            product_id: p._id,
+                                            label: 'Goods',
+                                            is_new_item: false,
+                                          };
+                                        });
+
+                                        const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                                        const mappedCustom = customSaved.map(c => ({
+                                          item_name: c.name,
+                                          quantity: String(c.orderQty),
+                                          unit: c.unit || 'unit',
+                                          product_id: '',
+                                          label: 'Goods',
+                                          is_new_item: true,
+                                        }));
+
+                                        const finalCustom = selectedLowLists.includes('ALL') ? mappedCustom : [];
+
+                                        setDeliveryForm(f => {
+                                          const updatedSuppliers = [...f.suppliers_data];
+                                          const existingItems = updatedSuppliers[sIdx].items.filter(item => item.item_name.trim() !== '' || (item.quantity !== '0' && item.quantity !== ''));
+                                          const existingIds = new Set(existingItems.filter(i => i.product_id).map(i => i.product_id));
+                                          const existingNames = new Set(existingItems.filter(i => !i.product_id).map(i => i.item_name.toLowerCase()));
+
+                                          const newItems = [...mapped, ...finalCustom].filter(m => {
+                                            if (m.product_id && existingIds.has(m.product_id)) return false;
+                                            if (!m.product_id && existingNames.has(m.item_name.toLowerCase())) return false;
+                                            return true;
+                                          });
+
+                                          updatedSuppliers[sIdx].items = checkAutoAddRow([
+                                            ...existingItems,
+                                            ...newItems,
+                                            { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods', is_new_item: true }
+                                          ]);
+
+                                          return { ...f, suppliers_data: updatedSuppliers };
+                                        });
+                                        
+                                        const totalAdded = mapped.length + finalCustom.length;
+                                        toast.success(`${totalAdded} low stock item${totalAdded !== 1 ? 's' : ''} imported`);
+                                        setShowLowStockMenu(false);
+                                        setSelectedLowLists([]);
+                                      }}
+                                      style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, background: '#0ea5e9', color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 2px 4px rgba(14,165,233,0.2)' }}
+                                    >
+                                      Fetch
+                                    </button>
+                                  </div>
+                                  <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 4 }}>
+                                    {productLists.map(l => (
+                                      <label key={l._id} 
+                                        style={{ 
+                                          display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                                          background: selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id) ? '#f0f9ff' : 'transparent',
+                                          borderBottom: '1px solid #f1f5f9',
+                                          transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#e0f2fe' : '#f8fafc'}
+                                        onMouseLeave={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#f0f9ff' : 'transparent'}
+                                      >
+                                        <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                          <input 
+                                            type="checkbox"
+                                            checked={selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)}
+                                            onChange={(e) => {
+                                              let newList = [...selectedLowLists];
+                                              if (newList.includes('ALL')) {
+                                                newList = productLists.map(p => p._id);
+                                              }
+                                              if (e.target.checked) {
+                                                newList.push(l._id);
+                                                if (productLists.length > 0 && productLists.every(p => newList.includes(p._id))) {
+                                                  newList.push('ALL');
+                                                }
+                                              } else {
+                                                newList = newList.filter(id => id !== l._id && id !== 'ALL');
+                                              }
+                                              setSelectedLowLists(newList);
+                                            }}
+                                            style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                                          />
+                                        </div>
+                                        <span style={{ fontSize: 14, fontWeight: 600, color: (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#0369a1' : '#334155' }}>{l.name}</span>
+                                      </label>
+                                    ))}
+
+                                    <label 
+                                      style={{ 
+                                        display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                                        background: selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent',
+                                        transition: 'all 0.2s'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#e0f2fe' : '#f8fafc'}
+                                      onMouseLeave={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent'}
+                                    >
+                                      <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                        <input 
+                                          type="checkbox" 
+                                          checked={selectedLowLists.includes('ALL')}
+                                          onChange={(e) => {
+                                            if (e.target.checked) setSelectedLowLists(['ALL', ...productLists.map(p => p._id)]);
+                                            else setSelectedLowLists([]);
+                                          }}
+                                          style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                                        />
+                                      </div>
+                                      <span style={{ fontSize: 14, fontWeight: 600, color: selectedLowLists.includes('ALL') ? '#0369a1' : '#1e293b' }}>All Items</span>
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                           {supplierObj.items.map((item, idx) => (
-                            <div key={idx} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                            <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                               
                               {/* Product Search Input */}
-                              <div style={{ flex: 2, minWidth: 200, position: 'relative' }}>
-                                {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Product / Item Name *</div>}
+                              <div style={{ flex: 2, minWidth: 120, position: 'relative' }}>
+                                {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Item Name</div>}
                                 <input
                                   className="form-control"
                                   value={item.item_name}
                                   placeholder="Type product name..."
-                                  style={{ fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }}
+                                  style={{ fontSize: 13, borderRadius: 8, padding: '10px 8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' }}
                                   onChange={e => {
                                     const val = e.target.value;
                                     setDeliveryForm(f => {
@@ -1779,9 +2042,9 @@ export default function AdminDashboard() {
                               </div>
 
                               {/* Qty Input */}
-                              <div>
+                              <div style={{ flex: 1, minWidth: 50 }}>
                                 {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Qty</div>}
-                                <input className="form-control" type="number" min="0" step="0.01" value={item.quantity} placeholder="0" style={{ fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }}
+                                <input className="form-control" type="number" min="0" step="0.01" value={item.quantity} placeholder="0" style={{ fontSize: 13, borderRadius: 8, padding: '10px 8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' }}
                                   onChange={e => {
                                     setDeliveryForm(f => {
                                       const updatedSuppliers = [...f.suppliers_data];
@@ -1793,9 +2056,9 @@ export default function AdminDashboard() {
                               </div>
 
                               {/* Unit Input */}
-                              <div style={{ position: 'relative' }}>
+                              <div style={{ flex: 1, minWidth: 60, position: 'relative' }}>
                                 {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Unit</div>}
-                                <input className="form-control" value={item.unit || ''} placeholder="bag" style={{ fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }}
+                                <input className="form-control" value={item.unit || ''} placeholder="bag" style={{ fontSize: 13, borderRadius: 8, padding: '10px 8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' }}
                                   onChange={e => {
                                     setDeliveryForm(f => {
                                       const updatedSuppliers = [...f.suppliers_data];
@@ -1827,7 +2090,7 @@ export default function AdminDashboard() {
                               </div>
 
                               {/* Remove button */}
-                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                 {idx === 0 && <div style={{ fontSize: 11, height: 16, marginBottom: 6 }}>&nbsp;</div>}
                                 {supplierObj.items.length > 1 && (
                                   <button type="button" onClick={() => {
@@ -1836,8 +2099,13 @@ export default function AdminDashboard() {
                                       updatedSuppliers[sIdx].items = updatedSuppliers[sIdx].items.filter((_, i) => i !== idx);
                                       return { ...f, suppliers_data: updatedSuppliers };
                                     });
-                                  }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>
-                                    <X size={16} />
+                                  }} 
+                                    style={{ background: '#fee2e2', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'all 0.2s' }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#fecaca'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#fee2e2'}
+                                    title="Remove Item"
+                                  >
+                                    <Trash2 size={16} />
                                   </button>
                                 )}
                               </div>
@@ -1869,33 +2137,35 @@ export default function AdminDashboard() {
                           fontSize: 12,
                           display: 'flex',
                           justifyContent: 'space-between',
-                          alignItems: 'center',
-                          minWidth: 160,
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                        }}
-                      >
-                        <span>{selectedLowLists.length ? `${selectedLowLists.length} list(s) selected` : 'Fetch Low Stock'}</span>
-                        <span style={{ marginLeft: 8 }}>▾</span>
-                      </div>
+                                  alignItems: 'center',
+                                  whiteSpace: 'nowrap',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                }}
+                              >
+                                <span className="desktop-only">{selectedLowLists.length ? `${selectedLowLists.length} list(s) selected` : 'Fetch Low Stock'}</span>
+                                <span className="mobile-only"><Package size={14} style={{ marginRight: 4 }}/> {selectedLowLists.length ? selectedLowLists.length : 'Stock'}</span>
+                                <span style={{ marginLeft: 6 }}>▾</span>
+                              </div>
 
                     {showLowStockMenu && (
                       <div style={{
                         position: 'absolute',
                         top: '100%',
                         right: 0,
-                        marginTop: 4,
+                        marginTop: 8,
                         background: 'white',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 8,
-                        boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 12,
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
                         zIndex: 100,
-                        width: 260,
+                        width: 240,
                         maxHeight: 320,
                         display: 'flex',
-                        flexDirection: 'column'
+                        flexDirection: 'column',
+                        overflow: 'hidden'
                       }}>
-                        <div style={{ padding: '8px 12px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>Select Lists</span>
+                        <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 800, fontSize: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select Lists</span>
                           <button 
                             onClick={(e) => {
                               e.preventDefault();
@@ -1979,44 +2249,71 @@ export default function AdminDashboard() {
                               setShowLowStockMenu(false);
                               setSelectedLowLists([]);
                             }}
-                            className="btn btn-sm btn-primary"
-                            style={{ padding: '4px 12px', fontSize: 12, borderRadius: 6 }}
+                            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, background: '#0ea5e9', color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 2px 4px rgba(14,165,233,0.2)' }}
                           >
                             Fetch
                           </button>
                         </div>
-                        <div style={{ overflowY: 'auto', padding: '4px 0', flex: 1 }}>
-                          <label style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: 'pointer', margin: 0 }}>
-                            <input 
-                              type="checkbox" 
-                              checked={selectedLowLists.includes('ALL')}
-                              onChange={(e) => {
-                                if (e.target.checked) setSelectedLowLists(['ALL']);
-                                else setSelectedLowLists([]);
-                              }}
-                              style={{ marginRight: 10, cursor: 'pointer', width: 16, height: 16 }}
-                            />
-                            <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>All Items</span>
-                          </label>
-                          
+                        <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 4 }}>
                           {productLists.map(l => (
-                            <label key={l._id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', cursor: selectedLowLists.includes('ALL') ? 'not-allowed' : 'pointer', margin: 0, opacity: selectedLowLists.includes('ALL') ? 0.5 : 1 }}>
-                              <input 
-                                type="checkbox"
-                                disabled={selectedLowLists.includes('ALL')}
-                                checked={selectedLowLists.includes(l._id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedLowLists([...selectedLowLists.filter(id => id !== 'ALL'), l._id]);
-                                  } else {
-                                    setSelectedLowLists(selectedLowLists.filter(id => id !== l._id));
-                                  }
-                                }}
-                                style={{ marginRight: 10, cursor: selectedLowLists.includes('ALL') ? 'not-allowed' : 'pointer', width: 16, height: 16 }}
-                              />
-                              <span style={{ fontSize: 13, color: '#334155' }}>{l.name}</span>
+                            <label key={l._id} 
+                              style={{ 
+                                display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                                background: selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id) ? '#f0f9ff' : 'transparent',
+                                borderBottom: '1px solid #f1f5f9',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#e0f2fe' : '#f8fafc'}
+                              onMouseLeave={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#f0f9ff' : 'transparent'}
+                            >
+                              <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                <input 
+                                  type="checkbox"
+                                  checked={selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)}
+                                  onChange={(e) => {
+                                    let newList = [...selectedLowLists];
+                                    if (newList.includes('ALL')) {
+                                      newList = productLists.map(p => p._id);
+                                    }
+                                    if (e.target.checked) {
+                                      newList.push(l._id);
+                                      if (productLists.length > 0 && productLists.every(p => newList.includes(p._id))) {
+                                        newList.push('ALL');
+                                      }
+                                    } else {
+                                      newList = newList.filter(id => id !== l._id && id !== 'ALL');
+                                    }
+                                    setSelectedLowLists(newList);
+                                  }}
+                                  style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                                />
+                              </div>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#0369a1' : '#334155' }}>{l.name}</span>
                             </label>
                           ))}
+
+                          <label 
+                            style={{ 
+                              display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                              background: selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#e0f2fe' : '#f8fafc'}
+                            onMouseLeave={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent'}
+                          >
+                            <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedLowLists.includes('ALL')}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedLowLists(['ALL', ...productLists.map(p => p._id)]);
+                                  else setSelectedLowLists([]);
+                                }}
+                                style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                              />
+                            </div>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: selectedLowLists.includes('ALL') ? '#0369a1' : '#1e293b' }}>All Items</span>
+                          </label>
                         </div>
                       </div>
                     )}
@@ -2030,7 +2327,7 @@ export default function AdminDashboard() {
                       <div style={{ position: 'relative' }}>
                         {idx === 0 && (
                           <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>
-                            Item Name *
+                            Item Name
                           </div>
                         )}
                         <input
@@ -2181,10 +2478,17 @@ export default function AdminDashboard() {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         {idx === 0 && <div style={{ fontSize: 11, height: 16, marginBottom: 6 }}>&nbsp;</div>}
                         {deliveryForm.items.length > 1 && (
-                          <button type="button" onClick={() => removeDeliveryItem(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}><X size={16} /></button>
+                          <button type="button" onClick={() => removeDeliveryItem(idx)} 
+                            style={{ background: '#fee2e2', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'all 0.2s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#fecaca'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#fee2e2'}
+                            title="Remove Item"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         )}
                       </div>
 
@@ -4603,16 +4907,18 @@ export default function AdminDashboard() {
           <div className="modal-content" style={{ position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 500, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
             
             {/* Header */}
-            <div style={{ padding: '24px 24px 20px', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ width: 48, height: 48, background: '#dcfce3', color: '#16a34a', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 4px 6px -1px rgba(22,163,74,0.1)' }}>
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ width: 48, height: 48, background: '#dcfce3', color: '#16a34a', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 6px -1px rgba(22,163,74,0.1)' }}>
                   <Wallet size={24} />
                 </div>
-                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>Collect Payment</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b', fontWeight: 500 }}>
-                  Customer: {payModal.name}
-                  {payModal.invoice_number && <span><br />Invoice: {payModal.invoice_number}</span>}
-                </p>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>Collect Payment</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+                    Customer: {payModal.name}
+                    {payModal.invoice_number && <span><br />Invoice: {payModal.invoice_number}</span>}
+                  </p>
+                </div>
               </div>
               <button onClick={() => setPayModal(null)} style={{ background: 'white', border: '1px solid #e2e8f0', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                 <X size={16} />

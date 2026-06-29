@@ -3,13 +3,14 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { deliveryApi, notificationApi, supplierApi, settlementApi, productApi } from '../utils/api';
-import { UserCheck, X, Trash2, CheckCircle, AlertTriangle, Wallet, Smartphone, Globe, CreditCard, BarChart2, Scale, Save, FolderOpen } from 'lucide-react';
+import { UserCheck, X, Trash2, CheckCircle, AlertTriangle, Wallet, Smartphone, Globe, CreditCard, BarChart2, Scale, Save, FolderOpen, Calendar } from 'lucide-react';
 
 const QTY_UNITS = ['pcs', 'kg', 'g', 'ltr', 'ml', 'bag', 'box', 'dozen', 'quintal', 'ton', 'mtr', 'other'];
 
 export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'manager' }) {
   const { user } = useAuth();
   const { t, fc, settings } = useApp();
+  const dateInputRef = React.useRef(null);
   const [saving, setSaving] = useState(false);
   const [selectedSuppliers, setSelectedSuppliers] = useState([]);
   const [submitAction, setSubmitAction] = useState('save');
@@ -412,9 +413,9 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
         {/* Body */}
         <div style={{ padding: '24px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
           <form id="walkin-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr', gap: 20 }}>
+            <div className="walkin-top-grid">
               <div style={{ position: 'relative' }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supplier / Party Name *</label>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supplier / Party Name</label>
                 <input className="form-control"
                   value={form.supplier}
                   onChange={e => {
@@ -455,7 +456,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vehicle Number</label>
                 <input type="text" className="form-control" value={form.vehicle_number || ''} onChange={e => setForm(f => ({ ...f, vehicle_number: e.target.value.toUpperCase() }))} placeholder="Vehicle No. (Mandatory for BTC)" style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 12.5, fontWeight: 500, textTransform: 'uppercase' }} />
               </div>
-              <div>
+              <div className="desktop-only">
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date & Time *</label>
                 <input type="datetime-local" className="form-control" value={form.expected_arrival} onChange={e => setForm(f => ({ ...f, expected_arrival: e.target.value }))} required style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500 }} />
               </div>
@@ -463,7 +464,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
 
             {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
               <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+              <div className="form-row form-row-2-mobile">
                 <div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     <BarChart2 size={16} style={{ color: '#64748b' }} /> Extra Charges (₹)
@@ -499,6 +500,19 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
                       </span>
                     </div>
                   )}
+                </div>
+                <div className="mobile-only" style={{ alignSelf: 'end' }}>
+                  <div 
+                    onClick={() => {
+                      if (dateInputRef.current && typeof dateInputRef.current.showPicker === 'function') {
+                        try { dateInputRef.current.showPicker(); } catch(e) {}
+                      }
+                    }}
+                    style={{ position: 'relative', width: 46.6, height: 46.6, background: '#f1f5f9', borderRadius: 10, border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  >
+                    <Calendar size={20} color="#475569" />
+                    <input ref={dateInputRef} type="datetime-local" value={form.expected_arrival} onChange={e => setForm(f => ({ ...f, expected_arrival: e.target.value }))} required style={{ position: 'fixed', top: '40%', left: '0%', width: 0, height: 0, opacity: 0 }} title="Set Date & Time" />
+                  </div>
                 </div>
                 {settings?.margin_enabled !== false && (
                   <div>
@@ -844,7 +858,7 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
             </div>
 
             {/* 2-Column Bottom Layout */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, marginTop: 16, alignItems: 'start' }}>
+            <div className="walkin-bottom-grid">
               
               {/* Left Column: Payments */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1099,8 +1113,8 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
             </form>
           </div>
 
-          <div style={{ padding: '20px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 12, flexShrink: 0 }}>
-            <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
+          <div className="walkin-footer" style={{ padding: '20px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+            <div className="walkin-footer-left" style={{ position: 'relative' }}>
               <button 
                 type="button" 
                 onClick={() => setShowClearConfirm(true)}
@@ -1191,7 +1205,8 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
             <button 
               type="button" 
               onClick={onClose}
-              style={{ flex: 1, padding: '12px 24px', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer', transition: 'all 0.2s' }}
+              className="walkin-btn-cancel"
+              style={{ padding: '12px 24px', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer', transition: 'all 0.2s' }}
             >
               Cancel
             </button>
@@ -1200,7 +1215,8 @@ export default function WalkInDeliveryModal({ onClose, onSuccess, userRole = 'ma
               form="walkin-form"
               onClick={() => setSubmitAction('save')} 
               disabled={saving}
-              style={{ flex: 2, padding: '12px 24px', background: '#0284c7', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 15, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)', opacity: saving ? 0.7 : 1, transition: 'all 0.2s' }}
+              className="walkin-btn-confirm"
+              style={{ padding: '12px 24px', background: '#0284c7', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 15, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)', opacity: saving ? 0.7 : 1, transition: 'all 0.2s' }}
             >
               {saving && submitAction === 'save' ? 'Saving...' : <><CheckCircle size={18} /> Confirm Entry</>}
             </button>

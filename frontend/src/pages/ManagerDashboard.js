@@ -590,14 +590,18 @@ export default function ManagerDashboard() {
         if (phoneCheck.registered) {
           setWalkinConfirmModal({
             title: '⚠️ Phone Number Warning',
-            message: `This phone number belongs to registered customer "${phoneCheck.registered.name}" (Balance: ₹${phoneCheck.registered.balance}).\n\nAre you SURE you want to create a separate Walk-in due?`,
+            message: `This phone number belongs to registered customer "${phoneCheck.registered.name}" (Balance: ₹${phoneCheck.registered.balance}).
+
+Are you SURE you want to create a separate Walk-in due?`,
             onConfirm: () => executeCreateWalkinDue(true)
           });
           return;
         } else if (phoneCheck.walkin_invoices && phoneCheck.walkin_invoices.length > 0) {
           setWalkinConfirmModal({
             title: '⚠️ Phone Number Warning',
-            message: `This phone number already has ${phoneCheck.walkin_invoices.length} unpaid walk-in dues totaling ₹${phoneCheck.total_walkin_due}.\n\nAre you sure you want to add another Walk-in due?`,
+            message: `This phone number already has ${phoneCheck.walkin_invoices.length} unpaid walk-in dues totaling ₹${phoneCheck.total_walkin_due}.
+
+Are you sure you want to add another Walk-in due?`,
             onConfirm: () => executeCreateWalkinDue(false)
           });
           return;
@@ -796,9 +800,15 @@ export default function ManagerDashboard() {
       return `  • ${p.name}: Current ${p.stock} ${p.unit} → *Please send ${toOrder} ${p.unit}*`;
     }).join('\n');
     const msg = encodeURIComponent(
-      `*Low Stock Alert — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n` +
-      `━━━━━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━━━━━\n` +
-      `Total items needing restock: *${data.lowStockProducts.length}*\nPlease arrange stock at the earliest.`
+      `*Low Stock Alert — ${settings?.business_name || 'My Shop'}*
+Date: ${today}
+` +
+      `━━━━━━━━━━━━━━━━
+${lines}
+━━━━━━━━━━━━━━━━
+` +
+      `Total items needing restock: *${data.lowStockProducts.length}*
+Please arrange stock at the earliest.`
     );
     window.open(`https://wa.me/?text=${msg}`, '_blank');
   };
@@ -1063,9 +1073,14 @@ export default function ManagerDashboard() {
                 <button className="btn btn-outline btn-sm" onClick={() => {
                   const lines = (data.allProducts || []).map(p =>
                     `• ${p.name} ${p.stock} ${p.unit} @${p.price}`
-                  ).join('\n\n');
+                  ).join('\\n');
                   const msg = encodeURIComponent(
-                    `Product Report — ${settings?.business_name || 'My Shop'}\nDate: ${getTodayIST()}\n━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━\nTotal: ${data.allProducts?.length} products`
+                    `Product Report — ${settings?.business_name || 'My Shop'}
+Date: ${getTodayIST()}
+━━━━━━━━━━━
+${lines}
+━━━━━━━━━━━
+Total: ${data.allProducts?.length} products`
                   );
                   window.open(`https://wa.me/?text=${msg}`, '_blank');
                 }}><MessageSquare size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> WhatsApp</button>
@@ -1298,8 +1313,20 @@ export default function ManagerDashboard() {
                                   <a
                                     href={`https://wa.me/91${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
                                       t(
-                                        `Hello ${c.name},\n\nThis is a reminder from *${settings?.business_name || 'our store'}*.\nYour pending due amount is *₹${due && due.toFixed ? due.toFixed(2) : due}*.\n\nPlease clear it at your earliest convenience. 🙏\nThank you!`,
-                                        `नमस्ते ${c.name},\n\nयह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।\nआपकी बकाया राशि *₹${due && due.toFixed ? due.toFixed(2) : due}* है।\n\nकृपया जल्द से जल्द भुगतान करें। 🙏\nधन्यवाद!`
+                                        `Hello ${c.name},
+
+This is a reminder from *${settings?.business_name || 'our store'}*.
+Your pending due amount is *₹${due && due.toFixed ? due.toFixed(2) : due}*.
+
+Please clear it at your earliest convenience. 🙏
+Thank you!`,
+                                        `नमस्ते ${c.name},
+
+यह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।
+आपकी बकाया राशि *₹${due && due.toFixed ? due.toFixed(2) : due}* है।
+
+कृपया जल्द से जल्द भुगतान करें। 🙏
+धन्यवाद!`
                                       )
                                     )}`}
                                     target="_blank"
@@ -2685,8 +2712,20 @@ export default function ManagerDashboard() {
                                   <a
                                     href={`https://wa.me/91${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
                                       t(
-                                        `Hello ${c.name},\n\nThis is a reminder from *${settings?.business_name || 'our store'}*.\nYour pending due amount is *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}*.\n\nPlease clear it at your earliest convenience. 🙏\nThank you!`,
-                                        `नमस्ते ${c.name},\n\nयह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।\nआपकी बकाया राशि *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}* है।\n\nकृपया जल्द से जल्द भुगतान करें। 🙏\nधन्यवाद!`
+                                        `Hello ${c.name},
+
+This is a reminder from *${settings?.business_name || 'our store'}*.
+Your pending due amount is *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}*.
+
+Please clear it at your earliest convenience. 🙏
+Thank you!`,
+                                        `नमस्ते ${c.name},
+
+यह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।
+आपकी बकाया राशि *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}* है।
+
+कृपया जल्द से जल्द भुगतान करें। 🙏
+धन्यवाद!`
                                       )
                                     )}`}
                                     target="_blank"
@@ -3169,7 +3208,10 @@ export default function ManagerDashboard() {
                         })
                       : data.lowStockProducts;
                     const lines = source.map(p => `● ${p.name} - ${getOrderQty(p)} ${p.unit || ''}`.trimEnd()).join('\n');
-                    const msg = encodeURIComponent(`Demand,\nDated: ${today}\n\n${lines}`);
+                    const msg = encodeURIComponent(`Demand,
+Dated: ${today}
+
+${lines}`);
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
                   }}><Phone size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Send Order</span></button>
                 </>
@@ -3542,7 +3584,10 @@ export default function ManagerDashboard() {
                   onClick={() => {
                     const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
                     const lines = editableLowStock.filter(p => p.orderQty > 0 && p.name).map(p => `● ${p.name} - ${p.orderQty} ${p.unit || ''}`.trimEnd()).join('\n');
-                    const msg = encodeURIComponent(`Demand,\nDated: ${today}\n\n${lines}`);
+                    const msg = encodeURIComponent(`Demand,
+Dated: ${today}
+
+${lines}`);
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
                   }}
                 ><Phone size={13} /> <span>WhatsApp</span></button>

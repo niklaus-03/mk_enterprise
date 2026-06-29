@@ -4957,3 +4957,142 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 body.hide-bottom-nav .yt-bottom-nav, body.hide-bottom-nav .fb-top-nav { display: none !important; }
+
+/* Responsive Incoming Goods Header */
+.incoming-header-flex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+.incoming-header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  order: 1;
+}
+.incoming-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  order: 2;
+}
+.incoming-header-sort {
+  order: 3;
+}
+@media (max-width: 768px) {
+  .incoming-header-title {
+    flex: 1 1 auto;
+  }
+  .incoming-header-sort {
+    order: 2;
+  }
+  .incoming-header-actions {
+    order: 3;
+    width: 100%;
+    margin-top: 4px;
+  }
+}
+
+/* Walk-in Delivery Footer */
+.walkin-footer {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.walkin-footer-left {
+  display: flex;
+  gap: 8px;
+}
+.walkin-btn-cancel {
+  flex: 1;
+}
+.walkin-btn-confirm {
+  flex: 2;
+}
+
+@media (max-width: 768px) {
+  .walkin-footer {
+    flex-wrap: wrap;
+  }
+  .walkin-footer-left {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .walkin-footer-left > button {
+    flex: 1;
+    justify-content: center;
+    padding: 10px 4px !important;
+    font-size: 12px !important;
+  }
+  .walkin-btn-cancel,
+  .walkin-btn-confirm {
+    flex: 1;
+  }
+  .form-row.form-row-2-mobile {
+    grid-template-columns: 1fr 1fr auto !important;
+  }
+}
+
+/* Walkin Delivery Bottom Grid */
+.walkin-bottom-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 24px;
+  margin-top: 16px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .walkin-bottom-grid {
+    display: flex !important;
+    flex-direction: column-reverse;
+    align-items: stretch !important;
+  }
+}
+
+/* Walkin Delivery Top Grid */
+.walkin-top-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.2fr;
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .walkin-top-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .walkin-top-grid > div:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Responsive Visibility Utils */
+@media (min-width: 769px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+/* Incoming Vehicle Form Responsive Grid */
+.incoming-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .incoming-form-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px;
+  }
+  .incoming-form-grid > div:nth-child(3),
+  .incoming-form-grid > div:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+}
+
