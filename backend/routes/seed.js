@@ -14,10 +14,10 @@ router.post('/', async (req, res) => {
     // Create admin if not exists
     const adminCount = await Admin.countDocuments();
     if (adminCount === 0) {
-      const username = process.env.ADMIN_USERNAME || 'admin';
-      const password = process.env.ADMIN_PASSWORD || 'Admin@123';
+      const username = process.env.ADMIN_USERNAME || 'mkenterprise';
+      const password = process.env.ADMIN_PASSWORD || 'MKenterprise@99';
       const mobile = process.env.ADMIN_MOBILE || '9800000000';
-      const secret_key = process.env.ADMIN_SECRET_KEY || '98765';
+      const secret_key = process.env.ADMIN_SECRET_KEY || '009999';
       await Admin.create({
         username,
         password,
@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
     } else {
       // Ensure existing admin has all required fields persisted in the database
       // (Mongoose defaults don't write to DB until save, so fields may be missing)
-      const existingAdmin = await Admin.findOne({ username: process.env.ADMIN_USERNAME || 'admin' });
+      const existingAdmin = await Admin.findOne({ username: process.env.ADMIN_USERNAME || 'mkenterprise' });
       if (existingAdmin) {
         let needsSave = false;
         const rawDoc = await Admin.collection.findOne({ _id: existingAdmin._id });
@@ -50,7 +50,7 @@ router.post('/', async (req, res) => {
         existingAdmin.display_name = existingAdmin.display_name || 'Supervisor Admin';
         existingAdmin.phone = existingAdmin.phone || existingAdmin.mobile || '';
         if (!rawDoc.secret_key) {
-          existingAdmin.secret_key = process.env.ADMIN_SECRET_KEY || '98765';
+          existingAdmin.secret_key = process.env.ADMIN_SECRET_KEY || '009999';
           needsSave = true;
         }
 
