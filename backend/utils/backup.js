@@ -41,6 +41,38 @@ async function createBackup() {
     fs.writeFileSync(backupFile, JSON.stringify(data, null, 2), 'utf8');
     console.log(`✅ Backup created: ${backupFile} (${(fs.statSync(backupFile).size / 1024).toFixed(1)} KB)`);
 
+    // ---- EMAIL BACKUP LOGIC ----
+    if (process.env.BACKUP_EMAIL_USER && process.env.BACKUP_EMAIL_PASS) {
+      try {
+        const nodemailer = require('nodemailer');
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.BACKUP_EMAIL_USER,
+            pass: process.env.BACKUP_EMAIL_PASS
+          }
+        });
+
+        const toEmail = process.env.BACKUP_EMAIL_TO || process.env.BACKUP_EMAIL_USER;
+
+        await transporter.sendMail({
+          from: `"MK Enterprise Backup" <${process.env.BACKUP_EMAIL_USER}>`,
+          to: toEmail,
+          subject: `Daily Database Backup - ${new Date().toISOString().slice(0, 10)}`,
+          text: `Please find attached the daily JSON database backup for MK Enterprise.\n\nTotal Records: ${data._meta.total_records}`,
+          attachments: [
+            {
+              filename: path.basename(backupFile),
+              path: backupFile
+            }
+          ]
+        });
+        console.log(`📧 Backup emailed successfully to ${toEmail}`);
+      } catch (emailErr) {
+        console.error('❌ Failed to email backup:', emailErr.message);
+      }
+    }
+
     // Keep only last 30 backups
     const files = fs.readdirSync(BACKUP_DIR)
       .filter(f => f.startsWith('backup_') && f.endsWith('.json'))
