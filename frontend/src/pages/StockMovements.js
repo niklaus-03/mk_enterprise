@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import toast from 'react-hot-toast';
 import { stockApi, productApi } from '../utils/api';
@@ -108,7 +108,7 @@ export default function StockMovements() {
       </div>
 
       {/* ── FILTERS & SEARCH ── */}
-      <div className="hide-scroll" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1.5px solid #e2e8f0', marginBottom: 24, padding: '0 4px', flexWrap: 'nowrap', gap: 12, overflowX: 'auto' }}>
+      <div className="hide-scroll" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '1.5px solid #e2e8f0', marginBottom: 24, padding: '0 4px', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
           <div style={{ padding: '8px 2px', borderBottom: '2.5px solid var(--primary)', fontWeight: 700, color: 'var(--primary)', marginBottom: -1.5, whiteSpace: 'nowrap', fontSize: 13 }}>
             {todayCount} Movement{todayCount !== 1 ? 's' : ''} Today
@@ -240,8 +240,23 @@ export default function StockMovements() {
                         <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{m.ist_formatted ? m.ist_formatted.split(' ').slice(1).join(' ') : formatIST(m.date).split(' ').slice(1).join(' ')}</div>
                       </td>
 
-                      <td style={{ padding: '14px 20px', fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>
-                        {m.product_name}
+                      <td style={{ padding: '14px 20px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>
+                          {m.product_name}
+                        </div>
+                        {m.source === 'invoice' && m.invoice_number && (
+                          <div style={{ marginTop: 4 }}>
+                            {m.invoice_id ? (
+                              <Link to={`/invoices/${m.invoice_id}`} style={{ fontSize: 12, fontWeight: 700, color: '#4f46e5', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <FileText size={12} /> Inv: {m.invoice_number}
+                              </Link>
+                            ) : (
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#4f46e5', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <FileText size={12} /> Inv: {m.invoice_number}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       <td style={{ padding: '14px 20px' }}>
@@ -283,7 +298,6 @@ export default function StockMovements() {
                           </span>
                           
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {m.source === 'invoice' && m.invoice_number && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Inv: {m.invoice_number}</span>}
                             {(m.source === 'manual' || m.source === 'walkin_loading') && m.supplier && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}><User size={10} /> {m.supplier}</span>}
                             {m.vehicle_number && m.vehicle_number.toUpperCase() !== 'WALK-IN' && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={12} className="text-primary" /> {(m.vehicle_number || '').toUpperCase()}</span>}
                             {m.notes && m.notes !== 'Invoice created' && m.notes !== 'Invoice edited' && <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'flex-start', gap: 4 }}><AlignLeft size={12} style={{ marginTop: 2, flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', maxWidth: 180 }} title={m.notes}>{m.notes}</span></span>}

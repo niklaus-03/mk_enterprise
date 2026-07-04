@@ -960,6 +960,12 @@ export default function ProductGridStep({
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', transition: 'all 0.3s' }}>
                       {(product.has_loose && (looseQty > 0 || selectedItem?.show_loose_stepper) && qty === 0) ? product.loose_unit : `${product.unit} ${product.weight_per_unit > 0 ? `(${product.weight_per_unit}kg)` : ''}`}
                     </div>
+                    {product.has_incoming_stock && (
+                      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '10px', color: 'var(--warning, #f59e0b)', background: 'rgba(245, 158, 11, 0.1)', padding: '4px 8px', borderRadius: '12px', fontWeight: 500 }}>
+                        <AlertTriangle size={11} />
+                        Wait till vehicle is delivered
+                      </div>
+                    )}
                   </div>
 
                   {/* Bottom: Stepper and Price */}

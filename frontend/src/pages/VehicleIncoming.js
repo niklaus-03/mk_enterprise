@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { deliveryApi, tripApi } from '../utils/api';
 import { formatCurrency } from '../utils/helpers';
-import { Truck, Calendar, CheckCircle, Clock, User, AlertTriangle, FileText, X, Home, ChevronRight, Package, Car, MapPin, ArrowUpRight, ArrowDownLeft, UserCheck, ArrowLeft } from 'lucide-react';
+import { Truck, Calendar, CheckCircle, Clock, User, AlertTriangle, FileText, X, Home, ChevronRight, Package, Car, MapPin, ArrowUpRight, ArrowDownLeft, UserCheck, ArrowLeft, ChevronDown } from 'lucide-react';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 import PaymentModal from '../components/PaymentModal';
 
@@ -29,6 +29,18 @@ export default function VehicleIncoming() {
   const [viewAll, setViewAll] = useState(false);
   const [sortBy, setSortBy] = useState('time_desc');
   const [activeTab, setActiveTab] = useState('all');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
+  const sortOptions = [
+    { value: 'time_desc', label: 'Latest First' },
+    { value: 'time_asc', label: 'Oldest First' },
+    { value: 'vehicle_asc', label: 'Vehicle A-Z' },
+    { value: 'vehicle_desc', label: 'Vehicle Z-A' },
+    { value: 'status', label: 'Status' },
+    { value: 'type', label: 'Type' },
+    { value: 'unpaid_first', label: 'Unpaid First' },
+    { value: 'paid_first', label: 'Paid First' }
+  ];
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const navigate = useNavigate();
 
@@ -226,66 +238,111 @@ export default function VehicleIncoming() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="no-print">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button 
-            onClick={() => navigate(-1)}
-            className="btn btn-outline" 
-            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title="Back"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', marginBottom: '24px' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 auto', minWidth: 0 }}>
+            <button 
+              onClick={() => navigate(-1)}
+              className="btn btn-outline" 
+              style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              title="Back"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
               <Truck size={22} className="text-primary" /> Vehicle Management
             </div>
-            <div className="page-subtitle" style={{ margin: 0 }}>Track incoming, walk-in, and outgoing vehicle movements</div>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select
-            className="form-control"
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-            style={{ width: 155, borderRadius: 8, fontSize: 13, padding: '6px 10px', fontWeight: 600, cursor: 'pointer' }}
-          >
-            <option value="time_desc">Latest First</option>
-            <option value="time_asc">Oldest First</option>
-            <option value="vehicle_asc">Vehicle A-Z</option>
-            <option value="vehicle_desc">Vehicle Z-A</option>
-            <option value="status">Status</option>
-            <option value="type">Type</option>
-            <option value="unpaid_first">Unpaid First</option>
-            <option value="paid_first">Paid First</option>
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', flexShrink: 0 }}>
+          <div style={{ position: 'relative' }}>
+            {/* Desktop View */}
+            <button
+              className="btn btn-outline hide-on-mobile"
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              style={{ width: 155, borderRadius: 8, fontSize: 13, padding: '6px 10px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)' }}
+            >
+              {sortOptions.find(o => o.value === sortBy)?.label || 'Sort'}
+              <ChevronDown size={14} />
+            </button>
+            
+            {/* Mobile View */}
+            <div className="hide-on-desktop" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+              <button 
+                className="btn btn-outline icon-btn-mobile" 
+                onClick={() => setShowSortMenu(!showSortMenu)}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, height: '32px', width: '32px', padding: 0 }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="21" y1="10" x2="3" y2="10"></line><line x1="21" y1="6" x2="3" y2="6"></line><line x1="21" y1="14" x2="3" y2="14"></line><line x1="21" y1="18" x2="3" y2="18"></line></svg>
+              </button>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1, fontWeight: 600 }}>Sort</span>
+            </div>
+
+            {/* Custom Dropdown Menu */}
+            {showSortMenu && (
+              <>
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }} onClick={() => setShowSortMenu(false)} />
+                <div style={{ 
+                  position: 'absolute', top: '100%', right: 0, marginTop: '8px', width: '160px', 
+                  background: 'var(--bg-card)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
+                  border: '1px solid var(--border)', zIndex: 999, overflow: 'hidden', padding: '4px'
+                }}>
+                  {sortOptions.map(option => (
+                    <div 
+                      key={option.value}
+                      onClick={() => { setSortBy(option.value); setShowSortMenu(false); }}
+                      style={{
+                        padding: '10px 14px', fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+                        borderRadius: '8px', transition: 'all 0.15s',
+                        background: sortBy === option.value ? 'var(--primary-light)' : 'transparent',
+                        color: sortBy === option.value ? 'var(--primary)' : 'var(--text-color)',
+                      }}
+                      onMouseEnter={e => { if (sortBy !== option.value) e.currentTarget.style.background = 'var(--border)' }}
+                      onMouseLeave={e => { if (sortBy !== option.value) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      {option.label}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          
           {!viewAll && (
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <div className="hide-on-mobile" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <div style={{ padding: '6px 12px', background: 'var(--primary-light)', color: '#2563eb', borderRadius: 8, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Calendar size={14} /> Today's Report
               </div>
             </div>
           )}
-          <button
-            className={`btn ${viewAll ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => {
-              const next = !viewAll;
-              setViewAll(next);
-              loadAll(selectedDate, next);
-            }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, fontSize: 13 }}
-          >
-            <Calendar size={14} />
-            {viewAll ? "Today's Report" : 'All History'}
-          </button>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+            <button
+              className={`btn ${viewAll ? 'btn-primary' : 'btn-outline'} icon-btn-mobile`}
+              onClick={() => {
+                const next = !viewAll;
+                setViewAll(next);
+                loadAll(selectedDate, next);
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, fontSize: 13 }}
+              title={viewAll ? "Today's Report" : 'All History'}
+            >
+              <Calendar size={14} />
+              <span className="hide-on-mobile">{viewAll ? "Today's Report" : 'All History'}</span>
+            </button>
+            <span className="hide-on-desktop" style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1, fontWeight: 600 }}>
+              {viewAll ? 'Today' : 'History'}
+            </span>
+          </div>
         </div>
+        </div>
+        <div className="page-subtitle" style={{ margin: 0, marginLeft: isMobile ? '0' : '52px', marginTop: isMobile ? '-8px' : '0' }}>Track incoming, walk-in, and outgoing vehicle movements</div>
       </div>
 
       {/* ── TAB BAR ── */}
-      <div style={{
+      <div className="hide-scrollbar" style={{
         display: 'flex', gap: 8, marginBottom: 18,
         background: 'var(--border)', borderRadius: 12, padding: '4px 5px',
-        width: 'fit-content', flexWrap: 'wrap'
+        width: 'fit-content', maxWidth: '100%', overflowX: 'auto', whiteSpace: 'nowrap'
       }}>
         {Object.entries(TAB_CONFIG).map(([key, cfg]) => {
           const isActive = activeTab === key;

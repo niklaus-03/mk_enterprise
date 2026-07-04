@@ -182,11 +182,19 @@ router.get('/', async (req, res) => {
     else if (sort === 'price_asc') sortObj = { price: 1 };
     else if (sort === 'price_desc') sortObj = { price: -1 };
 
+    const Delivery = require('../models/Delivery');
+    const arrivedDeliveries = await Delivery.find({ status: 'arrived' }).select('items.product_id').lean();
+    const arrivedIds = new Set();
+    arrivedDeliveries.forEach(d => {
+      d.items?.forEach(i => {
+        if (i.product_id) arrivedIds.add(i.product_id.toString());
+      });
+    });
+
     if (paginate === 'true') {
       const limitNum = parseInt(limit) || 25;
       const pageNum = parseInt(page) || 1;
       const skip = (pageNum - 1) * limitNum;
-      
       const [products, total] = await Promise.all([
         Product.find(query)
           .populate('created_by', 'username display_name role')
@@ -203,6 +211,11 @@ router.get('/', async (req, res) => {
         products.forEach(p => {
           const ms = p.manager_stock?.find(m => m.manager_id.toString() === req.user.id);
           p.stock = ms ? ms.stock : 0;
+          p.has_incoming_stock = arrivedIds.has(p._id.toString());
+        });
+      } else {
+        products.forEach(p => {
+          p.has_incoming_stock = arrivedIds.has(p._id.toString());
         });
       }
 
@@ -231,6 +244,14 @@ router.get('/', async (req, res) => {
       products.forEach(p => {
         const ms = p.manager_stock?.find(m => m.manager_id.toString() === req.user.id);
         p.stock = ms ? ms.stock : 0;
+        p.has_incoming_stock = arrivedIds.has(p._id.toString());
+      });
+    } else {
+      products.forEach(p => {
+        p.has_incoming_stock = arrivedIds.has(p._id.toString());
+        if (p.name.includes('Coke @ 250ml')) {
+          console.log(`Debug Coke: ${p._id} -> has_incoming_stock: ${p.has_incoming_stock}`);
+        }
       });
     }
 

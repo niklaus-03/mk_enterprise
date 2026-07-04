@@ -547,7 +547,7 @@ router.post('/load-products', auth, requireWalkinOrSupervisor, async (req, res) 
         qty: loadQty,
         stock_before: globalStockBefore,
         stock_after: globalProduct.stock,
-        reference: `Taken by ${managerName} (Walk-in Manager)`,
+        reference: `Taken by ${managerName} (Supply Manager)`,
         notes: `Loaded into vehicle ${admin.active_vehicle_number} by walk-in manager ${managerName}`,
         source: 'walkin_loading',
         vehicle_number: admin.active_vehicle_number,
@@ -960,7 +960,9 @@ router.post('/assign-reinforcement', auth, async (req, res) => {
 router.get('/trip-live-stats/:tripId', auth, async (req, res) => {
   try {
     const tripId = req.params.tripId;
-    const trip = await VehicleTrip.findById(tripId).populate('manager_id', 'username display_name');
+    const trip = await VehicleTrip.findById(tripId)
+      .populate('manager_id', 'username display_name')
+      .populate('initial_stock.product_id', 'name');
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
     // Fetch invoices created by this manager since the trip started
@@ -1009,12 +1011,14 @@ router.get('/trip-live-stats/:tripId', auth, async (req, res) => {
     let liveInventory = [];
     if (trip.initial_stock && trip.initial_stock.length > 0) {
       trip.initial_stock.forEach(item => {
-        const pIdStr = item.product_id ? item.product_id.toString() : item.product_name;
+        const pIdStr = item.product_id 
+          ? (item.product_id._id ? item.product_id._id.toString() : item.product_id.toString()) 
+          : item.product_name;
         const sold = soldQuantities[pIdStr] || 0;
         const remaining = item.quantity - sold;
         liveInventory.push({
-          product_id: item.product_id,
-          product_name: item.product_name,
+          product_id: item.product_id ? (item.product_id._id || item.product_id) : null,
+          product_name: item.product_name || (item.product_id && item.product_id.name) || 'Unknown Product',
           loaded_qty: item.quantity,
           sold_qty: sold,
           remaining_qty: remaining

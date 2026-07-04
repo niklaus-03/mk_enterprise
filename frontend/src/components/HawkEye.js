@@ -102,7 +102,7 @@ export default function HawkEye() {
                           {manager.display_name || manager.username}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <User size={12} /> {manager.role === 'temp_manager' ? 'Temp Manager' : manager.role === 'walkin_manager' ? 'Walk-in Manager' : 'Manager'}
+                          <User size={12} /> {manager.role === 'temp_manager' ? 'Assistant' : manager.role === 'walkin_manager' ? 'Supply Manager' : 'Manager'}
                         </div>
                       </div>
                     </div>

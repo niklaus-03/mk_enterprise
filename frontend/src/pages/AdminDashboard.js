@@ -466,7 +466,34 @@ export default function AdminDashboard() {
         // Create mode: support multiple suppliers
         const suppliersToSave = selectedSuppliers.length > 0 ? selectedSuppliers : (deliveryForm.supplier.trim() ? [deliveryForm.supplier.trim()] : ['']);
         for (const supplierName of suppliersToSave) {
-          const payload = { ...deliveryForm, supplier: supplierName, items: filteredItems };
+          const sData = (deliveryForm.suppliers_data || []).find(s => s.supplier_name === supplierName);
+          let sItems = filteredItems;
+          let sCash = deliveryForm.driver_cash;
+          if (sData) {
+            sItems = (sData.items || []).filter(i => i.item_name && i.item_name.trim() !== '').map(i => {
+              const item = { ...i, quantity: parseFloat(i.quantity) || 0 };
+              if (!item.product_id) delete item.product_id;
+              return item;
+            });
+            if (sData.cash_given !== undefined && sData.cash_given !== '') {
+              sCash = parseFloat(sData.cash_given) || 0;
+            }
+          } else {
+            sItems = sItems.map(i => {
+              const item = { ...i };
+              if (!item.product_id) delete item.product_id;
+              return item;
+            });
+          }
+
+          const payload = { 
+            ...deliveryForm, 
+            supplier: supplierName, 
+            items: sItems,
+            driver_cash: sCash
+          };
+          delete payload.suppliers_data;
+          
           const newDelivery = await deliveryApi.create(payload);
           if (payload.vehicle_number && payload.vehicle_number.trim().toUpperCase() === 'WALK-IN') {
             await deliveryApi.updateStatus(newDelivery._id, 'delivered');
@@ -941,11 +968,14 @@ export default function AdminDashboard() {
       {/* Stats */}
       {/* Notification bar — shows if any deliveries are arriving soon */}
       {arrivingSoon.length > 0 && (
-        <div style={{
-          background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 8,
-          padding: '10px 16px', marginBottom: 14, display: 'flex',
-          alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
-        }}>
+        <div 
+          onClick={scrollToDeparture}
+          style={{
+            background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 8,
+            padding: '10px 16px', marginBottom: 14, display: 'flex',
+            alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+            cursor: 'pointer'
+          }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Truck size={18} style={{ color: '#f59e0b' }} />
             <div>
@@ -957,9 +987,6 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
-          <button className="btn btn-warning btn-sm" onClick={scrollToDeparture}>
-            View Details
-          </button>
         </div>
       )}
 
@@ -1493,32 +1520,35 @@ export default function AdminDashboard() {
                   </button>
                 )}
               </div>
-              <button
-                className="btn btn-sm"
-                style={{ background: '#d97706', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
-                onClick={() => setShowWalkinModal(true)}
-              >
-                <UserCheck size={14} /> Walk-in Delivery
-              </button>
+              <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: '#d97706', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: 1, padding: '4px 6px', fontSize: 11, whiteSpace: 'nowrap' }}
+                  onClick={() => setShowWalkinModal(true)}
+                >
+                  <UserCheck size={12} /> Walk-in
+                </button>
 
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => {
-                  setEditDeliveryId(null);
-                  setDeliveryForm({
-                    vehicle_number: '', driver_name: '', supplier: '',
-                    expected_arrival: getNowDateTimeLocal(), // always default to now
-                    notes: '',
-                    items: [
-                      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
-                      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
-                    ]
-                  });
-                  setShowDeliveryForm(d => !d);
-                }}
-              >
-                {showDeliveryForm && !editDeliveryId ? '✕ Cancel' : '+ Add Vehicle'}
-              </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '4px 6px', fontSize: 11, whiteSpace: 'nowrap' }}
+                  onClick={() => {
+                    setEditDeliveryId(null);
+                    setDeliveryForm({
+                      vehicle_number: '', driver_name: '', supplier: '',
+                      expected_arrival: getNowDateTimeLocal(), // always default to now
+                      notes: '',
+                      items: [
+                        { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+                        { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+                      ]
+                    });
+                    setShowDeliveryForm(d => !d);
+                  }}
+                >
+                  {showDeliveryForm && !editDeliveryId ? '✕ Cancel' : '+ Vehicle'}
+                </button>
+              </div>
 
               </div>
               <div className="incoming-header-sort">
@@ -2554,7 +2584,7 @@ export default function AdminDashboard() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
                     <thead>
                       <tr style={{ background: '#f8fafc' }}>
-                        {['Vehicle', 'Driver/Supplier', 'Expected At', 'Items', 'Actions'].map(h => (
+                        {['Vehicle', 'Driver/Supplier', 'Expected At', 'Items'].map(h => (
                           <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -2644,65 +2674,7 @@ export default function AdminDashboard() {
                               </div>
                             </td>
 
-                            <td style={{ padding: '10px 12px' }}>
-                              <div className="flex gap-1" style={{ flexWrap: 'wrap' }}>
-                                {/* Only show Delivered / Not Delivered for non-completed entries */}
-                                {d.status !== 'delivered' && d.status !== 'not_delivered' && (
-                                  <>
-                                    <button
-                                      className="btn btn-success btn-sm"
-                                      style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (window.confirm(`Mark as delivered? Stock will be updated automatically for matched products.`))
-                                          handleDeliveryStatus(d._id, 'delivered');
-                                      }}
-                                    ><CheckCircle size={11} /> Delivered</button>
-                                    <button
-                                      className="btn btn-outline btn-sm"
-                                      style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                      onClick={(e) => { e.stopPropagation(); handleDeliveryStatus(d._id, 'not_delivered'); }}
-                                    ><XCircle size={11} /> Not Delivered</button>
-                                    <button
-                                      className="btn btn-warning btn-sm"
-                                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                                      onClick={(e) => { e.stopPropagation(); openEditDelivery(d); }}
-                                    ><Edit2 size={11} /></button>
-                                  </>
-                                )}
-                                {/* Allow re-open if not_delivered */}
-                                {d.status === 'not_delivered' && (
-                                  <button
-                                    className="btn btn-outline btn-sm"
-                                    style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                    onClick={(e) => { e.stopPropagation(); handleDeliveryStatus(d._id, 'pending'); }}
-                                  ><RotateCcw size={11} /> Reopen</button>
-                                )}
-                                {/* Walk-in Delivery specific: Paid button only for walk-in entries */}
-                                {d.vehicle_number?.toUpperCase() === 'WALK-IN' && d.payment_status !== 'paid' && !isWalkinOlderThan3Days && (
-                                  <button
-                                    className="btn btn-warning btn-sm"
-                                    style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setPaymentDelivery(d);
-                                    }}
-                                  ><CreditCard size={11} /> Mark Paid {(() => {
-                                      let amt = d.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0;
-                                      amt = Math.max(0, amt - (d.amount_paid || 0));
-                                      return amt > 0 ? `(₹${amt.toLocaleString('en-IN')})` : '';
-                                    })()}</button>
-                                )}
-                                {d.status !== 'delivered' && (
-                                  <button
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteDelivery(d._id); }}
-                                  ><Trash2 size={11} /></button>
-                                )}
-                              </div>
-                            </td>
+
                           </tr>
                         );
                       })}
@@ -4200,25 +4172,25 @@ export default function AdminDashboard() {
         {/* Low Stock — Redesigned, Responsive */}
         <div className="card" style={{ overflow: 'hidden' }}>
           {/* Card Header */}
-          <div className="card-header" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #fef3c7, #fde68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <AlertTriangle size={16} style={{ color: '#d97706' }} />
+          <div className="card-header" style={{ flexWrap: 'nowrap', gap: 6, alignItems: 'center', padding: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #fef3c7, #fde68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <AlertTriangle size={14} style={{ color: '#d97706' }} />
               </div>
-              <div>
-                <div className="card-title" style={{ margin: 0, lineHeight: 1.2 }}>{t('Low Stock Alerts', 'कम स्टॉक')}</div>
+              <div style={{ minWidth: 0 }}>
+                <div className="card-title" style={{ margin: 0, lineHeight: 1.2, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('Low Stock Alerts', 'कम स्टॉक')}</div>
                 {data.lowStockProducts?.length > 0 && (
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                    <span style={{ color: '#b45309', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  <div style={{ marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ color: '#b45309', fontSize: 11, fontWeight: 700 }}>
                       {data.lowStockProducts.length} item{data.lowStockProducts.length !== 1 ? 's' : ''} need restock
                     </span>
                   </div>
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap', alignItems: 'center', flexShrink: 0 }}>
               {data.lowStockProducts?.length > 0 && (
-                <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
+                <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11 }} onClick={() => {
                   const threshold = parseInt(settings?.low_stock_threshold) || 10;
                   const source = activeListFilter
                     ? data.lowStockProducts.filter(p => {
@@ -4242,9 +4214,9 @@ export default function AdminDashboard() {
                   initialItems.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1, selected: false });
                   setEditableLowStock(initialItems);
                   setShowLowStockEditor(true);
-                }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
+                }}><Edit2 size={12} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
               )}
-              <Link to="/products" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }}>{t('Manage', 'प्रबंधन')}</Link>
+              <Link to="/products" className="btn btn-outline btn-sm" style={{ padding: '4px 8px', fontSize: 11, whiteSpace: 'nowrap' }}>{t('Manage', 'प्रबंधन')}</Link>
             </div>
           </div>
 

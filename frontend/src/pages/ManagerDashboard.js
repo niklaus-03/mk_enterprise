@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, customerApi, productApi, productListApi, walkinApi } from '../utils/api';
+import { dashboardApi, settlementApi, orderApi, deliveryApi, supplierApi, customerApi, productApi, managerApi, productListApi } from '../utils/api';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare, List, Minus, X } from 'lucide-react';
+import { Calendar, Clock, Users, Package, FileText, Truck, AlertTriangle, Briefcase, ChevronDown, ChevronUp, ArrowUpDown, Lightbulb, CheckCircle, XCircle, Edit2, RotateCcw, CreditCard, Trash2, Check, ClipboardList, UserCheck, Search, Plus, Wallet, Activity, User, Phone, MessageSquare, Download, List, Minus, Save, X } from 'lucide-react';
 import WalkInDeliveryModal from '../components/WalkInDeliveryModal';
+import WalkinManagerAssignModal from '../components/WalkinManagerAssignModal';
 import PaymentModal from '../components/PaymentModal';
 import DeliveryDetailsModal from '../components/DeliveryDetailsModal';
 
@@ -73,7 +74,9 @@ function useLiveClock() {
 }
 
 export default function ManagerDashboard() {
-  const { isAdmin, user } = useAuth();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'supervisor';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [salesSortDesc, setSalesSortDesc] = useState(true);
@@ -81,18 +84,11 @@ export default function ManagerDashboard() {
   const [showTodaySales, setShowTodaySales] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [showWalkinMatchModal, setShowWalkinMatchModal] = useState(false);
+  const [showWalkinManagerModal, setShowWalkinManagerModal] = useState(false);
   const [paymentDelivery, setPaymentDelivery] = useState(null);
   const [detailsDelivery, setDetailsDelivery] = useState(null);
+  const [allManagers, setAllManagers] = useState([]);
   const [walkinMatch, setWalkinMatch] = useState(null);
-  const [activeTrip, setActiveTrip] = useState(null);
-  useEffect(() => {
-    if (user?.role === 'walkin_manager') {
-      walkinApi.getActiveTrip().then(res => {
-        if (res.active) setActiveTrip(res.trip);
-      }).catch(()=>{});
-    }
-  }, [user]);
-  const walkinTripStarted = user?.role === 'walkin_manager' && activeTrip?.trip_started;
   const salesPanelRef = React.useRef(null);
   const statementPanelRef = React.useRef(null);
   const duesPanelRef = React.useRef(null);
@@ -114,6 +110,10 @@ export default function ManagerDashboard() {
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [showAddSettlement, setShowAddSettlement] = useState(false);
   const addSettlementRef = React.useRef(null);
+
+  const [showPartyList, setShowPartyList] = useState(false);
+  const partyInputRef = React.useRef(null);
+  const [partyDropdownPos, setPartyDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   const [settlementForm, setSettlementForm] = useState({
     type: '', party_name: '', amount: '', mode: 'cash',
     reference: '', notes: '', received_category: 'not_applicable'
@@ -134,12 +134,15 @@ export default function ManagerDashboard() {
   const [modalSearchQuery, setModalSearchQuery] = useState('');
   const [modalSort, setModalSort] = useState('');
   const [modalSortOpen, setModalSortOpen] = useState(false);
+  const [focusedItemIdx, setFocusedItemIdx] = useState(null);
   const [productLists, setProductLists] = useState([]);
   const [activeListFilter, setActiveListFilter] = useState(null);
   const [showListFilter, setShowListFilter] = useState(false);
 
   // Fix 5: Supplier management within Settlement
   const [showSuppliers, setShowSuppliers] = useState(false);
+  const [suppliers, setSuppliers] = useState([]);
+  const [supplierSearch, setSupplierSearch] = useState('');
   const [showAddSupplier, setShowAddSupplier] = useState(false);
 
   useEffect(() => {
@@ -150,9 +153,6 @@ export default function ManagerDashboard() {
     }
     return () => { document.body.style.overflow = 'unset'; };
   }, [showAddSettlement]);
-
-  const [suppliers, setSuppliers] = useState([]);
-  const [supplierSearch, setSupplierSearch] = useState('');
   const [supplierForm, setSupplierForm] = useState({ name: '', phone: '', address: '', notes: '' });
   const [supplierSaving, setSupplierSaving] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null); // for history view
@@ -194,13 +194,17 @@ export default function ManagerDashboard() {
   const [settlementSearch, setSettlementSearch] = useState('');
   const [settlementSortDate, setSettlementSortDate] = useState('desc');
   const [settlementSortAmount, setSettlementSortAmount] = useState('');
+  const [settlementSortRole, setSettlementSortRole] = useState('');
   const [settlementSortOpen, setSettlementSortOpen] = useState(false);
   // Combined sort key for SortDropdown
-  const settlementSortKey = settlementSortAmount === 'desc' ? 'amount_desc'
+  const settlementSortKey = settlementSortRole === 'admin' ? 'admin_first'
+    : settlementSortRole === 'manager' ? 'manager_first'
+    : settlementSortAmount === 'desc' ? 'amount_desc'
     : settlementSortAmount === 'asc' ? 'amount_asc'
-      : settlementSortDate === 'asc' ? 'date_asc' : 'date_desc';
+    : settlementSortDate === 'asc' ? 'date_asc' : 'date_desc';
   // Fix 3: View mode — 'date' = selected date, 'all' = full history
   const [settlementViewMode, setSettlementViewMode] = useState('date');
+
   const scrollToPanel = (ref) => {
     setTimeout(() => {
       if (ref?.current) {
@@ -209,7 +213,6 @@ export default function ManagerDashboard() {
     }, 80);
   };
 
-  // Global selected date — drives full dashboard refresh
   const { globalDate: selectedDate, setGlobalDate: setSelectedDate, t, settings } = useApp();
   // Reactive — recalculates on every render when selectedDate changes
   const isToday = selectedDate === getTodayIST();
@@ -282,7 +285,6 @@ export default function ManagerDashboard() {
   const [orders, setOrders] = useState([]);
   const [showDeparture, setShowDeparture] = useState(false);
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
-  const [confirmDeliveryId, setConfirmDeliveryId] = useState(null);
   // Helper: get current datetime in datetime-local input format (IST)
   const getNowDateTimeLocal = () => {
     const now = new Date();
@@ -291,19 +293,45 @@ export default function ManagerDashboard() {
     return ist.toISOString().slice(0, 16);
   };
 
+  const [showLowStockMenu, setShowLowStockMenu] = useState(false);
+  const [selectedLowLists, setSelectedLowLists] = useState([]);
+
   const [deliveryForm, setDeliveryForm] = useState({
-    vehicle_number: '', driver_name: '', supplier: '',
+    vehicle_number: '', driver_name: '', driver_cash: '', supplier: '',
     expected_arrival: getNowDateTimeLocal(), // default = today now
     notes: '',
     items: [
-      { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' },
-      { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+      { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
     ],
   });
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [editDeliveryId, setEditDeliveryId] = useState(null);
-  const [supplierSuggestions, setSupplierSuggestions] = useState([]);
-  const [deliverySupplierInput, setDeliverySupplierInput] = useState('');
+  const [supplierSuggestions, setSupplierSuggestions] = useState(null);
+  const [selectedSuppliers, setSelectedSuppliers] = useState([]);
+  const [vehicleFocus, setVehicleFocus] = useState(false);
+  const [driverFocus, setDriverFocus] = useState(false);
+
+  // Sync selectedSuppliers with deliveryForm.suppliers_data
+  useEffect(() => {
+    setDeliveryForm(prev => {
+      let updated = prev.suppliers_data || [];
+      // Remove any that are no longer in selectedSuppliers
+      updated = updated.filter(s => selectedSuppliers.includes(s.supplier_name));
+      // Add new ones
+      selectedSuppliers.forEach(name => {
+        if (!updated.find(s => s.supplier_name === name)) {
+          updated.push({ 
+            supplier_name: name, 
+            cash_given: '', 
+            items: [{ item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }] 
+          });
+        }
+      });
+      return { ...prev, suppliers_data: updated };
+    });
+  }, [selectedSuppliers]);
+
   const [deliveryDateFilter, setDeliveryDateFilter] = useState('');
   const [deliveryDateInput, setDeliveryDateInput] = useState(''); // temp input before OK
   const [showWalkinModal, setShowWalkinModal] = useState(false);
@@ -313,6 +341,12 @@ export default function ManagerDashboard() {
   const DEFAULT_UNITS = ['bag', 'kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'quintal', 'ton', 'mtr', 'dozen', 'pkt', 'strip'];
   const [customUnits, setCustomUnits] = useState(() => {
     try { return JSON.parse(localStorage.getItem('custom_units') || '[]'); } catch { return []; }
+  });
+  const [savedVehicles, setSavedVehicles] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('mk_custom_vehicles') || '[]'); } catch { return []; }
+  });
+  const [savedDrivers, setSavedDrivers] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('mk_custom_drivers') || '[]'); } catch { return []; }
   });
   // Always merge with fresh localStorage so units saved in any form appear everywhere
   const allUnits = [...new Set([
@@ -332,17 +366,18 @@ export default function ManagerDashboard() {
     localStorage.setItem('custom_units', JSON.stringify(updated));
   };
 
+
   const [productSuggestions, setProductSuggestions] = useState([]);
   const [productSuggestIdx, setProductSuggestIdx] = useState(null); // which row is open
 
   const searchSuppliers = (q) => {
-    if (!q.trim()) { setSupplierSuggestions([]); return; }
+    if (!q.trim()) { setSupplierSuggestions(null); return; }
     // Search both supplier records and settlement party names
     supplierApi.getAll(q)
       .then(results => {
         setSupplierSuggestions(results);
         // If few results, also check settlement party names
-        if (results.length < 3 && settlementData?.partyNames?.length > 0) {
+        if (results.length < 3 && settlementData.partyNames?.length > 0) {
           const extra = settlementData.partyNames
             .filter(p => p.toLowerCase().includes(q.toLowerCase()) && !results.find(r => r.name === p))
             .slice(0, 5)
@@ -361,7 +396,7 @@ export default function ManagerDashboard() {
   const checkAutoAddRow = (items) => {
     const last = items[items.length - 1];
     if (last && last.item_name.trim()) {
-      return [...items, { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' }];
+      return [...items, { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }];
     }
     return items;
   };
@@ -390,36 +425,103 @@ export default function ManagerDashboard() {
 
   // Notification: count active (non-delivered) deliveries today
   const activeDeliveries = deliveries.filter(d => d.status !== 'delivered' && d.status !== 'not_delivered');
-  const arrivingSoon = deliveries.filter(d => d.status === 'arriving_soon');
+  const arrivingSoon = deliveries.filter(d => d.status === 'arriving_soon' && d.vehicle_number !== 'WALK-IN');
 
   useEffect(() => {
     const today = getTodayIST();
     loadDeliveries(today);
     loadOrders(today);
+    loadSuppliers();
+    managerApi.getAll()
+      .then(res => setAllManagers(res?.managers || []))
+      .catch(() => {});
   }, []);
+
+  // Prevent background scrolling when major modals are open
+  const isModalOpen = showDeliveryForm || showWalkinModal || showStatement || showAddSettlement || showProducts || showSuppliers || showPartyList;
+  useEffect(() => {
+    if (isModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isModalOpen]);
 
   const handleSaveDelivery = async () => {
     if (!deliveryForm.vehicle_number) return toast.error('Vehicle number required');
     if (!deliveryForm.expected_arrival) return toast.error('Expected arrival time required');
-    if (!deliveryForm.items[0]?.item_name) return toast.error('At least one item required');
-    const hasEmptyQty = deliveryForm.items.some(i => i.item_name && (!i.quantity || parseFloat(i.quantity) <= 0));
-    if (hasEmptyQty) return toast.error('Please enter a valid quantity for all items before saving.');
+    // Items are now optional for vehicle entries
     setDeliverySaving(true);
     try {
-      const payload = {
-        ...deliveryForm,
-        items: deliveryForm.items.filter(i => i.item_name).map(i => ({
-          ...i, quantity: parseFloat(i.quantity) || 0,
-        })),
-      };
+      const filteredItems = deliveryForm.items.filter(i => i.item_name).map(i => ({
+        ...i, quantity: parseFloat(i.quantity) || 0,
+      }));
+
       if (editDeliveryId) {
+        // Edit mode: single supplier only
+        const payload = { ...deliveryForm, items: filteredItems };
         await deliveryApi.update(editDeliveryId, payload);
         toast.success('Delivery updated');
       } else {
-        await deliveryApi.create(payload);
-        toast.success('Delivery entry saved');
+        // Create mode: support multiple suppliers
+        const suppliersToSave = selectedSuppliers.length > 0 ? selectedSuppliers : (deliveryForm.supplier.trim() ? [deliveryForm.supplier.trim()] : ['']);
+        for (const supplierName of suppliersToSave) {
+          const sData = (deliveryForm.suppliers_data || []).find(s => s.supplier_name === supplierName);
+          let sItems = filteredItems;
+          let sCash = deliveryForm.driver_cash;
+          if (sData) {
+            sItems = (sData.items || []).filter(i => i.item_name && i.item_name.trim() !== '').map(i => {
+              const item = { ...i, quantity: parseFloat(i.quantity) || 0 };
+              if (!item.product_id) delete item.product_id;
+              return item;
+            });
+            if (sData.cash_given !== undefined && sData.cash_given !== '') {
+              sCash = parseFloat(sData.cash_given) || 0;
+            }
+          } else {
+            sItems = sItems.map(i => {
+              const item = { ...i };
+              if (!item.product_id) delete item.product_id;
+              return item;
+            });
+          }
+
+          const payload = { 
+            ...deliveryForm, 
+            supplier: supplierName, 
+            items: sItems,
+            driver_cash: sCash
+          };
+          delete payload.suppliers_data;
+          
+          const newDelivery = await deliveryApi.create(payload);
+          if (payload.vehicle_number && payload.vehicle_number.trim().toUpperCase() === 'WALK-IN') {
+            await deliveryApi.updateStatus(newDelivery._id, 'delivered');
+          }
+        }
+        toast.success(suppliersToSave.length > 1 ? `${suppliersToSave.length} delivery entries saved for each supplier` : 'Delivery entry saved');
       }
-      setDeliveryForm({ vehicle_number: '', driver_name: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' }, { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' }] });
+
+      if (deliveryForm.vehicle_number) {
+        const freshV = (() => { try { return JSON.parse(localStorage.getItem('mk_custom_vehicles') || '[]'); } catch { return []; } })();
+        if (!freshV.includes(deliveryForm.vehicle_number)) {
+          const updated = [...freshV, deliveryForm.vehicle_number];
+          setSavedVehicles(updated);
+          localStorage.setItem('mk_custom_vehicles', JSON.stringify(updated));
+        }
+      }
+      if (deliveryForm.driver_name) {
+        const freshD = (() => { try { return JSON.parse(localStorage.getItem('mk_custom_drivers') || '[]'); } catch { return []; } })();
+        if (!freshD.includes(deliveryForm.driver_name)) {
+          const updated = [...freshD, deliveryForm.driver_name];
+          setSavedDrivers(updated);
+          localStorage.setItem('mk_custom_drivers', JSON.stringify(updated));
+        }
+      }
+
+      setDeliveryForm({ vehicle_number: '', driver_name: '', driver_cash: '', supplier: '', expected_arrival: getNowDateTimeLocal(), notes: '', items: [{ item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }, { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' }] });
+      setSelectedSuppliers([]);
       setShowDeliveryForm(false);
       setEditDeliveryId(null);
       loadDeliveries(getTodayIST());
@@ -436,13 +538,13 @@ export default function ManagerDashboard() {
       const refreshDate = deliveryDateFilter || getTodayIST();
       loadDeliveries(refreshDate);
       // Refresh dashboard data so stock/price shows updated values immediately
-      dashboardApi.get(selectedDate).then(res => setData(res)).catch(() => { });
+      dashboardApi.get(selectedDate).then(setData).catch(() => { });
     } catch (err) { toast.error(err.message); }
   };
 
-  const handleMarkWalkinPaid = async (id, mode, notes, paidAmt) => {
+  const handleMarkWalkinPaid = async (id, mode, notes, paidAmt, paymentAction) => {
     try {
-      await deliveryApi.updatePayment(id, 'paid', mode || 'cash', notes, paidAmt);
+      await deliveryApi.updatePayment(id, 'paid', mode || 'cash', notes, paidAmt, paymentAction);
       toast.success('Walk-in delivery marked as paid');
       setPaymentDelivery(null);
       loadDeliveries(deliveryDateFilter || getTodayIST());
@@ -460,11 +562,13 @@ export default function ManagerDashboard() {
 
   const openEditDelivery = (d) => {
     setEditDeliveryId(d._id);
+    setSelectedSuppliers([]);
     // Convert UTC arrival to local datetime-local input format
     const localStr = new Date(d.expected_arrival).toISOString().slice(0, 16);
     setDeliveryForm({
       vehicle_number: d.vehicle_number,
       driver_name: d.driver_name || '',
+      driver_cash: d.driver_cash || '',
       supplier: d.supplier || '',
       expected_arrival: localStr,
       notes: d.notes || '',
@@ -590,18 +694,14 @@ export default function ManagerDashboard() {
         if (phoneCheck.registered) {
           setWalkinConfirmModal({
             title: '⚠️ Phone Number Warning',
-            message: `This phone number belongs to registered customer "${phoneCheck.registered.name}" (Balance: ₹${phoneCheck.registered.balance}).
-
-Are you SURE you want to create a separate Walk-in due?`,
+            message: `This phone number belongs to registered customer "${phoneCheck.registered.name}" (Balance: ₹${phoneCheck.registered.balance}).\n\nAre you SURE you want to create a separate Walk-in due?`,
             onConfirm: () => executeCreateWalkinDue(true)
           });
           return;
         } else if (phoneCheck.walkin_invoices && phoneCheck.walkin_invoices.length > 0) {
           setWalkinConfirmModal({
             title: '⚠️ Phone Number Warning',
-            message: `This phone number already has ${phoneCheck.walkin_invoices.length} unpaid walk-in dues totaling ₹${phoneCheck.total_walkin_due}.
-
-Are you sure you want to add another Walk-in due?`,
+            message: `This phone number already has ${phoneCheck.walkin_invoices.length} unpaid walk-in dues totaling ₹${phoneCheck.total_walkin_due}.\n\nAre you sure you want to add another Walk-in due?`,
             onConfirm: () => executeCreateWalkinDue(false)
           });
           return;
@@ -685,7 +785,7 @@ Are you sure you want to add another Walk-in due?`,
     const p = data.lowStockProducts.find(x => x._id === id);
     const threshold = parseInt(settings?.low_stock_threshold) || 10;
     const minStock = (p?.custom_low_stock != null) ? p.custom_low_stock : threshold;
-    const defaultQty = Math.max(0, minStock - (p?.stock ?? 0));
+    const defaultQty = p?.saved_order_qty > 0 ? p.saved_order_qty : Math.max(0, minStock - (p?.stock ?? 0));
     setOrderQty(prev => ({
       ...prev,
       [id]: Math.max(0, (prev[id] !== undefined ? prev[id] : defaultQty) + delta),
@@ -800,21 +900,24 @@ Are you sure you want to add another Walk-in due?`,
       return `  • ${p.name}: Current ${p.stock} ${p.unit} → *Please send ${toOrder} ${p.unit}*`;
     }).join('\n');
     const msg = encodeURIComponent(
-      `*Low Stock Alert — ${settings?.business_name || 'My Shop'}*
-Date: ${today}
-` +
-      `━━━━━━━━━━━━━━━━
-${lines}
-━━━━━━━━━━━━━━━━
-` +
-      `Total items needing restock: *${data.lowStockProducts.length}*
-Please arrange stock at the earliest.`
+      `*Low Stock Alert — ${settings?.business_name || 'My Shop'}*\nDate: ${today}\n` +
+      `━━━━━━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━━━━━━\n` +
+      `Total items needing restock: *${data.lowStockProducts.length}*\nPlease arrange stock at the earliest.`
     );
     window.open(`https://wa.me/?text=${msg}`, '_blank');
   };
 
   return (
     <div>
+      {showWalkinManagerModal && (
+        <WalkinManagerAssignModal 
+          trip={null}
+          onClose={() => setShowWalkinManagerModal(false)}
+          onSuccess={() => {
+            dashboardApi.get(selectedDate).then(setData).catch(() => {});
+          }}
+        />
+      )}
       {showWalkinModal && (
         <WalkInDeliveryModal
           isOpen={showWalkinModal}
@@ -822,7 +925,7 @@ Please arrange stock at the earliest.`
           onSuccess={() => {
             loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, settlementSortDate, settlementSortAmount);
             loadDeliveries(deliveryDateFilter || getTodayIST());
-            dashboardApi.get(selectedDate).then(res => setData(res)).catch(() => {});
+            dashboardApi.get(selectedDate).then(setData).catch(() => {});
             loadSuppliers('');
           }}
           suppliers={suppliers}
@@ -836,13 +939,22 @@ Please arrange stock at the earliest.`
         />
       )}
 
+      {showWalkinMatchModal && walkinMatch && (
+        <div className="modal-overlay" onClick={() => setShowWalkinMatchModal(false)}>
+          {/* ... existing modal code ... */}
+        </div>
+      )}
+
       {/* ── MODALS ── */}
       {paymentDelivery && (
         <PaymentModal 
           isOpen={true} 
           onClose={() => setPaymentDelivery(null)}
-          onConfirm={(mode, notes) => handleMarkWalkinPaid(paymentDelivery._id, mode, notes)}
-          amount={paymentDelivery?.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0}
+          onConfirm={(mode, notes, paidAmt, paymentAction) => handleMarkWalkinPaid(paymentDelivery._id, mode, notes, paidAmt, paymentAction)}
+          amount={(() => {
+            const baseAmt = paymentDelivery?.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0) || 0;
+            return Math.max(0, baseAmt - (paymentDelivery?.amount_paid || 0));
+          })()}
         />
       )}
       
@@ -857,11 +969,14 @@ Please arrange stock at the earliest.`
       {/* Stats */}
       {/* Notification bar — shows if any deliveries are arriving soon */}
       {arrivingSoon.length > 0 && (
-        <div style={{
-          background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 8,
-          padding: '10px 16px', marginBottom: 14, display: 'flex',
-          alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
-        }}>
+        <div 
+          onClick={scrollToDeparture}
+          style={{
+            background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 8,
+            padding: '10px 16px', marginBottom: 14, display: 'flex',
+            alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+            cursor: 'pointer'
+          }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Truck size={18} style={{ color: '#f59e0b' }} />
             <div>
@@ -873,9 +988,6 @@ Please arrange stock at the earliest.`
               </div>
             </div>
           </div>
-          <button className="btn btn-warning btn-sm" onClick={scrollToDeparture}>
-            View Details
-          </button>
         </div>
       )}
 
@@ -884,8 +996,6 @@ Please arrange stock at the earliest.`
       {/* Stats — all driven by selectedDate via global calendar */}
 
       <div className="stats-grid">
-
-
 
         {/* Today Sales card — dropdown + per-card calendar */}
         <div className="stat-card green" style={{ cursor: 'pointer', position: 'relative' }}
@@ -914,110 +1024,162 @@ Please arrange stock at the earliest.`
 
         {/* Pending Dues card — dropdown + per-card calendar */}
         {/* Pending Dues — calendar removed from card, kept only inside dropdown */}
-        {user?.role !== 'temp_manager' && (
-          <div className="stat-card red" style={{ cursor: 'pointer' }}
-            onClick={() => setShowAllDues(d => {
-              if (!d) {
-                closeAllSummaryPanels('dues');
-                setDuesCardDate(selectedDate);
-                setDueDateInvoices(null);
-                loadDueDateData(selectedDate);
-                scrollToPanel(duesPanelRef);
-              }
-              return !d;
-            })}
-          >
-            <div className="stat-icon"><Clock size={24} /></div>
-            <div className="stat-value">{fc(data.pendingBalance)}</div>
-            <div className="stat-label">
-              {user?.role === 'walkin_manager' ? t("Customer / Due Summary", 'ग्राहक/बकाया विवरण') : t("Today's Pending Dues", 'आज का बकाया')}
-              <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2, fontWeight: 600 }}>
-                {showAllDues ? '▲ Hide' : '▼ View All Unpaid'}
-              </div>
+        <div className="stat-card red" style={{ cursor: 'pointer' }}
+          onClick={() => setShowAllDues(d => {
+            if (!d) {
+              closeAllSummaryPanels('dues');
+              setDuesCardDate(selectedDate);
+              setDueDateInvoices(null);
+              loadDueDateData(selectedDate);
+              scrollToPanel(duesPanelRef);
+            }
+            return !d;
+          })}
+        >
+          <div className="stat-icon"><Clock size={24} /></div>
+          <div className="stat-value">{fc(data.pendingBalance)}</div>
+          <div className="stat-label">
+            {t("Today's Pending Dues", 'आज का बकाया')}
+            <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2, fontWeight: 600 }}>
+              {showAllDues ? '▲ Hide' : '▼ View All Unpaid'}
             </div>
           </div>
-        )}
+        </div>
 
         {/* Customers — calendar removed, opens full customer list */}
-        {user?.role !== 'temp_manager' && (
-          <div className="stat-card purple" style={{ cursor: 'pointer' }}
-            onClick={() => {
-              setShowCustomerDues(d => {
-                if (!d) {
-                  closeAllSummaryPanels('customers');
-                  loadAllCustomers();
-                  scrollToPanel(customersPanelRef);
-                }
-                return !d;
-              });
-            }}
-          >
-            <div className="stat-icon"><Users size={24} /></div>
-            <div className="stat-value">{data.pendingCustomers?.length || 0}</div>
-            <div className="stat-label">
-              {user?.role === 'walkin_manager' ? 'Customer Summary' : t('Customers with Dues', 'बकाया ग्राहक')}
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>
-                {showCustomerDues ? '▲ Hide' : '▼ View All Customers'}
-              </div>
+        <div className="stat-card purple" style={{ cursor: 'pointer' }}
+          onClick={() => {
+            setShowCustomerDues(d => {
+              if (!d) {
+                closeAllSummaryPanels('customers');
+                loadAllCustomers();
+                scrollToPanel(customersPanelRef);
+              }
+              return !d;
+            });
+          }}
+        >
+          <div className="stat-icon"><Users size={24} /></div>
+          <div className="stat-value">{data.pendingCustomers?.length || 0}</div>
+          <div className="stat-label">
+            {t('Customers with Dues', 'बकाया ग्राहक')}
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>
+              {showCustomerDues ? '▲ Hide' : '▼ View All Customers'}
             </div>
           </div>
-        )}
+        </div>
+
+
 
         {/* Products — shows top seller of day on card */}
-        {user?.role !== 'temp_manager' && (
-          <div className="stat-card blue" style={{ cursor: 'pointer' }}
-            onClick={() => { setShowProducts(d => { if (!d) { closeAllSummaryPanels('products'); scrollToPanel(productsPanelRef); } return !d; }); }}
-          >
-            <div className="stat-icon"><Package size={24} /></div>
-            <div className="stat-value">{user?.role === 'walkin_manager' && !walkinTripStarted ? 0 : data.productCount}</div>
-            <div className="stat-label">
-              {t('Products', 'उत्पाद')}
-              {/* Show top selling product of the day if available */}
-              {(user?.role !== 'walkin_manager' || walkinTripStarted) && data.topProducts?.[0] && (
-                <div style={{ fontSize: 10, color: 'var(--success)', marginTop: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <span style={{ color: 'var(--success)' }}>↑</span>
-                  {data.topProducts[0].product_name}
-                </div>
-              )}
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1, fontWeight: 600 }}>
-                {showProducts ? '▲ Hide' : '▼ View Stock & Price'}
+        <div className="stat-card blue" style={{ cursor: 'pointer' }}
+          onClick={() => { setShowProducts(d => { if (!d) { closeAllSummaryPanels('products'); scrollToPanel(productsPanelRef); } return !d; }); }}
+        >
+          <div className="stat-icon"><Package size={24} /></div>
+          <div className="stat-value">{data.productCount}</div>
+          <div className="stat-label">
+            {t('Products', 'उत्पाद')}
+            {/* Show top selling product of the day if available */}
+            {data.topProducts?.[0] && (
+              <div style={{ fontSize: 10, color: 'var(--success)', marginTop: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ color: 'var(--success)' }}>↑</span>
+                {data.topProducts[0].product_name}
               </div>
+            )}
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1, fontWeight: 600 }}>
+              {showProducts ? '▲ Hide' : '▼ View Stock & Price'}
             </div>
           </div>
-        )}
+        </div>
+
+        {/* Settlement — replaces Total Invoices */}
+        {/* Fix 4: Opens with today's data by default, auto-resets per day */}
+        {isAdmin && (
+          <>
+            <div className="stat-card orange" style={{ cursor: 'pointer' }} onClick={() => {
+          setShowStatement(d => {
+            if (!d) {
+              closeAllSummaryPanels('statement');
+              setSettlementViewMode('date');
+              setSettlementSearch('');
+              setSettlementSortDate('desc');
+              setSettlementSortAmount('');
+              setSettlementCardDate(selectedDate);
+              loadSettlements(selectedDate, 'date', '', 'desc', '');
+              scrollToPanel(statementPanelRef);
+            }
+            return !d;
+          });
+        }}>
+
+          <div className="stat-icon"><FileText size={24} /></div>
+          <div className="stat-value">
+            {settlementData.settlements.length > 0 ? settlementData.settlements.length : 0}
+          </div>
+          <div className="stat-label">
+            {t('Settlement', 'सेटलमेंट')}
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+              {settlementData.settlements.length > 0 ? (
+                <>
+                  {/* Entries = Paid Out + Received (all types) */}
+                  {settlementData.settlements.length} entries ·{' '}
+                  {settlementData.settlements.filter(s => s.type !== 'other_income').length} out
+                </>
+              ) : 'No entries today'}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--warning)', marginTop: 2, fontWeight: 600 }}>
+              {showStatement ? '▲ Hide' : '▼ Daily Records'}
+            </div>
+          </div>
+        </div>
 
         {/* Departure / Incoming goods quick-view card */}
         {/* Incoming Vehicles — dropdown + per-card date to view past deliveries */}
         {/* Incoming Vehicles — calendar removed from card */}
-          {user?.role !== 'walkin_manager' && user?.role !== 'temp_manager' && (
-          <div className="stat-card amber" style={{ cursor: 'pointer', borderLeft: activeDeliveries.length > 0 ? '3px solid var(--warning)' : undefined }}
-            onClick={() => {
-              setShowDeparture(d => {
-                if (!d) {
-                  closeAllSummaryPanels('departure');
-                  setDeliveryDateFilter(selectedDate);
-                  setDeliveryDateInput(selectedDate);
-                  loadDeliveries(selectedDate);
-                }
-                return !d;
-              });
-            }}
-          >
-            <div className="stat-icon"><Truck size={24} /></div>
-            <div className="stat-value" style={{ color: activeDeliveries.length > 0 ? 'var(--warning)' : undefined }}>
-              {activeDeliveries.length}
+        <div className="stat-card amber" style={{ cursor: 'pointer', borderLeft: activeDeliveries.length > 0 ? '3px solid var(--warning)' : undefined }}
+          onClick={() => {
+            setShowDeparture(d => {
+              if (!d) {
+                closeAllSummaryPanels('departure');
+                setDeliveryDateFilter(selectedDate);
+                setDeliveryDateInput(selectedDate);
+                loadDeliveries(selectedDate);
+              }
+              return !d;
+            });
+          }}
+        >
+          <div className="stat-icon"><Truck size={24} /></div>
+          <div className="stat-value" style={{ color: activeDeliveries.length > 0 ? 'var(--warning)' : undefined }}>
+            {activeDeliveries.length}
+          </div>
+          <div className="stat-label">
+            {t('Departures / Incoming', 'डिलीवरी')}
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>
+              {arrivingSoon.length > 0
+                ? `${arrivingSoon.length} arriving soon`
+                : showDeparture ? '▲ Hide' : '▼ View Vehicles'}
             </div>
+          </div>
+        </div>
+        </>
+        )}
+
+        {user?.role === 'manager' && (
+          <div className="stat-card orange" style={{ cursor: 'pointer' }}
+            onClick={() => setShowWalkinModal(true)}
+          >
+            <div className="stat-icon"><UserCheck size={24} /></div>
+            <div className="stat-value" style={{ fontSize: 22 }}>Walk-in</div>
             <div className="stat-label">
-              {t('Walkin Delivery', 'वॉक-इन डिलीवरी')}
+              {t('Delivery', 'डिलीवरी')}
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>
-                {arrivingSoon.length > 0
-                  ? `${arrivingSoon.length} arriving soon`
-                  : showDeparture ? '▴ Hide' : '▾ View Vehicles'}
+                {t('Create Bill', 'बिल बनाएं')}
               </div>
             </div>
           </div>
-          )}
-        </div>
+        )}
+      </div>
 
 
       {/* Products dropdown */}
@@ -1029,7 +1191,7 @@ Please arrange stock at the earliest.`
                 <div style={{ whiteSpace: 'nowrap' }}>
                   <Package size={18} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Products
                 </div>
-                {(user?.role !== 'walkin_manager' || walkinTripStarted) && data.allProducts?.length > 0 && (
+                {data.allProducts?.length > 0 && (
                   <span className="badge badge-primary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{data.allProducts.length}</span>
                 )}
                 {data.topProducts?.[0] && (
@@ -1043,48 +1205,39 @@ Please arrange stock at the earliest.`
             <div className="flex gap-2" style={{ flexWrap: 'wrap', alignItems: 'center', width: '100%' }}>
 
               {/* PDF export of product list */}
-              {user?.role !== 'walkin_manager' && (
-                <button className="btn btn-outline btn-sm" onClick={() => {
-                  const rows = (data.allProducts || []).map((p, i) => `
-                      <tr>
-                        <td style="padding:7px 10px">${i + 1}</td>
-                        <td style="padding:7px 10px;font-weight:600">${p.name}</td>
-                        <td style="padding:7px 10px;text-align:right;color:${p.stock === 0 ? '#dc2626' : p.stock <= (parseInt(settings?.low_stock_threshold) || 10) ? '#d97706' : '#16a34a'};font-weight:700">${p.stock} ${p.unit}</td>
-                        <td style="padding:7px 10px;text-align:right;font-family:monospace">₹${Number(p.price).toFixed(2)}</td>
-                      </tr>`).join('');
-                  const win = window.open('', '_blank', 'width=800,height=600');
-                  const prevTitle = document.title;
-                  document.title = `Products-${getTodayIST()}`;
-                  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${document.title}</title>
-                      <style>body{font-family:Arial,sans-serif;font-size:12px;margin:0;}table{width:100%;border-collapse:collapse;}
-                      thead tr{background:#1a1f2e;color:#fff;}th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;}
-                      tr:nth-child(even){background:#f9f9f9;}@page{margin:10mm;size:A4;}</style></head><body>
-                      <div style="display:flex;justify-content:space-between;padding-bottom:12px;border-bottom:2px solid #1a1f2e;margin-bottom:14px">
-                        <div><h2 style="margin:0">${settings?.business_name || 'My Shop'}</h2>
-                        <p style="margin:4px 0;color:#6b7280">Product Stock List — ${getTodayIST()}</p></div></div>
-                      <table><thead><tr><th>#</th><th>Product</th><th style="text-align:right">Stock</th><th style="text-align:right">Price</th></tr></thead>
-                      <tbody>${rows}</tbody></table></body></html>`);
-                  win.document.close();
-                  win.onload = () => { win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
-                }}><FileText size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> PDF</button>
-              )}
+              <button className="btn btn-outline btn-sm" onClick={() => {
+                const rows = (data.allProducts || []).map((p, i) => `
+                    <tr>
+                      <td style="padding:7px 10px">${i + 1}</td>
+                      <td style="padding:7px 10px;font-weight:600">${p.name}</td>
+                      <td style="padding:7px 10px;text-align:right;color:${p.stock === 0 ? '#dc2626' : p.stock <= (parseInt(settings?.low_stock_threshold) || 10) ? '#d97706' : '#16a34a'};font-weight:700">${p.stock} ${p.unit}</td>
+                      <td style="padding:7px 10px;text-align:right;font-family:monospace">₹${Number(p.price).toFixed(2)}</td>
+                    </tr>`).join('');
+                const win = window.open('', '_blank', 'width=800,height=600');
+                const prevTitle = document.title;
+                document.title = `Products-${getTodayIST()}`;
+                win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${document.title}</title>
+                    <style>body{font-family:Arial,sans-serif;font-size:12px;margin:0;}table{width:100%;border-collapse:collapse;}
+                    thead tr{background:#1a1f2e;color:#fff;}th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;}
+                    tr:nth-child(even){background:#f9f9f9;}@page{margin:10mm;size:A4;}</style></head><body>
+                    <div style="display:flex;justify-content:space-between;padding-bottom:12px;border-bottom:2px solid #1a1f2e;margin-bottom:14px">
+                      <div><h2 style="margin:0">${settings?.business_name || 'My Shop'}</h2>
+                      <p style="margin:4px 0;color:#6b7280">Product Stock List — ${getTodayIST()}</p></div></div>
+                    <table><thead><tr><th>#</th><th>Product</th><th style="text-align:right">Stock</th><th style="text-align:right">Price</th></tr></thead>
+                    <tbody>${rows}</tbody></table></body></html>`);
+                win.document.close();
+                win.onload = () => { win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
+              }}><FileText size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> PDF</button>
               {/* WhatsApp share of product list */}
-              {user?.role !== 'walkin_manager' && (
-                <button className="btn btn-outline btn-sm" onClick={() => {
-                  const lines = (data.allProducts || []).map(p =>
-                    `• ${p.name} ${p.stock} ${p.unit} @${p.price}`
-                  ).join('\\n');
-                  const msg = encodeURIComponent(
-                    `Product Report — ${settings?.business_name || 'My Shop'}
-Date: ${getTodayIST()}
-━━━━━━━━━━━
-${lines}
-━━━━━━━━━━━
-Total: ${data.allProducts?.length} products`
-                  );
-                  window.open(`https://wa.me/?text=${msg}`, '_blank');
-                }}><MessageSquare size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> WhatsApp</button>
-              )}
+              <button className="btn btn-outline btn-sm" onClick={() => {
+                const lines = (data.allProducts || []).map(p =>
+                  `• ${p.name} ${p.stock} ${p.unit} @${p.price}`
+                ).join('\n\n');
+                const msg = encodeURIComponent(
+                  `Product Report — ${settings?.business_name || 'My Shop'}\nDate: ${getTodayIST()}\n━━━━━━━━━━━\n${lines}\n━━━━━━━━━━━\nTotal: ${data.allProducts?.length} products`
+                );
+                window.open(`https://wa.me/?text=${msg}`, '_blank');
+              }}><MessageSquare size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> WhatsApp</button>
             </div>
           </div>
           <div className="card-body" style={{ paddingBottom: 0 }}>
@@ -1122,11 +1275,7 @@ Total: ${data.allProducts?.length} products`
             </div>
           </div>
           <div className="no-pad" style={{ padding: 0 }}>
-            {user?.role === 'walkin_manager' && !walkinTripStarted ? (
-              <div className="empty-state" style={{ padding: 20 }}>
-                Please assign a vehicle and <b>Start Journey</b> to view your loaded products.
-              </div>
-            ) : !data.allProducts?.length ? (
+            {!data.allProducts?.length ? (
               <div className="empty-state" style={{ padding: 20 }}>
                 No products yet. <Link to="/products" style={{ color: 'var(--primary)', fontWeight: 600 }}>Add your first product →</Link>
               </div>
@@ -1173,11 +1322,9 @@ Total: ${data.allProducts?.length} products`
                           <tr key={p._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                             <td style={{ padding: '10px 10px', fontWeight: 600 }}>
                               <div>{hl(p.name)}</div>
-                              {user?.role !== 'walkin_manager' && (
-                                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, marginTop: 2 }}>
-                                  Added by: {p.created_by?.display_name || p.created_by?.username || 'System / Admin'}
-                                </div>
-                              )}
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, marginTop: 2 }}>
+                                Added by: {p.created_by?.display_name || p.created_by?.username || 'System / Admin'}
+                              </div>
                             </td>
                             <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 700, color: stockColor }}>
                               {p.stock} {p.unit}
@@ -1242,6 +1389,8 @@ Total: ${data.allProducts?.length} products`
               />
             </div>
           </div>
+
+
           <div className="card-body no-pad">
             {customersLoading ? (
               <div className="loading"><span className="spinner"></span></div>
@@ -1262,14 +1411,6 @@ Total: ${data.allProducts?.length} products`
 
               // Apply customer sort
               filtered = filtered.sort((a, b) => {
-                if (q) {
-                  const aName = (a.name || '').toLowerCase();
-                  const bName = (b.name || '').toLowerCase();
-                  const aStarts = aName.startsWith(q);
-                  const bStarts = bName.startsWith(q);
-                  if (aStarts && !bStarts) return -1;
-                  if (!aStarts && bStarts) return 1;
-                }
                 const dueA = duesMap[String(a._id)] || a.balance || 0;
                 const dueB = duesMap[String(b._id)] || b.balance || 0;
                 if (customerSort === 'due_asc') return dueA - dueB;
@@ -1306,6 +1447,12 @@ Total: ${data.allProducts?.length} products`
                               <Link to={`/customers`} style={{ fontWeight: 600, color: 'var(--text)' }}>
                                 {c.name}
                               </Link>
+                              {c.created_by && (
+                                <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <User size={10} /> {c.created_by.display_name || c.created_by.username} 
+                                  <span style={{ fontSize: 9, opacity: 0.8, textTransform: 'uppercase' }}>({c.created_by.role?.replace('_', ' ')})</span>
+                                </div>
+                              )}
                             </td>
                             <td style={{ padding: '10px 16px' }}>
                               {c.phone ? (
@@ -1313,20 +1460,8 @@ Total: ${data.allProducts?.length} products`
                                   <a
                                     href={`https://wa.me/91${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
                                       t(
-                                        `Hello ${c.name},
-
-This is a reminder from *${settings?.business_name || 'our store'}*.
-Your pending due amount is *₹${due && due.toFixed ? due.toFixed(2) : due}*.
-
-Please clear it at your earliest convenience. 🙏
-Thank you!`,
-                                        `नमस्ते ${c.name},
-
-यह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।
-आपकी बकाया राशि *₹${due && due.toFixed ? due.toFixed(2) : due}* है।
-
-कृपया जल्द से जल्द भुगतान करें। 🙏
-धन्यवाद!`
+                                        `Hello ${c.name},\n\nThis is a reminder from *${settings?.business_name || 'our store'}*.\nYour pending due amount is *₹${due && due.toFixed ? due.toFixed(2) : due}*.\n\nPlease clear it at your earliest convenience. 🙏\nThank you!`,
+                                        `नमस्ते ${c.name},\n\nयह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।\nआपकी बकाया राशि *₹${due && due.toFixed ? due.toFixed(2) : due}* है।\n\nकृपया जल्द से जल्द भुगतान करें। 🙏\nधन्यवाद!`
                                       )
                                     )}`}
                                     target="_blank"
@@ -1357,10 +1492,10 @@ Thank you!`,
 
 
       {/* Departure / Incoming Goods Panel */}
-      {showDeparture && (
+      {isAdmin && showDeparture && (
         <div className="card" style={{ marginBottom: 20 }} ref={departureRef}>
-          <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
-            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div className="card-header incoming-header-flex">
+            <div className="card-title incoming-header-title">
               <Truck size={18} /> Incoming Goods
               {activeDeliveries.length > 0 && (
                 <span className="badge badge-warning" style={{ marginLeft: 8, fontSize: 11 }}>
@@ -1373,7 +1508,7 @@ Thank you!`,
                 </span>
               )}
             </div>
-            <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
+            <div className="incoming-header-actions">
               {/* Calendar with OK button inside dropdown */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px' }}>
@@ -1405,106 +1540,220 @@ Thank you!`,
                   </button>
                 )}
               </div>
+              <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: '#d97706', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, flex: 1, padding: '4px 6px', fontSize: 11, whiteSpace: 'nowrap' }}
+                  onClick={() => setShowWalkinModal(true)}
+                >
+                  <UserCheck size={12} /> Walk-in
+                </button>
 
-              {/* Walk-in Delivery button */}
-              <button
-                className="btn btn-warning btn-sm"
-                onClick={() => setShowWalkinModal(true)}
-              >
-                <UserCheck size={13} style={{ marginRight: 4 }} /> Walk-in Delivery
-              </button>
-              <SortDropdown
-                options={[
-                  { key: 'time_asc', label: '↑ Expected Time' },
-                  { key: 'time_desc', label: '↓ Expected Time' },
-                  { key: 'supplier_asc', label: 'A-Z Supplier' },
-                  { key: 'items_desc', label: '↓ Most Items' },
-                  { key: 'delivered_first', label: '✓ Delivered First' },
-                  { key: 'pending_first', label: '⧗ Pending First' },
-                ]}
-                value={vehicleSort}
-                onChange={v => { setVehicleSort(v); setVehicleSortOpen(false); }}
-                open={vehicleSortOpen}
-                onToggle={() => { closeAllSortMenus('vehicle'); setVehicleSortOpen(o => !o); }}
-              />
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '4px 6px', fontSize: 11, whiteSpace: 'nowrap' }}
+                  onClick={() => {
+                    setEditDeliveryId(null);
+                    setDeliveryForm({
+                      vehicle_number: '', driver_name: '', supplier: '',
+                      expected_arrival: getNowDateTimeLocal(), // always default to now
+                      notes: '',
+                      items: [
+                        { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+                        { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+                      ]
+                    });
+                    setShowDeliveryForm(d => !d);
+                  }}
+                >
+                  {showDeliveryForm && !editDeliveryId ? '✕ Cancel' : '+ Vehicle'}
+                </button>
+              </div>
+
+              </div>
+              <div className="incoming-header-sort">
+                <SortDropdown
+                  options={[
+                    { key: 'time_asc', label: '↑ Expected Time' },
+                    { key: 'time_desc', label: '↓ Expected Time' },
+                    { key: 'supplier_asc', label: 'A-Z Supplier' },
+                    { key: 'items_desc', label: '↓ Most Items' },
+                    { key: 'delivered_first', label: '✓ Delivered First' },
+                    { key: 'pending_first', label: '⧗ Pending First' },
+                  ]}
+                  value={vehicleSort}
+                  onChange={v => { setVehicleSort(v); setVehicleSortOpen(false); }}
+                  open={vehicleSortOpen}
+                  onToggle={() => { closeAllSortMenus('vehicle'); setVehicleSortOpen(o => !o); }}
+                />
+              </div>
             </div>
-          </div>
 
           <div className="card-body">
 
-
-
             {/* Add / Edit Delivery Form */}
             {showDeliveryForm && (
-              <div className="modal-overlay" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }} style={{ padding: '12px', zIndex: 9999 }}>
-                <div 
-                  onClick={e => e.stopPropagation()} 
-                  style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 550, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}
-                >
-                  <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
-                    <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center' }}>
-                      {editDeliveryId ? <><Edit2 size={18} style={{ marginRight: 8, color: 'var(--primary)' }} /> Edit Delivery Entry</> : <><Plus size={18} style={{ marginRight: 8, color: 'var(--primary)' }} /> New Incoming Vehicle</>}
+              <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }} />
+                <div className="modal-content" style={{ position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 650, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
+                  
+                  <div style={{ padding: '20px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ width: 48, height: 48, background: '#e0f2fe', color: '#0ea5e9', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {editDeliveryId ? <Edit2 size={24} /> : <Plus size={24} />}
+                      </div>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{editDeliveryId ? 'Edit Delivery Entry' : 'New Incoming Vehicle'}</h3>
+                        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b', fontWeight: 500 }}>{editDeliveryId ? 'Update details' : 'Record incoming goods transport'}</p>
+                      </div>
                     </div>
-                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }} onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>
-                      <X size={20} />
+                    <button onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }} style={{ background: 'white', border: '1px solid #e2e8f0', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                      <X size={16} />
                     </button>
                   </div>
-                  <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, minHeight: 0 }}>
+                  
+                  <div style={{ padding: '20px', overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-                <div className="form-row">
-                  {/* Fix 4: Vehicle number — auto uppercase */}
-                  <div className="form-group">
-                    <label className="form-label">Vehicle Number *</label>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div className="incoming-form-grid" style={{ flex: 1 }}>
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vehicle Number *</label>
                     <input className="form-control"
                       value={deliveryForm.vehicle_number}
                       onChange={e => setDeliveryForm(f => ({ ...f, vehicle_number: e.target.value.toUpperCase() }))}
-                      placeholder="e.g. UK07AB1234"
-                      style={{ textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'monospace' }} />
+                      onFocus={() => setVehicleFocus(true)}
+                      onBlur={() => setTimeout(() => setVehicleFocus(false), 200)}
+                      placeholder="UK05 4199"
+                      style={{ padding: '12px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13.5, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5, fontFamily: 'monospace', width: '100%', boxSizing: 'border-box' }} />
+                    {vehicleFocus && savedVehicles.filter(v => v.toLowerCase().includes(deliveryForm.vehicle_number.toLowerCase())).length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto', marginTop: 4 }}>
+                        {savedVehicles.filter(v => v.toLowerCase().includes(deliveryForm.vehicle_number.toLowerCase())).map((v, i) => (
+                          <div key={i}
+                            style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13.5, fontWeight: 500, fontFamily: 'monospace' }}
+                            onMouseDown={() => {
+                              setDeliveryForm(f => ({ ...f, vehicle_number: v }));
+                              setVehicleFocus(false);
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = ''}
+                          >
+                            {v}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="form-group">
-                      <label className="form-label">Driver Name</label>
-                      <input className="form-control"
-                        value={deliveryForm.driver_name}
-                        onChange={e => {
-                          const val = e.target.value.replace(/\b\w/g, c => c.toUpperCase());
-                          setDeliveryForm(f => ({ ...f, driver_name: val }));
-                        }}
-                        placeholder="e.g. Pankaj Singh" />
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Driver Name</label>
+                    <input className="form-control"
+                      value={deliveryForm.driver_name}
+                      onChange={e => {
+                        const val = e.target.value.replace(/\b\w/g, c => c.toUpperCase());
+                        setDeliveryForm(f => ({ ...f, driver_name: val }));
+                      }}
+                      onFocus={() => setDriverFocus(true)}
+                      onBlur={() => setTimeout(() => setDriverFocus(false), 200)}
+                      placeholder="Driver Name"
+                      style={{ padding: '12px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13.5, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
+                    {driverFocus && savedDrivers.filter(d => d.toLowerCase().includes(deliveryForm.driver_name.toLowerCase())).length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto', marginTop: 4 }}>
+                        {savedDrivers.filter(d => d.toLowerCase().includes(deliveryForm.driver_name.toLowerCase())).map((d, i) => (
+                          <div key={i}
+                            style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13.5, fontWeight: 500 }}
+                            onMouseDown={() => {
+                              setDeliveryForm(f => ({ ...f, driver_name: d }));
+                              setDriverFocus(false);
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = ''}
+                          >
+                            {d}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="desktop-only" style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cash Given to Driver</label>
+                    <input className="form-control" type="number" min="0" step="1"
+                      value={deliveryForm.driver_cash}
+                      onChange={e => setDeliveryForm(f => ({ ...f, driver_cash: e.target.value }))}
+                      placeholder="₹ Amount"
+                      style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+                </div>
+                  <div className="mobile-only" style={{ alignSelf: 'end' }}>
+                    <div 
+                      onClick={() => {
+                        const dateInput = document.getElementById('mobile-incoming-date');
+                        if (dateInput && typeof dateInput.showPicker === 'function') {
+                          try { dateInput.showPicker(); } catch(e) {}
+                        }
+                      }}
+                      style={{ position: 'relative', width: 46.6, height: 46.6, background: '#f1f5f9', borderRadius: 10, border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    >
+                      <Calendar size={20} color="#475569" />
+                      <input id="mobile-incoming-date" type="datetime-local" value={deliveryForm.expected_arrival} onChange={e => setDeliveryForm(f => ({ ...f, expected_arrival: e.target.value }))} required style={{ position: 'fixed', top: '40%', left: '0%', width: 0, height: 0, opacity: 0 }} title="Set Date & Time" />
                     </div>
-                  {/* Fix 4: Supplier from Settlement supplier data */}
-                  <div className="form-group" style={{ position: 'relative' }}>
-                    <label className="form-label">Supplier / Party</label>
+                  </div>
+                </div>
+                
+                <div className="mobile-only" style={{ position: 'relative' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cash Given to Driver</label>
+                  <input className="form-control" type="number" min="0" step="1"
+                    value={deliveryForm.driver_cash}
+                    onChange={e => setDeliveryForm(f => ({ ...f, driver_cash: e.target.value }))}
+                    placeholder="₹ Amount"
+                    style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Supplier Names {!editDeliveryId && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500, textTransform: 'none' }}>(select multiple)</span>}</label>
+
                     <input className="form-control"
                       value={deliveryForm.supplier}
                       onChange={e => {
                         setDeliveryForm(f => ({ ...f, supplier: e.target.value }));
                         searchSuppliers(e.target.value);
                       }}
-                      onBlur={() => setTimeout(() => setSupplierSuggestions([]), 200)}
-                      placeholder="Type to search suppliers..." />
-                    {/* Same dropdown as walk-in — includes add-new option */}
+                      onBlur={() => setTimeout(() => setSupplierSuggestions(null), 200)}
+                      placeholder={editDeliveryId ? "Supplier name..." : (selectedSuppliers.length > 0 ? "Add another supplier..." : "Type to search suppliers...")}
+                      style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
                     {deliveryForm.supplier && supplierSuggestions !== null && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto' }}>
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 180, overflowY: 'auto', marginTop: 4 }}>
                         {supplierSuggestions.map(s => (
                           <div key={s._id}
-                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13.5, borderBottom: '1px solid #f3f4f6' }}
+                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13.5, borderBottom: '1px solid #f3f4f6', background: selectedSuppliers.includes(s.name) ? '#f0fdf4' : '' }}
                             onMouseDown={() => {
-                              setDeliveryForm(f => ({ ...f, supplier: s.name }));
-                              setSupplierSuggestions([]);
+                              if (editDeliveryId) {
+                                setDeliveryForm(f => ({ ...f, supplier: s.name }));
+                              } else {
+                                if (!selectedSuppliers.includes(s.name)) {
+                                  setSelectedSuppliers(prev => [...prev, s.name]);
+                                }
+                                setDeliveryForm(f => ({ ...f, supplier: '' }));
+                              }
+                              setSupplierSuggestions(null);
                             }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            onMouseEnter={e => { if (!selectedSuppliers.includes(s.name)) e.currentTarget.style.background = '#f0f9ff'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = selectedSuppliers.includes(s.name) ? '#f0fdf4' : ''; }}
                           >
-                            <div style={{ fontWeight: 600 }}>{s.name}</div>
-                            {s.phone && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.phone}</div>}
+                            <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>{s.name} {selectedSuppliers.includes(s.name) && <span style={{ color: '#16a34a', fontSize: 11 }}>✓ Added</span>}</div>
+                            {s.phone && <div style={{ fontSize: 11, color: '#64748b' }}>{s.phone}</div>}
                           </div>
                         ))}
-                        {/* Add new supplier option — same as walk-in */}
                         {!supplierSuggestions.some(s => s.name.toLowerCase() === deliveryForm.supplier.trim().toLowerCase()) && (
                           <div
-                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
+                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: '#0ea5e9', fontWeight: 600, background: '#eff6ff' }}
                             onMouseDown={() => {
-                              setSupplierSuggestions([]);
+                              if (editDeliveryId) {
+                                setSupplierSuggestions(null);
+                              } else {
+                                const newName = deliveryForm.supplier.trim();
+                                if (newName && !selectedSuppliers.includes(newName)) {
+                                  setSelectedSuppliers(prev => [...prev, newName]);
+                                }
+                                setDeliveryForm(f => ({ ...f, supplier: '' }));
+                                setSupplierSuggestions(null);
+                              }
                               toast('Supplier will be saved when delivery is marked complete', { icon: 'ℹ️', duration: 2500 });
                             }}
                           >
@@ -1513,273 +1762,823 @@ Thank you!`,
                         )}
                       </div>
                     )}
+                    {/* Selected supplier chips */}
+                    {!editDeliveryId && selectedSuppliers.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                        {selectedSuppliers.map((name, idx) => (
+                          <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', background: '#e0f2fe', color: '#0369a1', borderRadius: 20, fontSize: 12.5, fontWeight: 600 }}>
+                            {name}
+                            <button onClick={() => setSelectedSuppliers(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369a1', padding: 0, display: 'flex', alignItems: 'center', fontSize: 14, fontWeight: 700, lineHeight: 1 }}>&times;</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Expected Arrival Date & Time *</label>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+
+                  <div className="desktop-only" style={{ flex: 1, position: 'relative', display: 'flex', justifyContent: 'flex-end' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Expected Arrival Date & Time *</label>
                       <input className="form-control" type="datetime-local"
                         value={deliveryForm.expected_arrival}
                         onChange={e => setDeliveryForm(f => ({ ...f, expected_arrival: e.target.value }))}
-                        style={{ flex: 1 }}
+                        style={{ padding: '11px 12px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13.5, fontWeight: 500, width: 'fit-content', minWidth: '220px', boxSizing: 'border-box' }}
                       />
                       {deliveryForm.expected_arrival && (
-                        <button
-                          className="btn btn-success btn-sm"
-                          type="button"
-                          onClick={() => toast.success(
-                            `Set: ${new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
-                            { duration: 2000 }
-                          )}
-                          style={{ whiteSpace: 'nowrap' }}
-                        >✓ OK</button>
+                        <div style={{ fontSize: 11, color: '#10b981', marginTop: 6, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Calendar size={13} /> {new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </div>
                       )}
                     </div>
-                    {deliveryForm.expected_arrival && (
-                      <div style={{ fontSize: 11, color: 'var(--success)', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Calendar size={13} /> {new Date(deliveryForm.expected_arrival).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </div>
+                </div>
+
+                
+                {(!editDeliveryId && selectedSuppliers.length > 0) ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                    {deliveryForm.suppliers_data && deliveryForm.suppliers_data.map((supplierObj, sIdx) => (
+                      <div key={supplierObj.supplier_name} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+                          <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Package size={18} style={{ color: '#0ea5e9' }} /> Items for {supplierObj.supplier_name}
+                          </h4>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <label style={{ fontSize: 13, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Cash Given:</label>
+                            <input className="form-control" type="number"
+                              value={supplierObj.cash_given || ''}
+                              onChange={e => {
+                                setDeliveryForm(f => {
+                                  const updatedData = [...(f.suppliers_data || [])];
+                                  updatedData[sIdx].cash_given = e.target.value;
+                                  return { ...f, suppliers_data: updatedData };
+                                });
+                              }}
+                              placeholder="₹ Amount"
+                              style={{ width: 120, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }} />
+                            {/* Fetch Low Stock Button for Supplier */}
+                            <div style={{ position: 'relative' }}>
+                              <div 
+                                onClick={() => setShowLowStockMenu(showLowStockMenu === `supplier_${sIdx}` ? false : `supplier_${sIdx}`)}
+                                style={{
+                                  padding: '8px 12px',
+                                  border: '1px solid #fcd34d',
+                                  borderRadius: 8,
+                                  background: '#fffbf1',
+                                  color: '#d97706',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  fontSize: 12,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  whiteSpace: 'nowrap',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                }}
+                              >
+                                <span className="desktop-only">{selectedLowLists.length ? `${selectedLowLists.length} list(s) selected` : 'Fetch Low Stock'}</span>
+                                <span className="mobile-only"><Package size={14} style={{ marginRight: 4 }}/> {selectedLowLists.length ? selectedLowLists.length : 'Stock'}</span>
+                                <span style={{ marginLeft: 6 }}>▾</span>
+                              </div>
+
+                              {showLowStockMenu === `supplier_${sIdx}` && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  marginTop: 8,
+                                  background: 'white',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: 12,
+                                  boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                                  zIndex: 100,
+                                  width: 240,
+                                  maxHeight: 320,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: 800, fontSize: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select Lists</span>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        if (selectedLowLists.length === 0) {
+                                          setShowLowStockMenu(false);
+                                          return;
+                                        }
+                                        
+                                        const threshold = parseInt(settings?.low_stock_threshold) || 10;
+                                        let lowItems = data?.lowStockProducts || [];
+
+                                        if (!selectedLowLists.includes('ALL')) {
+                                          let allSelectedProductIds = new Set();
+                                          productLists.forEach(l => {
+                                            if (selectedLowLists.includes(l._id)) {
+                                              (l.products || []).forEach(p => allSelectedProductIds.add(p._id || p));
+                                            }
+                                          });
+                                          lowItems = lowItems.filter(p => allSelectedProductIds.has(p._id));
+                                        }
+
+                                        if (!lowItems.length && !selectedLowLists.includes('ALL')) {
+                                          toast('No low stock items found in selected list(s).', { icon: 'ℹ️' });
+                                          return;
+                                        } else if (!lowItems.length) {
+                                          toast('No low stock items found. All products adequately stocked.', { icon: '✓' });
+                                          return;
+                                        }
+
+                                        const mapped = lowItems.filter(p => p.saved_order_qty !== -1).map(p => {
+                                          const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
+                                            ? p.custom_low_stock : threshold;
+                                          const neededQty = p.saved_order_qty > 0
+                                            ? p.saved_order_qty
+                                            : Math.max(1, minStock - p.stock);
+                                          return {
+                                            item_name: p.name,
+                                            quantity: String(neededQty),
+                                            unit: p.unit || 'unit',
+                                            product_id: p._id,
+                                            label: 'Goods',
+                                            is_new_item: false,
+                                          };
+                                        });
+
+                                        const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                                        const mappedCustom = customSaved.map(c => ({
+                                          item_name: c.name,
+                                          quantity: String(c.orderQty),
+                                          unit: c.unit || 'unit',
+                                          product_id: '',
+                                          label: 'Goods',
+                                          is_new_item: true,
+                                        }));
+
+                                        const finalCustom = selectedLowLists.includes('ALL') ? mappedCustom : [];
+
+                                        setDeliveryForm(f => {
+                                          const updatedSuppliers = [...f.suppliers_data];
+                                          const existingItems = updatedSuppliers[sIdx].items.filter(item => item.item_name.trim() !== '' || (item.quantity !== '0' && item.quantity !== ''));
+                                          const existingIds = new Set(existingItems.filter(i => i.product_id).map(i => i.product_id));
+                                          const existingNames = new Set(existingItems.filter(i => !i.product_id).map(i => i.item_name.toLowerCase()));
+
+                                          const newItems = [...mapped, ...finalCustom].filter(m => {
+                                            if (m.product_id && existingIds.has(m.product_id)) return false;
+                                            if (!m.product_id && existingNames.has(m.item_name.toLowerCase())) return false;
+                                            return true;
+                                          });
+
+                                          updatedSuppliers[sIdx].items = checkAutoAddRow([
+                                            ...existingItems,
+                                            ...newItems,
+                                            { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods', is_new_item: true }
+                                          ]);
+
+                                          return { ...f, suppliers_data: updatedSuppliers };
+                                        });
+                                        
+                                        const totalAdded = mapped.length + finalCustom.length;
+                                        toast.success(`${totalAdded} low stock item${totalAdded !== 1 ? 's' : ''} imported`);
+                                        setShowLowStockMenu(false);
+                                        setSelectedLowLists([]);
+                                      }}
+                                      style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, background: '#0ea5e9', color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 2px 4px rgba(14,165,233,0.2)' }}
+                                    >
+                                      Fetch
+                                    </button>
+                                  </div>
+                                  <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 4 }}>
+                                    {productLists.map(l => (
+                                      <label key={l._id} 
+                                        style={{ 
+                                          display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                                          background: selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id) ? '#f0f9ff' : 'transparent',
+                                          borderBottom: '1px solid #f1f5f9',
+                                          transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#e0f2fe' : '#f8fafc'}
+                                        onMouseLeave={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#f0f9ff' : 'transparent'}
+                                      >
+                                        <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                          <input 
+                                            type="checkbox"
+                                            checked={selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)}
+                                            onChange={(e) => {
+                                              let newList = [...selectedLowLists];
+                                              if (newList.includes('ALL')) {
+                                                newList = productLists.map(p => p._id);
+                                              }
+                                              if (e.target.checked) {
+                                                newList.push(l._id);
+                                                if (productLists.length > 0 && productLists.every(p => newList.includes(p._id))) {
+                                                  newList.push('ALL');
+                                                }
+                                              } else {
+                                                newList = newList.filter(id => id !== l._id && id !== 'ALL');
+                                              }
+                                              setSelectedLowLists(newList);
+                                            }}
+                                            style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                                          />
+                                        </div>
+                                        <span style={{ fontSize: 14, fontWeight: 600, color: (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#0369a1' : '#334155' }}>{l.name}</span>
+                                      </label>
+                                    ))}
+
+                                    <label 
+                                      style={{ 
+                                        display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                                        background: selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent',
+                                        transition: 'all 0.2s'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#e0f2fe' : '#f8fafc'}
+                                      onMouseLeave={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent'}
+                                    >
+                                      <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                        <input 
+                                          type="checkbox" 
+                                          checked={selectedLowLists.includes('ALL')}
+                                          onChange={(e) => {
+                                            if (e.target.checked) setSelectedLowLists(['ALL', ...productLists.map(p => p._id)]);
+                                            else setSelectedLowLists([]);
+                                          }}
+                                          style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                                        />
+                                      </div>
+                                      <span style={{ fontSize: 14, fontWeight: 600, color: selectedLowLists.includes('ALL') ? '#0369a1' : '#1e293b' }}>All Items</span>
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {supplierObj.items.map((item, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                              
+                              {/* Product Search Input */}
+                              <div style={{ flex: 2, minWidth: 120, position: 'relative' }}>
+                                {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Item Name</div>}
+                                <input
+                                  className="form-control"
+                                  value={item.item_name}
+                                  placeholder="Type product name..."
+                                  style={{ fontSize: 13, borderRadius: 8, padding: '10px 8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' }}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setDeliveryForm(f => {
+                                      const updatedSuppliers = [...f.suppliers_data];
+                                      updatedSuppliers[sIdx].items[idx].item_name = val;
+                                      updatedSuppliers[sIdx].items[idx].product_id = '';
+                                      updatedSuppliers[sIdx].items[idx].is_new_item = true;
+                                      return { ...f, suppliers_data: updatedSuppliers };
+                                    });
+                                    if (val.trim().length > 0) {
+                                      const matches = data.allProducts.filter(p => p.name.toLowerCase().includes(val.toLowerCase()));
+                                      setProductSuggestions(matches);
+                                      setProductSuggestIdx(`${sIdx}_${idx}`);
+                                    } else {
+                                      setProductSuggestions([]);
+                                      setProductSuggestIdx(null);
+                                    }
+                                  }}
+                                  onFocus={e => {
+                                    if (e.target.value.trim().length > 0) {
+                                      const matches = data.allProducts.filter(p => p.name.toLowerCase().includes(e.target.value.toLowerCase()));
+                                      setProductSuggestions(matches);
+                                      setProductSuggestIdx(`${sIdx}_${idx}`);
+                                    }
+                                  }}
+                                  onBlur={() => setTimeout(() => { setProductSuggestIdx(null); setProductSuggestions([]); }, 200)}
+                                />
+                                {productSuggestIdx === `${sIdx}_${idx}` && (
+                                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+                                    {productSuggestions.map(p => (
+                                      <div key={p._id} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                        onMouseDown={() => {
+                                          setDeliveryForm(f => {
+                                            const updatedSuppliers = [...f.suppliers_data];
+                                            const updatedItems = [...updatedSuppliers[sIdx].items];
+                                            updatedItems[idx] = { ...updatedItems[idx], item_name: p.name, quantity: '1', unit: p.unit || 'unit', product_id: p._id, is_new_item: false };
+                                            updatedSuppliers[sIdx].items = checkAutoAddRow(updatedItems);
+                                            return { ...f, suppliers_data: updatedSuppliers };
+                                          });
+                                          setProductSuggestions([]); setProductSuggestIdx(null);
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'} onMouseLeave={e => e.currentTarget.style.background = ''}
+                                      >
+                                        <div><div style={{ fontWeight: 600 }}>{p.name}</div><div style={{ fontSize: 11, color: '#64748b' }}>Stock: {p.stock} {p.unit} · ₹{p.price}</div></div>
+                                      </div>
+                                    ))}
+                                    {!productSuggestions.some(p => p.name.toLowerCase() === item.item_name.toLowerCase()) && (
+                                      <div style={{ padding: '10px 12px', cursor: 'pointer', fontSize: 12.5, color: '#0ea5e9', fontWeight: 600, background: '#eff6ff' }}
+                                        onMouseDown={() => {
+                                          setDeliveryForm(f => {
+                                            const updatedSuppliers = [...f.suppliers_data];
+                                            const updatedItems = [...updatedSuppliers[sIdx].items];
+                                            updatedItems[idx] = { ...updatedItems[idx], product_id: '', quantity: updatedItems[idx].quantity === '0' ? '1' : updatedItems[idx].quantity, is_new_item: true };
+                                            updatedSuppliers[sIdx].items = checkAutoAddRow(updatedItems);
+                                            return { ...f, suppliers_data: updatedSuppliers };
+                                          });
+                                          setProductSuggestions([]); setProductSuggestIdx(null);
+                                        }}
+                                      >
+                                        + Use "{item.item_name}" as new product
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Qty Input */}
+                              <div style={{ flex: 1, minWidth: 50 }}>
+                                {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Qty</div>}
+                                <input className="form-control" type="number" min="0" step="0.01" value={item.quantity} placeholder="0" style={{ fontSize: 13, borderRadius: 8, padding: '10px 8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' }}
+                                  onChange={e => {
+                                    setDeliveryForm(f => {
+                                      const updatedSuppliers = [...f.suppliers_data];
+                                      updatedSuppliers[sIdx].items[idx].quantity = e.target.value;
+                                      return { ...f, suppliers_data: updatedSuppliers };
+                                    });
+                                  }}
+                                />
+                              </div>
+
+                              {/* Unit Input */}
+                              <div style={{ flex: 1, minWidth: 60, position: 'relative' }}>
+                                {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Unit</div>}
+                                <input className="form-control" value={item.unit || ''} placeholder="bag" style={{ fontSize: 13, borderRadius: 8, padding: '10px 8px', border: '1px solid #cbd5e1', width: '100%', boxSizing: 'border-box' }}
+                                  onChange={e => {
+                                    setDeliveryForm(f => {
+                                      const updatedSuppliers = [...f.suppliers_data];
+                                      updatedSuppliers[sIdx].items[idx].unit = e.target.value;
+                                      return { ...f, suppliers_data: updatedSuppliers };
+                                    });
+                                    setProductSuggestIdx(`unit_${sIdx}_${idx}`);
+                                  }}
+                                  onFocus={() => setProductSuggestIdx(`unit_${sIdx}_${idx}`)}
+                                  onBlur={() => setTimeout(() => setProductSuggestIdx(null), 200)}
+                                />
+                                {productSuggestIdx === `unit_${sIdx}_${idx}` && (
+                                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 160, overflowY: 'auto', marginTop: 4 }}>
+                                    {allUnits.filter(u => !item.unit || u.toLowerCase().includes((item.unit || '').toLowerCase())).map(u => (
+                                      <div key={u} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
+                                        onMouseDown={() => {
+                                          setDeliveryForm(f => {
+                                            const updatedSuppliers = [...f.suppliers_data];
+                                            updatedSuppliers[sIdx].items[idx].unit = u;
+                                            return { ...f, suppliers_data: updatedSuppliers };
+                                          });
+                                          setProductSuggestIdx(null);
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'} onMouseLeave={e => e.currentTarget.style.background = ''}
+                                      >{u}</div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Remove button */}
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                {idx === 0 && <div style={{ fontSize: 11, height: 16, marginBottom: 6 }}>&nbsp;</div>}
+                                {supplierObj.items.length > 1 && (
+                                  <button type="button" onClick={() => {
+                                    setDeliveryForm(f => {
+                                      const updatedSuppliers = [...f.suppliers_data];
+                                      updatedSuppliers[sIdx].items = updatedSuppliers[sIdx].items.filter((_, i) => i !== idx);
+                                      return { ...f, suppliers_data: updatedSuppliers };
+                                    });
+                                  }} 
+                                    style={{ background: '#fee2e2', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'all 0.2s' }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#fecaca'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#fee2e2'}
+                                    title="Remove Item"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : editDeliveryId ? (
+                   // FALLBACK: SINGLE ITEM RENDERER FOR EDIT MODE!
+                   <div style={{ background: '#f8fafc', padding: '20px', borderRadius: 16, border: '1px solid #e2e8f0' }}>
+                     
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Package size={18} style={{ color: '#0ea5e9' }} /> Items
+                    </h4>
+                    <div style={{ position: 'relative' }}>
+                      <div 
+                        onClick={() => setShowLowStockMenu(!showLowStockMenu)}
+                        style={{
+                          padding: '8px 12px',
+                          border: '1px solid #fcd34d',
+                          borderRadius: 8,
+                          background: '#fffbf1',
+                          color: '#d97706',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  whiteSpace: 'nowrap',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                                }}
+                              >
+                                <span className="desktop-only">{selectedLowLists.length ? `${selectedLowLists.length} list(s) selected` : 'Fetch Low Stock'}</span>
+                                <span className="mobile-only"><Package size={14} style={{ marginRight: 4 }}/> {selectedLowLists.length ? selectedLowLists.length : 'Stock'}</span>
+                                <span style={{ marginLeft: 6 }}>▾</span>
+                              </div>
+
+                    {showLowStockMenu && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: 8,
+                        background: 'white',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 12,
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                        zIndex: 100,
+                        width: 240,
+                        maxHeight: 320,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 800, fontSize: 12, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select Lists</span>
+                          <button 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (selectedLowLists.length === 0) {
+                                setShowLowStockMenu(false);
+                                return;
+                              }
+                              
+                              const threshold = parseInt(settings?.low_stock_threshold) || 10;
+                              let lowItems = data?.lowStockProducts || [];
+
+                              if (!selectedLowLists.includes('ALL')) {
+                                let allSelectedProductIds = new Set();
+                                productLists.forEach(l => {
+                                  if (selectedLowLists.includes(l._id)) {
+                                    (l.products || []).forEach(p => allSelectedProductIds.add(p._id || p));
+                                  }
+                                });
+                                lowItems = lowItems.filter(p => allSelectedProductIds.has(p._id));
+                              }
+
+                              if (!lowItems.length && !selectedLowLists.includes('ALL')) {
+                                toast('No low stock items found in selected list(s).', { icon: 'ℹ️' });
+                                return;
+                              } else if (!lowItems.length) {
+                                toast('No low stock items found. All products adequately stocked.', { icon: '✓' });
+                                return;
+                              }
+
+                              const mapped = lowItems.filter(p => p.saved_order_qty !== -1).map(p => {
+                                const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
+                                  ? p.custom_low_stock : threshold;
+                                const neededQty = p.saved_order_qty > 0
+                                  ? p.saved_order_qty
+                                  : Math.max(1, minStock - p.stock);
+                                return {
+                                  item_name: p.name,
+                                  quantity: String(neededQty),
+                                  unit: p.unit || 'unit',
+                                  product_id: p._id,
+                                  label: 'Goods',
+                                  is_new_item: false,
+                                };
+                              });
+
+                              const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                              const mappedCustom = customSaved.map(c => ({
+                                item_name: c.name,
+                                quantity: String(c.orderQty),
+                                unit: c.unit || 'unit',
+                                product_id: '',
+                                label: 'Goods',
+                                is_new_item: true,
+                              }));
+
+                              const finalCustom = selectedLowLists.includes('ALL') ? mappedCustom : [];
+
+                              setDeliveryForm(f => {
+                                const existingItems = f.items.filter(item => item.item_name.trim() !== '' || (item.quantity !== '0' && item.quantity !== ''));
+                                const existingIds = new Set(existingItems.filter(i => i.product_id).map(i => i.product_id));
+                                const existingNames = new Set(existingItems.filter(i => !i.product_id).map(i => i.item_name.toLowerCase()));
+
+                                const newItems = [...mapped, ...finalCustom].filter(m => {
+                                  if (m.product_id && existingIds.has(m.product_id)) return false;
+                                  if (!m.product_id && existingNames.has(m.item_name.toLowerCase())) return false;
+                                  return true;
+                                });
+
+                                return {
+                                  ...f,
+                                  items: [
+                                    ...existingItems,
+                                    ...newItems,
+                                    { item_name: '', quantity: '0', unit: 'unit', product_id: '', label: 'Goods' },
+                                  ],
+                                };
+                              });
+                              
+                              const totalAdded = mapped.length + finalCustom.length;
+                              toast.success(`${totalAdded} low stock item${totalAdded !== 1 ? 's' : ''} imported`);
+                              setShowLowStockMenu(false);
+                              setSelectedLowLists([]);
+                            }}
+                            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, background: '#0ea5e9', color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 2px 4px rgba(14,165,233,0.2)' }}
+                          >
+                            Fetch
+                          </button>
+                        </div>
+                        <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 4 }}>
+                          {productLists.map(l => (
+                            <label key={l._id} 
+                              style={{ 
+                                display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                                background: selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id) ? '#f0f9ff' : 'transparent',
+                                borderBottom: '1px solid #f1f5f9',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#e0f2fe' : '#f8fafc'}
+                              onMouseLeave={e => e.currentTarget.style.background = (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#f0f9ff' : 'transparent'}
+                            >
+                              <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                <input 
+                                  type="checkbox"
+                                  checked={selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)}
+                                  onChange={(e) => {
+                                    let newList = [...selectedLowLists];
+                                    if (newList.includes('ALL')) {
+                                      newList = productLists.map(p => p._id);
+                                    }
+                                    if (e.target.checked) {
+                                      newList.push(l._id);
+                                      if (productLists.length > 0 && productLists.every(p => newList.includes(p._id))) {
+                                        newList.push('ALL');
+                                      }
+                                    } else {
+                                      newList = newList.filter(id => id !== l._id && id !== 'ALL');
+                                    }
+                                    setSelectedLowLists(newList);
+                                  }}
+                                  style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                                />
+                              </div>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: (selectedLowLists.includes('ALL') || selectedLowLists.includes(l._id)) ? '#0369a1' : '#334155' }}>{l.name}</span>
+                            </label>
+                          ))}
+
+                          <label 
+                            style={{ 
+                              display: 'flex', alignItems: 'center', padding: '12px 14px', cursor: 'pointer', margin: 0,
+                              background: selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#e0f2fe' : '#f8fafc'}
+                            onMouseLeave={e => e.currentTarget.style.background = selectedLowLists.includes('ALL') ? '#f0f9ff' : 'transparent'}
+                          >
+                            <div style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedLowLists.includes('ALL')}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedLowLists(['ALL', ...productLists.map(p => p._id)]);
+                                  else setSelectedLowLists([]);
+                                }}
+                                style={{ accentColor: '#0ea5e9', transform: 'scale(1.35)', margin: 0, cursor: 'pointer' }}
+                              />
+                            </div>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: selectedLowLists.includes('ALL') ? '#0369a1' : '#1e293b' }}>All Items</span>
+                          </label>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Fix 4: Items — product suggestions + auto-new row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}><Package size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Items</div>
-                  {/* Fetch from Low Stock — always visible, not conditional */}
-                  <button
-                    className="btn btn-warning btn-sm"
-                    style={{ fontSize: 11 }}
-                    onClick={() => {
-                      const threshold = parseInt(settings?.low_stock_threshold) || 10;
-                      const lowItems = data?.lowStockProducts || [];
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {deliveryForm.items.map((item, idx) => (
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 2fr) 80px 85px auto', gap: 12, alignItems: 'flex-end', background: 'white', padding: '12px', borderRadius: 12, border: '1px solid #e2e8f0' }}>
 
-                      if (!lowItems.length) {
-                        toast('No low stock items found. All products adequately stocked.', { icon: '✓' });
-                        return;
-                      }
-
-                      const mapped = lowItems.filter(p => p.saved_order_qty !== -1).map(p => {
-                        const minStock = (p.custom_low_stock != null && p.custom_low_stock >= 0)
-                          ? p.custom_low_stock : threshold;
-                        const neededQty = p.saved_order_qty > 0
-                          ? p.saved_order_qty
-                          : Math.max(1, minStock - p.stock);
-                        return {
-                          item_name: p.name,
-                          quantity: String(neededQty),
-                          unit: p.unit || 'unit',
-                          product_id: p._id,
-                          label: 'Goods',
-                          is_new_item: false,
-                        };
-                      });
-
-                      setDeliveryForm(f => ({
-                        ...f,
-                        items: [
-                          ...mapped,
-                          { item_name: '', quantity: '', unit: 'unit', product_id: '', label: 'Goods' },
-                        ],
-                      }));
-                      toast.success(`${mapped.length} low stock item${mapped.length !== 1 ? 's' : ''} imported`);
-                    }}
-                  >
-                    Fetch from Low Stock
-                  </button>
-                </div>
-
-                {deliveryForm.items.map((item, idx) => (
-                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 2fr) 80px 85px auto', gap: 8, marginBottom: 8, alignItems: 'flex-end' }}>
-
-                    {/* Item Name — live product search, always shows add-new */}
-                    <div style={{ position: 'relative' }}>
-                      {idx === 0 && (
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
-                          Item Name *
-                        </div>
-                      )}
-                      <input
-                        className="form-control"
-                        value={item.item_name}
-                        placeholder="Type to search..."
-                        onChange={e => {
-                          const val = e.target.value;
-                          // Auto qty=1 when user starts typing item name
-                          setDeliveryForm(f => {
-                            const updated = [...f.items];
-                            updated[idx] = {
-                              ...updated[idx],
-                              item_name: val,
-                              // Set qty to 1 when first character typed and qty is still 0
-                              quantity: (val && updated[idx].quantity === '0') ? '1' : updated[idx].quantity,
-                            };
-                            return { ...f, items: checkAutoAddRow(updated) };
-                          });
-                          setProductSuggestIdx(idx);
-                          searchProducts(val);
-                        }}
-                        onBlur={() => setTimeout(() => { setProductSuggestions([]); setProductSuggestIdx(null); }, 200)}
-                        style={item.is_new_item && item.item_name ? { paddingRight: 40 } : undefined}
-                      />
-                      {/* New Item Badge Inside Input */}
-                      {item.is_new_item && item.item_name && (
-                        <div style={{ position: 'absolute', bottom: 7, right: 7, fontSize: 9, color: '#92400e', background: '#fffbeb', padding: '2px 5px', borderRadius: 4, fontWeight: 700, pointerEvents: 'none' }}>
-                          NEW
-                        </div>
-                      )}
-                      {/* Dropdown: always shown when typing — products + add-new */}
-                      {productSuggestIdx === idx && item.item_name.trim() && (
-                        <div style={{
-                          position: 'absolute', top: '100%', left: 0, right: 0,
-                          background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6,
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto',
-                        }}>
-                          {/* Existing product matches */}
-                          {productSuggestions.map(p => (
-                            <div key={p._id}
-                              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      <div style={{ position: 'relative' }}>
+                        {idx === 0 && (
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>
+                            Item Name
+                          </div>
+                        )}
+                        <input
+                          className="form-control"
+                          value={item.item_name}
+                          placeholder="Type to search..."
+                          onChange={e => {
+                            const val = e.target.value;
+                            setDeliveryForm(f => {
+                              const updated = [...f.items];
+                              updated[idx] = {
+                                ...updated[idx],
+                                item_name: val,
+                                quantity: (val && updated[idx].quantity === '0') ? '1' : updated[idx].quantity,
+                              };
+                              return { ...f, items: checkAutoAddRow(updated) };
+                            });
+                            setProductSuggestIdx(idx);
+                            searchProducts(val);
+                          }}
+                          onBlur={() => setTimeout(() => { setProductSuggestions([]); setProductSuggestIdx(null); }, 200)}
+                          style={{ ...(item.is_new_item && item.item_name ? { paddingRight: 40 } : {}), fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }}
+                        />
+                        {item.is_new_item && item.item_name && (
+                          <div style={{ position: 'absolute', bottom: 9, right: 9, fontSize: 9, color: '#92400e', background: '#fffbeb', padding: '2px 6px', borderRadius: 4, fontWeight: 800, pointerEvents: 'none' }}>
+                            NEW
+                          </div>
+                        )}
+                        {productSuggestIdx === idx && item.item_name.trim() && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0,
+                            background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto', marginTop: 4
+                          }}>
+                            {productSuggestions.map(p => (
+                              <div key={p._id}
+                                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                onMouseDown={() => {
+                                  setDeliveryForm(f => {
+                                    const updated = [...f.items];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      item_name: p.name,
+                                      quantity: '1',
+                                      unit: p.unit || 'unit',
+                                      product_id: p._id,
+                                      is_new_item: false,
+                                    };
+                                    return { ...f, items: checkAutoAddRow(updated) };
+                                  });
+                                  setProductSuggestions([]);
+                                  setProductSuggestIdx(null);
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                                onMouseLeave={e => e.currentTarget.style.background = ''}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{p.name}</div>
+                                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                                    Stock: {p.stock} {p.unit} · ₹{p.price}
+                                  </div>
+                                </div>
+                                <span style={{ fontSize: 11, background: '#f1f5f9', padding: '2px 8px', borderRadius: 10, color: '#475569', fontWeight: 600 }}>
+                                  {p.unit}
+                                </span>
+                              </div>
+                            ))}
+                            <div
+                              style={{ padding: '10px 12px', cursor: 'pointer', fontSize: 12.5, color: '#0ea5e9', fontWeight: 600, background: '#eff6ff', borderTop: productSuggestions.length > 0 ? '1px solid #bfdbfe' : 'none' }}
                               onMouseDown={() => {
                                 setDeliveryForm(f => {
                                   const updated = [...f.items];
                                   updated[idx] = {
                                     ...updated[idx],
-                                    item_name: p.name,
-                                    quantity: '1', // auto set to 1 on product select
-                                    unit: p.unit || 'unit',
-                                    product_id: p._id,
-                                    is_new_item: false,
+                                    product_id: '',
+                                    quantity: updated[idx].quantity === '0' ? '1' : updated[idx].quantity,
+                                    is_new_item: true,
                                   };
                                   return { ...f, items: checkAutoAddRow(updated) };
                                 });
                                 setProductSuggestions([]);
                                 setProductSuggestIdx(null);
+                                toast('New product will be created when delivery is marked complete', { icon: 'ℹ️', duration: 3000 });
                               }}
-                              onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
-                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                             >
-                              <div>
-                                <div style={{ fontWeight: 600 }}>{p.name}</div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  Stock: {p.stock} {p.unit} · ₹{p.price}
-                                </div>
-                              </div>
-                              <span style={{ fontSize: 11, background: '#f3f4f6', padding: '2px 7px', borderRadius: 10, color: 'var(--text-muted)' }}>
-                                {p.unit}
-                              </span>
+                              + Use "{item.item_name}" as new product
                             </div>
-                          ))}
-                          {/* Always show add-new option when typing */}
-                          <div
-                            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff', borderTop: productSuggestions.length > 0 ? '1px solid #bfdbfe' : 'none' }}
-                            onMouseDown={() => {
-                              setDeliveryForm(f => {
-                                const updated = [...f.items];
-                                updated[idx] = {
-                                  ...updated[idx],
-                                  product_id: '',
-                                  quantity: updated[idx].quantity === '0' ? '1' : updated[idx].quantity,
-                                  is_new_item: true,
-                                };
-                                return { ...f, items: checkAutoAddRow(updated) };
-                              });
-                              setProductSuggestions([]);
-                              setProductSuggestIdx(null);
-                              toast('New product will be created when delivery is marked complete', { icon: 'ℹ️', duration: 3000 });
-                            }}
-                          >
-                            + Use "{item.item_name}" as new product (created on delivery)
                           </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
 
-                    {/* Quantity */}
-                    <div>
-                      {idx === 0 && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Qty</div>}
-                      <input className="form-control" type="number" min="0" step="0.01"
-                        value={item.quantity}
-                        onChange={e => updateDeliveryItem(idx, 'quantity', e.target.value)}
-                        placeholder="0"
-                      />
-                    </div>
+                      <div>
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Qty</div>}
+                        <input className="form-control" type="number" min="0" step="0.01"
+                          value={item.quantity}
+                          onChange={e => updateDeliveryItem(idx, 'quantity', e.target.value)}
+                          placeholder="0"
+                          style={{ fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
 
-                    {/* Unit — dynamic search + add new */}
-                    <div style={{ position: 'relative' }}>
-                      {idx === 0 && (
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Unit</div>
-                      )}
-                      <input
-                        className="form-control"
-                        value={item.unit || ''}
-                        placeholder="bag"
-                        onChange={e => {
-                          updateDeliveryItem(idx, 'unit', e.target.value);
-                          // open suggestions
-                          setProductSuggestIdx(`unit_${idx}`);
-                        }}
-                        onFocus={() => setProductSuggestIdx(`unit_${idx}`)}
-                        onBlur={() => setTimeout(() => setProductSuggestIdx(null), 200)}
-                      />
-                      {productSuggestIdx === `unit_${idx}` && (
-                        <div style={{
-                          position: 'absolute', top: '100%', left: 0, right: 0,
-                          background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6,
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 160, overflowY: 'auto',
-                        }}>
-                          {allUnits
-                            .filter(u => !item.unit || u.toLowerCase().includes((item.unit || '').toLowerCase()))
-                            .map(u => (
-                              <div key={u}
-                                style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
+                      <div style={{ position: 'relative' }}>
+                        {idx === 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6 }}>Unit</div>}
+                        <input
+                          className="form-control"
+                          value={item.unit || ''}
+                          placeholder="bag"
+                          onChange={e => {
+                            updateDeliveryItem(idx, 'unit', e.target.value);
+                            setProductSuggestIdx(`unit_${idx}`);
+                          }}
+                          onFocus={() => setProductSuggestIdx(`unit_${idx}`)}
+                          onBlur={() => setTimeout(() => setProductSuggestIdx(null), 200)}
+                          style={{ fontSize: 13, borderRadius: 8, padding: '10px 12px', border: '1px solid #cbd5e1' }}
+                        />
+                        {productSuggestIdx === `unit_${idx}` && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, right: 0,
+                            background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 160, overflowY: 'auto', marginTop: 4
+                          }}>
+                            {allUnits
+                              .filter(u => !item.unit || u.toLowerCase().includes((item.unit || '').toLowerCase()))
+                              .map(u => (
+                                <div key={u}
+                                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}
+                                  onMouseDown={() => {
+                                    updateDeliveryItem(idx, 'unit', u);
+                                    setProductSuggestIdx(null);
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                                  onMouseLeave={e => e.currentTarget.style.background = ''}
+                                >{u}</div>
+                              ))}
+                            {item.unit && !allUnits.includes(item.unit.toLowerCase().trim()) && (
+                              <div
+                                style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 12.5, color: '#0ea5e9', fontWeight: 600, background: '#eff6ff' }}
                                 onMouseDown={() => {
-                                  updateDeliveryItem(idx, 'unit', u);
+                                  addCustomUnit(item.unit);
                                   setProductSuggestIdx(null);
+                                  toast(`Unit "${item.unit}" saved for future use`, { icon: '✓', duration: 2000 });
                                 }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'var(--primary-light)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                              >{u}</div>
-                            ))}
-                          {/* Add new unit option */}
-                          {item.unit && !allUnits.includes(item.unit.toLowerCase().trim()) && (
-                            <div
-                              style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12.5, color: 'var(--primary)', fontWeight: 600, background: '#eff6ff' }}
-                              onMouseDown={() => {
-                                addCustomUnit(item.unit);
-                                setProductSuggestIdx(null);
-                                toast(`Unit "${item.unit}" saved for future use`, { icon: '✓', duration: 2000 });
-                              }}
-                            >
-                              + Add "{item.unit}" as new unit
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                              >
+                                + Add "{item.unit}" as new unit
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
-                    {/* Remove row */}
-                    <div>
-                      {deliveryForm.items.length > 1 && (
-                        <button className="btn btn-danger btn-sm" onClick={() => removeDeliveryItem(idx)}>✕</button>
-                      )}
-                    </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        {idx === 0 && <div style={{ fontSize: 11, height: 16, marginBottom: 6 }}>&nbsp;</div>}
+                        {deliveryForm.items.length > 1 && (
+                          <button type="button" onClick={() => removeDeliveryItem(idx)} 
+                            style={{ background: '#fee2e2', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'all 0.2s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#fecaca'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#fee2e2'}
+                            title="Remove Item"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
 
+                    </div>
+                  ))}
+                </div>
+
+                
+                   </div>
+                ) : (
+                  // EMPTY STATE
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: 16, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 120 }}>
+                    <Package size={32} style={{ color: '#94a3b8', marginBottom: 12 }} />
+                    <div style={{ color: '#64748b', fontSize: 14, fontWeight: 500 }}>Please select at least one supplier to add items</div>
                   </div>
-                ))}
+                )}
 
-                <div className="form-group">
-                  <label className="form-label">Notes</label>
+                <div style={{ position: 'relative' }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Notes</label>
                   <input className="form-control"
                     value={deliveryForm.notes}
                     onChange={e => setDeliveryForm(f => ({ ...f, notes: e.target.value }))}
-                    placeholder="Optional notes" />
+                    placeholder="Optional notes"
+                    style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 14, fontWeight: 500, width: '100%', boxSizing: 'border-box' }} />
                 </div>
 
                   </div>
-                  {/* Modal Footer */}
-                  <div style={{ padding: '16px 22px', borderTop: '1px solid #f1f5f9', background: '#fff', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button className="btn btn-outline" onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}>Cancel</button>
-                    <button className="btn btn-primary" onClick={handleSaveDelivery} disabled={deliverySaving}>
-                      {deliverySaving ? <><span className="spinner"></span> Saving...</> : editDeliveryId ? 'Update' : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
+                  <div style={{ padding: '20px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 12, flexShrink: 0 }}>
+                    <button 
+                      onClick={() => { setShowDeliveryForm(false); setEditDeliveryId(null); }}
+                      style={{ flex: 1, padding: '12px 24px', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, color: '#0f172a', fontWeight: 700, fontSize: 15, cursor: 'pointer', transition: 'all 0.2s' }}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleSaveDelivery} 
+                      disabled={deliverySaving}
+                      style={{ flex: 2, padding: '12px 24px', background: '#0284c7', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 15, cursor: deliverySaving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)', opacity: deliverySaving ? 0.7 : 1, transition: 'all 0.2s' }}
+                    >
+                      {deliverySaving ? 'Saving...' : editDeliveryId ? 'Update Entry' : <><Check size={18} /> Save Entry</>}
                     </button>
                   </div>
                 </div>
@@ -1798,14 +2597,14 @@ Thank you!`,
               });
               return sorted.length === 0 ? (
                 <div className="empty-state" style={{ padding: 24 }}>
-                  No incoming vehicles scheduled for today.
+                  No incoming vehicles scheduled for today. Click "+ Add Vehicle" to add one.
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
                     <thead>
                       <tr style={{ background: '#f8fafc' }}>
-                        {['Vehicle', 'Driver/Supplier', 'Expected At', 'Items', 'Actions'].map(h => (
+                        {['Vehicle', 'Driver/Supplier', 'Expected At', 'Items'].map(h => (
                           <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -1826,6 +2625,7 @@ Thank you!`,
                           delivered: 'Delivered',
                           not_delivered: 'Not Delivered',
                         };
+                        const isWalkinOlderThan3Days = d.vehicle_number === 'WALK-IN' && (d.expected_arrival || d.created_at) && (Date.now() - new Date(d.expected_arrival || d.created_at).getTime() > 3 * 24 * 60 * 60 * 1000);
                         return (
                           <tr key={d._id} style={{
                             borderBottom: '1px solid #f3f4f6',
@@ -1837,7 +2637,13 @@ Thank you!`,
                             borderLeft: d.vehicle_number === 'WALK-IN' && d.status !== 'delivered'
                               ? '3px solid #f59e0b' : 'none',
                             cursor: 'pointer'
-                          }} onClick={() => setDetailsDelivery(d)}>
+                            }} onClick={() => {
+                              if (d.vehicle_number === 'WALK-IN') {
+                                setDetailsDelivery(d);
+                              } else {
+                                navigate(`/vehicle/${d._id}`);
+                              }
+                            }}>
                             <td style={{ padding: '10px 12px' }}>
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
                                 <Link
@@ -1851,10 +2657,10 @@ Thank you!`,
                                   <span className={`badge ${statusColors[d.status]}`} style={{ fontSize: 10, padding: '2px 6px' }}>
                                     {statusLabels[d.status]}
                                   </span>
-                                  {d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid' && (
+                                  {d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid' && !isWalkinOlderThan3Days && (
                                     <span className="badge badge-danger" style={{ fontSize: 10, padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={10} /> Unpaid</span>
                                   )}
-                                  {d.vehicle_number === 'WALK-IN' && d.payment_status === 'paid' && (
+                                  {d.vehicle_number === 'WALK-IN' && d.payment_status === 'paid' && !isWalkinOlderThan3Days && (
                                     <span className="badge badge-success" style={{ fontSize: 10, padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={10} /> Paid {d.payment_mode ? ` · ${d.payment_mode}` : ''}</span>
                                   )}
                                 </div>
@@ -1863,7 +2669,12 @@ Thank you!`,
                             <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
                               {d.vehicle_number === 'WALK-IN' 
                                 ? (d.supplier || '—') 
-                                : (d.driver_name || '—')}
+                                : (
+                                  <>
+                                    <div style={{ color: 'var(--text)', fontWeight: 500 }}>{d.driver_name || '—'}</div>
+                                    {d.supplier && <div style={{ fontSize: 11, marginTop: 2 }}>{d.supplier}</div>}
+                                  </>
+                                )}
                             </td>
                             <td style={{ padding: '10px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>
                               {d.expected_arrival_ist}
@@ -1883,63 +2694,7 @@ Thank you!`,
                               </div>
                             </td>
 
-                            <td style={{ padding: '10px 12px' }}>
-                              <div className="flex gap-1" style={{ flexWrap: 'wrap' }}>
-                                {/* Only show Delivered / Not Delivered for non-completed entries */}
-                                {d.status !== 'delivered' && d.status !== 'not_delivered' && (
-                                  <>
-                                    <button
-                                      className="btn btn-success btn-sm"
-                                      style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setConfirmDeliveryId(d._id);
-                                      }}
-                                    ><CheckCircle size={11} /> Delivered</button>
-                                    <button
-                                      className="btn btn-outline btn-sm"
-                                      style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                      onClick={(e) => { e.stopPropagation(); handleDeliveryStatus(d._id, 'not_delivered'); }}
-                                    ><XCircle size={11} /> Not Delivered</button>
-                                    <button
-                                      className="btn btn-warning btn-sm"
-                                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                                      onClick={(e) => { e.stopPropagation(); openEditDelivery(d); }}
-                                    ><Edit2 size={11} /></button>
-                                  </>
-                                )}
-                                {/* Allow re-open if not_delivered */}
-                                {d.status === 'not_delivered' && (
-                                  <button
-                                    className="btn btn-outline btn-sm"
-                                    style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                    onClick={(e) => { e.stopPropagation(); handleDeliveryStatus(d._id, 'pending'); }}
-                                  ><RotateCcw size={11} /> Reopen</button>
-                                )}
-                                {/* Walk-in specific: Paid button separate from delivery status */}
-                                {d.vehicle_number === 'WALK-IN' && d.payment_status !== 'paid' && (
-                                  <button
-                                    className="btn btn-warning btn-sm"
-                                    style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setPaymentDelivery(d);
-                                    }}
-                                  ><CreditCard size={11} /> Mark Paid {(() => {
-                                      const amt = d.items?.reduce((s, i) => s + ((parseFloat(i.base_price) || 0) * (parseFloat(i.quantity) || 0)), 0);
-                                      return amt > 0 ? `(₹${amt.toLocaleString('en-IN')})` : '';
-                                    })()}</button>
-                                )}
-                                {d.status !== 'delivered' && (
-                                  <button
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteDelivery(d._id); }}
-                                  ><Trash2 size={11} /></button>
-                                )}
-                              </div>
-                            </td>
+
                           </tr>
                         );
                       })}
@@ -1954,7 +2709,7 @@ Thank you!`,
       )}
 
       {/* Settlement Panel */}
-      {showStatement && (
+      {isAdmin && showStatement && (
         <div className="card" style={{ marginBottom: 20 }} ref={statementPanelRef}>
           <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
             <div className="card-title">
@@ -2039,107 +2794,224 @@ Thank you!`,
                 className="cs-modal-overlay"
                 style={{
                   position: 'fixed',
-                  top: 0, left: 0, right: 0, bottom: 0,
+                  inset: 0,
                   backgroundColor: 'rgba(15, 23, 42, 0.6)',
                   backdropFilter: 'blur(4px)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  zIndex: 10000, padding: '16px',
+                  zIndex: 10000,
                   animation: 'fadeIn 0.2s ease-out',
                 }}
-                onClick={() => setShowAddSettlement(false)}
               >
+                <div style={{ position: 'absolute', inset: 0 }} onClick={() => setShowAddSettlement(false)} />
                 <div
                   ref={addSettlementRef}
                   className="cs-modal card"
                   style={{
-                    width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto',
-                    borderRadius: '20px', animation: 'slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                    background: '#f8fafc', padding: 0
+                    position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 650, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)', animation: 'slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)', padding: 0
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="card-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', borderRadius: '20px 20px 0 0' }}>
-                    <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--primary)' }}>
-                      <Plus size={18} /> New Settlement Entry
-                    </div>
-                    <button onClick={() => setShowAddSettlement(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                      <X size={20} />
-                    </button>
-                  </div>
-                  
-                  <div style={{ padding: '20px' }}>
-                    <div style={{ marginBottom: 16, background: '#fff', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 200 }}>
-                      <label className="form-label text-danger" style={{ fontWeight: 800, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Paid Out (-)</label>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        <button type="button" style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6 }} className={`btn btn-sm ${settlementForm.type === 'walkin_delivery' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'walkin_delivery', received_category: 'not_applicable' })}>Walk-in Delivery</button>
-                        {isAdmin && <button type="button" style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6 }} className={`btn btn-sm ${settlementForm.type === 'paid_to_supplier' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'paid_to_supplier', received_category: 'not_applicable' })}>Supplier</button>}
-                        <button type="button" style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6 }} className={`btn btn-sm ${settlementForm.type === 'other_expense' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setSettlementForm({ ...settlementForm, type: 'other_expense', received_category: 'not_applicable' })}>Other Expense</button>
+                  {/* Header */}
+                  <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 38, height: 38, background: '#eff6ff', color: '#3b82f6', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Plus size={18} />
+                      </div>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>New Settlement Entry</h3>
+                        <p style={{ margin: 0, fontSize: 12, color: '#94a3b8', fontWeight: 400 }}>Record a payment going out of the shop</p>
                       </div>
                     </div>
+                    <button onClick={() => setShowAddSettlement(false)} style={{ background: 'none', border: '1px solid #e2e8f0', width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8' }}>
+                      <X size={14} />
+                    </button>
                   </div>
-                </div>
+
+                  {/* Body */}
+                  <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    {/* Type Selector */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8 }}>Entry Type</label>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button type="button" onClick={() => setSettlementForm({ ...settlementForm, type: 'walkin_delivery', received_category: 'not_applicable' })} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 8, border: `1.5px solid ${settlementForm.type === 'walkin_delivery' ? '#3b82f6' : '#e2e8f0'}`, background: settlementForm.type === 'walkin_delivery' ? '#eff6ff' : 'white', color: settlementForm.type === 'walkin_delivery' ? '#2563eb' : '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s' }}>
+                          <Truck size={14} /> Walk-in Delivery
+                        </button>
+                        {isAdmin && <button type="button" onClick={() => setSettlementForm({ ...settlementForm, type: 'paid_to_supplier', received_category: 'not_applicable' })} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 8, border: `1.5px solid ${settlementForm.type === 'paid_to_supplier' ? '#3b82f6' : '#e2e8f0'}`, background: settlementForm.type === 'paid_to_supplier' ? '#eff6ff' : 'white', color: settlementForm.type === 'paid_to_supplier' ? '#2563eb' : '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s' }}>
+                          <User size={14} /> Supplier
+                        </button>}
+                        <button type="button" onClick={() => setSettlementForm({ ...settlementForm, type: 'other_expense', received_category: 'not_applicable' })} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 8, border: `1.5px solid ${settlementForm.type === 'other_expense' ? '#3b82f6' : '#e2e8f0'}`, background: settlementForm.type === 'other_expense' ? '#eff6ff' : 'white', color: settlementForm.type === 'other_expense' ? '#2563eb' : '#475569', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s' }}>
+                          <FileText size={14} /> Other Expense
+                        </button>
+                      </div>
+                    </div>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: 12 }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>{settlementForm.type === 'paid_to_supplier' ? 'Supplier / Company *' : 'Party Name'}</label>
-                    <input
-                      className="form-control"
-                      list={settlementForm.type === 'other_expense' ? undefined : "party-names-list"}
-                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
-                      value={settlementForm.party_name}
-                      onChange={e => setSettlementForm({ ...settlementForm, party_name: e.target.value })}
-                      placeholder="Type or select party name"
-                    />
-                    <datalist id="party-names-list">
-                      {settlementData.partyNames?.map(p => <option key={p} value={p} />)}
-                    </datalist>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
+                      <div style={{ position: 'relative' }}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>{settlementForm.type === 'paid_to_supplier' ? 'Supplier / Company *' : 'Party Name'}</label>
+                        <input
+                          ref={partyInputRef}
+                          className="form-control"
+                          style={{ fontSize: 14 }}
+                          value={settlementForm.party_name}
+                          onChange={e => {
+                            setSettlementForm({ ...settlementForm, party_name: e.target.value });
+                            setShowPartyList(true);
+                          }}
+                          onFocus={() => setShowPartyList(true)}
+                          onBlur={() => setTimeout(() => setShowPartyList(false), 250)}
+                          placeholder="Type or select party name"
+                        />
+                        {showPartyList && settlementForm.type !== 'other_expense' && (
+                          <div
+                            onMouseDown={e => e.preventDefault()}
+                            style={{
+                              position: 'absolute',
+                              top: '100%',
+                              left: 0,
+                              width: '100%',
+                              maxHeight: 250,
+                              overflowY: 'auto',
+                              background: '#fff',
+                              border: '1.5px solid #d1d5db',
+                              borderRadius: 8,
+                              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                              zIndex: 99999,
+                              marginTop: 4
+                            }}
+                          >
+                            {(() => {
+                              const q = settlementForm.party_name.toLowerCase().trim();
+                              if (settlementForm.type === 'paid_to_supplier') {
+                                const list = suppliers.filter(s => s.name.toLowerCase().includes(q) || (s.phone && s.phone.includes(q)));
+                                if (list.length === 0) return <div style={{ padding: '10px', color: 'var(--text-muted)', fontSize: 12 }}>{q ? `No supplier found for "${q}"` : 'No suppliers available'}</div>;
+                                return list.map((s, idx) => (
+                                  <div
+                                    key={s._id}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setSettlementForm({ ...settlementForm, party_name: s.name });
+                                      setShowPartyList(false);
+                                    }}
+                                    style={{
+                                      padding: '8px 12px', cursor: 'pointer',
+                                      borderBottom: idx < list.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                      transition: 'background 0.1s',
+                                      background: '#fff'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                                  >
+                                    <div>
+                                      <div style={{ fontWeight: 700, fontSize: 12, color: '#111827' }}>{s.name}</div>
+                                      <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{s.phone || 'No phone'}</div>
+                                    </div>
+                                    {s.balance > 0.01 && (
+                                      <span style={{ fontSize: 9, fontWeight: 700, background: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: 6 }}>
+                                        Due ₹{s.balance?.toFixed(2)}
+                                      </span>
+                                    )}
+                                    {s.balance < 0 && (
+                                      <span style={{ fontSize: 9, fontWeight: 700, background: '#f0fdf4', color: '#16a34a', padding: '2px 6px', borderRadius: 6 }}>
+                                        Adv ₹{Math.abs(s.balance)?.toFixed(2)}
+                                      </span>
+                                    )}
+                                  </div>
+                                ));
+                              } else {
+                                // Basic array of names
+                                const list = settlementData.partyNames.filter(n => n.toLowerCase().includes(q));
+                                if (list.length === 0 && !q) return <div style={{ padding: '10px', color: 'var(--text-muted)', fontSize: 12 }}>Type to add a new party</div>;
+                                if (list.length === 0) return (
+                                  <div
+                                    onMouseDown={(e) => { e.preventDefault(); setShowPartyList(false); }}
+                                    style={{ padding: '10px', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', background: '#fff', fontSize: 12 }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                                  >
+                                    + Add "{settlementForm.party_name}"
+                                  </div>
+                                );
+                                return list.map((name, idx) => (
+                                  <div
+                                    key={name}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setSettlementForm({ ...settlementForm, party_name: name });
+                                      setShowPartyList(false);
+                                    }}
+                                    style={{
+                                      padding: '8px 12px', cursor: 'pointer',
+                                      borderBottom: idx < list.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                      fontWeight: 600, fontSize: 12, color: '#111827',
+                                      transition: 'background 0.1s',
+                                      background: '#fff'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                                  >
+                                    {name}
+                                  </div>
+                                ));
+                              }
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>Amount ₹ *</label>
+                        <input type="number" step="0.01" min="0"
+                          className="form-control"
+                          style={{ fontSize: 14, fontWeight: 600 }}
+                          value={settlementForm.amount}
+                          onChange={e => setSettlementForm({ ...settlementForm, amount: e.target.value })}
+                          placeholder="0.00" />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>Payment Mode</label>
+                        <select className="form-control" value={settlementForm.mode}
+                          style={{ fontSize: 14, appearance: 'none', background: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") no-repeat right 10px center/14px white` }}
+                          onChange={e => setSettlementForm({ ...settlementForm, mode: e.target.value })}>
+                          <option value="cash">Cash</option>
+                          <option value="upi">UPI</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                          <option value="cheque">Cheque</option>
+                          <option value="others">Others</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>Reference (Optional)</label>
+                        <input className="form-control" value={settlementForm.reference}
+                          style={{ fontSize: 14 }}
+                          onChange={e => setSettlementForm({ ...settlementForm, reference: e.target.value })}
+                          placeholder="Txn ID / UPI" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>Notes (Optional)</label>
+                      <input className="form-control" value={settlementForm.notes}
+                        style={{ fontSize: 14 }}
+                        onChange={e => setSettlementForm({ ...settlementForm, notes: e.target.value })}
+                        placeholder="e.g. Monthly supply payment" />
+                    </div>
                   </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Amount ₹ *</label>
-                    <input className="form-control" type="number" step="0.01" min="0"
-                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
-                      value={settlementForm.amount}
-                      onChange={e => setSettlementForm({ ...settlementForm, amount: e.target.value })}
-                      placeholder="0.00" />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Payment Mode</label>
-                    <select className="form-control" value={settlementForm.mode}
-                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
-                      onChange={e => setSettlementForm({ ...settlementForm, mode: e.target.value })}>
-                      <option value="cash">Cash</option>
-                      <option value="upi">UPI</option>
-                      <option value="bank_transfer">Bank Transfer</option>
-                      <option value="cheque">Cheque</option>
-                      <option value="others">Others</option>
-                    </select>
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Reference (optional)</label>
-                    <input className="form-control" value={settlementForm.reference}
-                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
-                      onChange={e => setSettlementForm({ ...settlementForm, reference: e.target.value })}
-                      placeholder="Txn ID / UPI" />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
-                    <label className="form-label" style={{ fontSize: 11, marginBottom: 4 }}>Notes (optional)</label>
-                    <input className="form-control" value={settlementForm.notes}
-                      style={{ padding: '6px 10px', fontSize: 13, height: '34px' }}
-                      onChange={e => setSettlementForm({ ...settlementForm, notes: e.target.value })}
-                      placeholder="e.g. Monthly supply payment" />
-                  </div>
-                </div>
-                  <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-                    <button className="btn btn-outline" style={{ padding: '6px 14px', fontSize: 13, height: '34px' }} onClick={() => setShowAddSettlement(false)}>Cancel</button>
-                    <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 13, height: '34px' }} onClick={handleAddSettlement} disabled={settlementSaving}>
-                      {settlementSaving ? <><span className="spinner"></span> Saving...</> : <><Check size={14} style={{ marginRight: 4 }} /> Save Entry</>}
+
+                  {/* Footer */}
+                  <div style={{ padding: '16px 24px', borderTop: '1px solid #f1f5f9', background: 'white', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button type="button" onClick={() => setShowAddSettlement(false)} style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                    <button type="button" onClick={handleAddSettlement} disabled={settlementSaving} style={{ padding: '9px 20px', borderRadius: 8, background: '#2563eb', color: 'white', border: 'none', fontWeight: 600, fontSize: 13, cursor: settlementSaving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 7, opacity: settlementSaving ? 0.7 : 1 }}>
+                      {settlementSaving ? <span style={{ width: 14, height: 14, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 1s linear infinite' }}></span> : <Check size={14} />}
+                      {settlementSaving ? 'Saving...' : 'Save Entry'}
                     </button>
                   </div>
                 </div>
               </div>
-            </div>
             )}
 
             {/* Fix 2: Search by party + Sort controls */}
@@ -2200,9 +3072,12 @@ Thank you!`,
                   </div>
                 )}
               </div>
+
               <div>
                 <SortDropdown
                   options={[
+                    { key: 'admin_first', label: '👑 Admin First' },
+                    { key: 'manager_first', label: '👤 Manager First' },
                     { key: 'date_desc', label: '↓ Latest Date' },
                     { key: 'date_asc', label: '↑ Oldest Date' },
                     { key: 'amount_desc', label: '↓ High Amount' },
@@ -2211,143 +3086,336 @@ Thank you!`,
                   value={settlementSortKey}
                   onChange={v => {
                     setSettlementSortOpen(false);
-                    if (v === 'amount_desc') { setSettlementSortAmount('desc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'desc'); }
-                    else if (v === 'amount_asc') { setSettlementSortAmount('asc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'asc'); }
-                    else if (v === 'date_asc') { setSettlementSortDate('asc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'asc', ''); }
-                    else { setSettlementSortDate('desc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
+                    if (v === 'amount_desc') { setSettlementSortRole(''); setSettlementSortAmount('desc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'desc'); }
+                    else if (v === 'amount_asc') { setSettlementSortRole(''); setSettlementSortAmount('asc'); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, '', 'asc'); }
+                    else if (v === 'admin_first') { setSettlementSortRole('admin'); setSettlementSortAmount(''); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
+                    else if (v === 'manager_first') { setSettlementSortRole('manager'); setSettlementSortAmount(''); setSettlementSortDate(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
+                    else if (v === 'date_asc') { setSettlementSortRole(''); setSettlementSortDate('asc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'asc', ''); }
+                    else { setSettlementSortRole(''); setSettlementSortDate('desc'); setSettlementSortAmount(''); loadSettlements(settlementCardDate, settlementViewMode, settlementSearch, 'desc', ''); }
                   }}
                   open={settlementSortOpen}
                   onToggle={() => setSettlementSortOpen(o => !o)}
                 />
               </div>
-
             </div>
 
-            {/* Fix 1: Received = all other_income entries (automated from backend) */}
+            {/* Settlement Breakdown — Popup Modals with Summary Digits */}
             {(() => {
               const totalReceived = settlementData.totalIn || 0;
               const net = totalReceived - (settlementData.totalOut || 0);
 
-              // Fix 2: Build paid-out and received detail entries
+              // Separate paid-out and received entries
               const paidOutEntries = (settlementData.settlements || [])
                 .filter(s => s.type !== 'other_income');
-              
               const receivedSettlements = (settlementData.settlements || []).filter(s => s.type === 'other_income');
-              
-              // Group by received_category
-              const groupedReceived = receivedSettlements.reduce((acc, s) => {
-                const cat = s.received_category || 'others';
-                if (!acc[cat]) acc[cat] = { total: 0, byMode: {} };
-                acc[cat].total += s.amount;
-                acc[cat].byMode[s.mode] = (acc[cat].byMode[s.mode] || 0) + s.amount;
-                return acc;
-              }, {});
 
-              const catLabels = {
-                today_invoice: 'By Invoice',
+              // Category labels
+              const receivedCatLabels = {
+                today_invoice: 'Invoice (Sale)',
                 due_cleared: 'Due Cleared',
-                advance_payment: 'Advance',
-                others: 'Others'
+                advance_payment: 'Advance Received',
+                others: 'Others',
+                not_applicable: 'Others'
+              };
+              const paidOutTypeLabels = {
+                other_expense: 'Expense',
+                walkin_delivery: 'Delivery Payment',
+                paid_to_supplier: 'Supplier Payment',
+                vehicle_expense: 'Vehicle Expense',
+                by_invoice: 'Others',
+                due_cleared: 'Others',
+                advance_received: 'Others',
+                received_from_customer: 'Others'
+              };
+              const modeIcons = {
+                'CASH': '💵',
+                'UPI': '📱',
+                'ONLINE': '🌐',
+                'BANK_TRANSFER': '🏦',
+                'CHEQUE': '📄',
+                'OTHERS': '📋',
+                'ADVANCE_CREDIT': '🎫',
+                'GOODS_EXCHANGE': '🔄',
+                'DISCOUNT': '🏷️'
+              };
+              const modeDisplayName = {
+                'CASH': 'Cash',
+                'UPI': 'UPI',
+                'ONLINE': 'Online',
+                'BANK_TRANSFER': 'Bank Transfer',
+                'CHEQUE': 'Cheque',
+                'OTHERS': 'Others',
+                'ADVANCE_CREDIT': 'Advance Credit',
+                'GOODS_EXCHANGE': 'Goods Exchange',
+                'DISCOUNT': 'Discount'
               };
 
-              const receivedEntries = receivedSettlements.map(s => ({
-                label: s.party_name || 'Other Income',
-                party: s.party_name || '—',
-                mode: s.mode,
-                amount: s.amount,
-                reason: s.received_category ? catLabels[s.received_category] || s.received_category : (s.notes || 'Other income'),
-                ist_formatted: s.ist_formatted,
-              }));
+              // ── RECEIVED: Group by Manager → Category → Mode (summary totals only) ──
+              const groupedReceived = {};
+              receivedSettlements.forEach(s => {
+                const mgr = s.created_by?.display_name || s.created_by?.username || 'System / Admin';
+                if (!groupedReceived[mgr]) groupedReceived[mgr] = { total: 0, byCat: {} };
+                groupedReceived[mgr].total += s.amount;
+                const cat = s.received_category || 'others';
+                const catKey = receivedCatLabels[cat] || 'Others';
+                if (!groupedReceived[mgr].byCat[catKey]) groupedReceived[mgr].byCat[catKey] = { total: 0, byMode: {} };
+                groupedReceived[mgr].byCat[catKey].total += s.amount;
+                const mode = (s.mode || 'cash').toUpperCase();
+                if (!groupedReceived[mgr].byCat[catKey].byMode[mode]) groupedReceived[mgr].byCat[catKey].byMode[mode] = 0;
+                groupedReceived[mgr].byCat[catKey].byMode[mode] += s.amount;
+              });
+
+              // ── PAID OUT: Group by Manager → Type Category → Mode (summary totals only) ──
+              const groupedPaidOut = {};
+              paidOutEntries.forEach(s => {
+                const mgr = s.created_by?.display_name || s.created_by?.username || 'System / Admin';
+                if (!groupedPaidOut[mgr]) groupedPaidOut[mgr] = { total: 0, byCat: {} };
+                groupedPaidOut[mgr].total += s.amount;
+                const catKey = paidOutTypeLabels[s.type] || 'Others';
+                if (!groupedPaidOut[mgr].byCat[catKey]) groupedPaidOut[mgr].byCat[catKey] = { total: 0, byMode: {} };
+                groupedPaidOut[mgr].byCat[catKey].total += s.amount;
+                const mode = (s.mode || 'cash').toUpperCase();
+                if (!groupedPaidOut[mgr].byCat[catKey].byMode[mode]) groupedPaidOut[mgr].byCat[catKey].byMode[mode] = 0;
+                groupedPaidOut[mgr].byCat[catKey].byMode[mode] += s.amount;
+              });
+
+              const receivedGroups = Object.entries(groupedReceived).filter(([_, d]) => d.total > 0).sort((a, b) => b[1].total - a[1].total);
+              const paidOutGroups = Object.entries(groupedPaidOut).filter(([_, d]) => d.total > 0).sort((a, b) => b[1].total - a[1].total);
+
+              // Date label for popup header
+              const dateLabel = settlementViewMode === 'all'
+                ? 'Full History'
+                : new Date(settlementCardDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+              // Shared popup modal styles
+              const overlayStyle = {
+                position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                zIndex: 10001, animation: 'fadeIn 0.2s ease-out', padding: '16px'
+              };
+              const modalStyle = (accentBg) => ({
+                position: 'relative', background: '#fff', borderRadius: 20,
+                width: '100%', maxWidth: 580,
+                boxShadow: '0 25px 60px -12px rgba(0,0,0,0.3)',
+                overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                maxHeight: 'calc(100vh - 40px)',
+                animation: 'slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+              });
+
+              // Render a breakdown popup (used for both Received and Paid Out)
+              const renderBreakdownPopup = (isReceived, groups, onClose) => {
+                const accent = isReceived ? '#16a34a' : '#dc2626';
+                const accentLight = isReceived ? '#f0fdf4' : '#fef2f2';
+                const accentBorder = isReceived ? '#86efac' : '#fca5a5';
+                const accentSuperLight = isReceived ? '#dcfce7' : '#fee2e2';
+                const label = isReceived ? 'Received' : 'Paid Out';
+                const totalAmt = isReceived ? totalReceived : (settlementData.totalOut || 0);
+                const sign = isReceived ? '+' : '−';
+
+                return (
+                  <div style={overlayStyle} onClick={onClose}>
+                    <div style={{ position: 'absolute', inset: 0 }} />
+                    <div style={modalStyle(accentLight)} onClick={e => e.stopPropagation()}>
+                      {/* Header */}
+                      <div style={{
+                        padding: '18px 24px', background: accentLight,
+                        borderBottom: `1px solid ${accentBorder}`,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{
+                            width: 40, height: 40, borderRadius: 12,
+                            background: accent, color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 18, fontWeight: 700
+                          }}>
+                            {isReceived ? '↓' : '↑'}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{label} Breakdown</div>
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{dateLabel}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: accent, fontFamily: 'monospace' }}>{fc(totalAmt)}</div>
+                            <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>TOTAL</div>
+                          </div>
+                          <button onClick={onClose} style={{
+                            background: '#fff', border: `1px solid ${accentBorder}`,
+                            width: 32, height: 32, borderRadius: '50%',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer', color: '#94a3b8', fontSize: 16, fontWeight: 600
+                          }}>✕</button>
+                        </div>
+                      </div>
+
+                      {/* Body — scrollable */}
+                      <div style={{
+                        padding: '16px 20px', overflowY: 'auto', flex: 1, minHeight: 0,
+                        display: 'flex', flexDirection: 'column', gap: 16
+                      }}>
+                        {groups.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                            <div style={{ fontSize: 36, marginBottom: 12 }}>{isReceived ? '📥' : '📤'}</div>
+                            <div style={{ fontSize: 14, fontWeight: 600 }}>No {label.toLowerCase()} entries for this date</div>
+                          </div>
+                        ) : groups.map(([managerName, managerData], mIdx) => (
+                          <div key={managerName} style={{
+                            background: accentSuperLight, borderRadius: 14,
+                            border: `1px solid ${accentBorder}`,
+                            overflow: 'hidden'
+                          }}>
+                            {/* Manager header */}
+                            <div style={{
+                              padding: '12px 16px',
+                              background: accentLight,
+                              borderBottom: `1px solid ${accentBorder}`,
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{
+                                  width: 30, height: 30, borderRadius: 8,
+                                  background: accent, color: '#fff',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: 12, fontWeight: 700
+                                }}>
+                                  {managerName.charAt(0).toUpperCase()}
+                                </div>
+                                <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0f172a' }}>{managerName}</span>
+                              </div>
+                              <span style={{
+                                fontWeight: 800, fontSize: 15, color: accent,
+                                fontFamily: 'monospace'
+                              }}>{fc(managerData.total)}</span>
+                            </div>
+
+                            {/* Categories */}
+                            <div style={{ padding: '10px 14px' }}>
+                              {Object.entries(managerData.byCat).map(([catName, catData], cIdx) => (
+                                <div key={catName} style={{
+                                  marginBottom: cIdx < Object.keys(managerData.byCat).length - 1 ? 12 : 0
+                                }}>
+                                  {/* Category header */}
+                                  <div style={{
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                    marginBottom: 6, paddingBottom: 4,
+                                    borderBottom: `1px dashed ${accentBorder}`
+                                  }}>
+                                    <span style={{
+                                      fontSize: 11, fontWeight: 700, color: accent,
+                                      textTransform: 'uppercase', letterSpacing: '0.5px'
+                                    }}>{catName}</span>
+                                    <span style={{
+                                      fontSize: 12, fontWeight: 700, color: accent,
+                                      fontFamily: 'monospace'
+                                    }}>{sign}{fc(catData.total)}</span>
+                                  </div>
+
+                                  {/* Payment modes — summary digits */}
+                                  <div style={{ paddingLeft: 4 }}>
+                                    {Object.entries(catData.byMode).map(([mode, amount], modeIdx) => (
+                                      <div key={mode} style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '5px 8px',
+                                        background: modeIdx % 2 === 0 ? 'rgba(255,255,255,0.6)' : 'transparent',
+                                        borderRadius: 6, marginBottom: 2
+                                      }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <span style={{ fontSize: 14 }}>{modeIcons[mode] || '💰'}</span>
+                                          <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155' }}>
+                                            {modeDisplayName[mode] || mode}
+                                          </span>
+                                        </div>
+                                        <span style={{
+                                          fontSize: 13, fontWeight: 700, color: accent,
+                                          fontFamily: 'monospace'
+                                        }}>{fc(amount)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
 
               return (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
-                    {/* Fix 2: Paid Out — clickable */}
+                    {/* Paid Out — clickable, opens popup */}
                     <div
-                      style={{ background: '#fef2f2', border: `1.5px solid ${showPaidOutDetail ? '#dc2626' : '#fca5a5'}`, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
+                      style={{
+                        background: showPaidOutDetail ? '#dc2626' : '#fef2f2',
+                        border: `1.5px solid ${showPaidOutDetail ? '#dc2626' : '#fca5a5'}`,
+                        borderRadius: 10, padding: '12px 14px', cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        transform: showPaidOutDetail ? 'scale(0.97)' : 'scale(1)'
+                      }}
                       onClick={() => { setShowPaidOutDetail(d => !d); setShowReceivedDetail(false); }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                        Paid Out {showPaidOutDetail ? '▲' : '▼'}
+                      <div style={{
+                        fontSize: 10, fontWeight: 700,
+                        color: showPaidOutDetail ? 'rgba(255,255,255,0.8)' : 'var(--danger)',
+                        textTransform: 'uppercase', whiteSpace: 'nowrap',
+                        display: 'flex', alignItems: 'center', gap: 4
+                      }}>
+                        <span>↑</span> Paid Out
                       </div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--danger)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fc(settlementData.totalOut)}</div>
+                      <div style={{
+                        fontSize: 17, fontWeight: 800,
+                        color: showPaidOutDetail ? '#fff' : 'var(--danger)',
+                        marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                      }}>{fc(settlementData.totalOut)}</div>
                     </div>
 
-                    {/* Fix 2: Received — clickable */}
+                    {/* Received — clickable, opens popup */}
                     <div
-                      style={{ background: '#f0fdf4', border: `1.5px solid ${showReceivedDetail ? '#16a34a' : '#86efac'}`, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
+                      style={{
+                        background: showReceivedDetail ? '#16a34a' : '#f0fdf4',
+                        border: `1.5px solid ${showReceivedDetail ? '#16a34a' : '#86efac'}`,
+                        borderRadius: 10, padding: '12px 14px', cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        transform: showReceivedDetail ? 'scale(0.97)' : 'scale(1)'
+                      }}
                       onClick={() => { setShowReceivedDetail(d => !d); setShowPaidOutDetail(false); }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                        Received {showReceivedDetail ? '▲' : '▼'}
+                      <div style={{
+                        fontSize: 10, fontWeight: 700,
+                        color: showReceivedDetail ? 'rgba(255,255,255,0.8)' : 'var(--success)',
+                        textTransform: 'uppercase', whiteSpace: 'nowrap',
+                        display: 'flex', alignItems: 'center', gap: 4
+                      }}>
+                        <span>↓</span> Received
                       </div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--success)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fc(totalReceived)}</div>
-                      {Object.keys(groupedReceived).length > 0 && (
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                          {Object.entries(groupedReceived).map(([cat, data]) => (
-                            <div key={cat} style={{ marginBottom: 2 }}>
-                              <strong>{catLabels[cat] || 'Others'}: {fc(data.total)}</strong> 
-                              <span style={{ opacity: 0.8 }}> ({Object.entries(data.byMode).map(([m, a]) => `${m.toUpperCase()} ${fc(a)}`).join(', ')})</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <div style={{
+                        fontSize: 17, fontWeight: 800,
+                        color: showReceivedDetail ? '#fff' : 'var(--success)',
+                        marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                      }}>{fc(totalReceived)}</div>
                     </div>
 
-                    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '8px' }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--warning)', textTransform: 'uppercase' }}>Net</div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 2 }}>{fc(net)}</div>
+                    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--warning)', textTransform: 'uppercase' }}>Net</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fc(net)}</div>
                     </div>
-                    <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 6, padding: '8px' }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Entries</div>
-                      <div style={{ fontSize: 14, fontWeight: 800, marginTop: 2 }}>{settlementData.settlements.length}</div>
+                    <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Entries</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, marginTop: 4 }}>{settlementData.settlements.length}</div>
                     </div>
                   </div>
 
-                  {/* Fix 2: Paid Out detail panel */}
-                  {showPaidOutDetail && (
-                    <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={14} /> Paid Out — Details</div>
-                      {paidOutEntries.length === 0 ? (
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No paid-out entries for this date.</div>
-                      ) : paidOutEntries.map((s, i) => (
-                        <div key={s._id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < paidOutEntries.length - 1 ? '1px dashed #fca5a5' : 'none', fontSize: 11 }}>
-                          <div>
-                            <div style={{ fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{s.party_name || 'Unknown'}</div>
-                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                              <span style={{ background: s.type === 'other_expense' ? '#fef08a' : '#fecaca', color: s.type === 'other_expense' ? '#854d0e' : '#b91c1c', padding: '2px 4px', borderRadius: 4, fontWeight: 700, marginRight: 6, fontSize: 8 }}>
-                                {s.type === 'other_expense' ? 'EXPENSE' : 'PAYMENT'}
-                              </span>
-                              {s.mode?.toUpperCase()} · {s.ist_formatted ? s.ist_formatted.split(' ').slice(1).join(' ') : '—'}
-                              {s.notes ? ` · ${s.notes}` : ''}
-                            </div>
-                          </div>
-                          <div style={{ fontWeight: 700, color: 'var(--danger)', fontFamily: 'monospace' }}>−{fc(s.amount)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* Paid Out Popup Modal */}
+                  {showPaidOutDetail && renderBreakdownPopup(false, paidOutGroups, () => setShowPaidOutDetail(false))}
 
-                  {/* Fix 2: Received detail panel */}
-                  {showReceivedDetail && (
-                    <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 6 }}><ArrowUpDown size={14} /> Received — Details</div>
-                      {receivedEntries.length === 0 ? (
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No received entries for this date.</div>
-                      ) : receivedEntries.map((r, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < receivedEntries.length - 1 ? '1px dashed #86efac' : 'none', fontSize: 11 }}>
-                          <div>
-                            <div style={{ fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase' }}>{r.party || r.label}</div>
-                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                              <span style={{ background: '#bbf7d0', color: '#166534', padding: '2px 4px', borderRadius: 4, fontWeight: 700, marginRight: 6, fontSize: 8 }}>RECEIVED</span>
-                              {r.mode?.toUpperCase()} · {r.reason}
-                            </div>
-                          </div>
-                          <div style={{ fontWeight: 700, color: 'var(--success)', fontFamily: 'monospace' }}>+{fc(r.amount)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* Received Popup Modal */}
+                  {showReceivedDetail && renderBreakdownPopup(true, receivedGroups, () => setShowReceivedDetail(false))}
                 </>
               );
             })()}
@@ -2367,72 +3435,8 @@ Thank you!`,
                   : `No settlement entries for this ${settlementViewMode === 'all' ? 'search' : 'date'}. Click "+ Add Entry" to record one.`}
               </div>
             ) : (
-              <div style={{ overflowX: 'auto', maxHeight: 400, overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, whiteSpace: 'nowrap' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
-                    <tr>
-                      {/* Fix 5: Date column shown in full history mode */}
-                      {settlementViewMode === 'all' && (
-                        <th style={{ padding: '9px 12px', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>Date</th>
-                      )}
-                      {['Time', 'Type', 'Party / Supplier', 'Mode', 'Amount', 'Notes', ''].map(h => (
-                        <th key={h} style={{ padding: '9px 12px', textAlign: h === 'Amount' ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {settlementData.settlements.map((s, idx) => (
-                      <tr key={s._id} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        {/* Fix 5: Show IST date in full history mode */}
-                        {settlementViewMode === 'all' && (
-                          <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                            {s.ist_date
-                              ? new Date(s.ist_date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                              : '—'}
-                          </td>
-                        )}
-                        <td style={{ padding: '9px 12px', fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                          {s.ist_formatted ? s.ist_formatted.split(' ').slice(1).join(' ') : '—'}
-                        </td>
-                        <td style={{ padding: '9px 12px' }}>
-                          <span className={`badge ${s.type === 'other_income' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: 10 }}>
-                            {s.type === 'paid_to_supplier' ? 'Supplier' 
-                              : s.type === 'other_expense' ? 'Expense' 
-                              : s.type === 'walkin_delivery' ? 'Walk-in Delivery'
-                              : s.type === 'vehicle_expense' ? 'Vehicle Expense'
-                              : 'Income'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '9px 12px', fontWeight: 600 }}>{s.party_name || '—'}</td>
-                        <td style={{ padding: '9px 12px', textTransform: 'uppercase', fontSize: 12, whiteSpace: 'nowrap' }}>
-                          {''} {s.mode}
-                          {s.reference && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.reference}</div>}
-                        </td>
-                        <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: s.type === 'other_income' ? 'var(--success)' : 'var(--danger)' }}>
-                          {s.type === 'other_income' ? '+' : '−'}{fc(s.amount)}
-                        </td>
-                        <td style={{ padding: '9px 12px', fontSize: 12 }}>
-                          {s.type === 'other_income' && s.received_category && s.received_category !== 'not_applicable' && (
-                            <span style={{ display: 'inline-block', fontSize: 10, background: '#f0fdf4', color: '#16a34a', padding: '1px 6px', borderRadius: 8, fontWeight: 700, marginRight: 5 }}>
-                              {s.received_category === 'today_invoice' ? 'Invoice'
-                                : s.received_category === 'due_cleared' ? 'Due'
-                                  : s.received_category === 'advance_payment' ? 'Advance'
-                                    : s.received_category === 'others' ? 'Others' : ''}
-                            </span>
-                          )}
-                          <span style={{ color: 'var(--text-muted)' }}>{s.notes || '—'}</span>
-                        </td>
-                        <td style={{ padding: '9px 12px' }}>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ color: 'var(--danger)' }}
-                            onClick={() => handleDeleteSettlement(s._id)}
-                          ><Trash2 size={14} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ overflowX: 'auto', maxHeight: 400, overflowY: 'auto', display: 'none' }}>
+                {/* Full History Table Removed per user request */}
               </div>
             )}
           </div>
@@ -2684,6 +3688,12 @@ Thank you!`,
                                   ? <span className="badge badge-warning" style={{ fontSize: 9, padding: '2px 6px' }}>Walk-in</span>
                                   : <span style={{ fontSize: 9.5, color: 'var(--primary)', fontWeight: 600 }}>Registered</span>}
                               </div>
+                              {c.created_by && (
+                                <div style={{ fontSize: 10, color: '#64748b', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <User size={10} /> {c.created_by.display_name || c.created_by.username} 
+                                  <span style={{ fontSize: 9, opacity: 0.8, textTransform: 'uppercase' }}>({c.created_by.role?.replace('_', ' ')})</span>
+                                </div>
+                              )}
                             </td>
                             <td style={{ padding: '10px 14px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -2712,20 +3722,8 @@ Thank you!`,
                                   <a
                                     href={`https://wa.me/91${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
                                       t(
-                                        `Hello ${c.name},
-
-This is a reminder from *${settings?.business_name || 'our store'}*.
-Your pending due amount is *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}*.
-
-Please clear it at your earliest convenience. 🙏
-Thank you!`,
-                                        `नमस्ते ${c.name},
-
-यह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।
-आपकी बकाया राशि *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}* है।
-
-कृपया जल्द से जल्द भुगतान करें। 🙏
-धन्यवाद!`
+                                        `Hello ${c.name},\n\nThis is a reminder from *${settings?.business_name || 'our store'}*.\nYour pending due amount is *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}*.\n\nPlease clear it at your earliest convenience. 🙏\nThank you!`,
+                                        `नमस्ते ${c.name},\n\nयह *${settings?.business_name || 'हमारे स्टोर'}* की ओर से एक रिमाइंडर है।\nआपकी बकाया राशि *₹${c.balance && c.balance.toFixed ? c.balance.toFixed(2) : c.balance}* है।\n\nकृपया जल्द से जल्द भुगतान करें। 🙏\nधन्यवाद!`
                                       )
                                     )}`}
                                     target="_blank"
@@ -2867,21 +3865,14 @@ Thank you!`,
                 ? allInvoices.filter(inv =>
                   (inv.invoice_number || '').toLowerCase().includes(q) ||
                   (inv.customer_name || '').toLowerCase().includes(q) ||
-                  (inv.customer_phone || '').toLowerCase().includes(q)
+                  (inv.customer_phone || '').toLowerCase().includes(q) ||
+                  (inv.driver_name || '').toLowerCase().includes(q) ||
+                  (inv.vehicle_number || '').toLowerCase().includes(q)
                 )
                 : [...allInvoices];
 
               // Apply sort
               filtered = filtered.sort((a, b) => {
-                if (q) {
-                  const aName = (a.customer_name || '').toLowerCase();
-                  const bName = (b.customer_name || '').toLowerCase();
-                  const aStarts = aName.startsWith(q);
-                  const bStarts = bName.startsWith(q);
-                  if (aStarts && !bStarts) return -1;
-                  if (!aStarts && bStarts) return 1;
-                }
-                
                 if (salesSort === 'amount_desc') return (b.total || 0) - (a.total || 0);
                 if (salesSort === 'amount_asc') return (a.total || 0) - (b.total || 0);
                 if (salesSort === 'inv_asc') return (a.invoice_number || '').localeCompare(b.invoice_number || '');
@@ -2889,22 +3880,48 @@ Thank you!`,
                 return new Date(b.date || 0) - new Date(a.date || 0); // time_desc default
               });
 
-              // Auto-suggestions: top 6 matches across all three fields
+              // Auto-suggestions: top 8 matches across invoice fields + suppliers
               const buildSuggestions = (query) => {
                 if (!query) return [];
                 const seen = new Set();
                 const suggestions = [];
+                // 1. Search invoice fields
                 for (const inv of allInvoices) {
-                  if (suggestions.length >= 6) break;
+                  if (suggestions.length >= 8) break;
                   const fields = [
                     { type: 'Invoice', value: inv.invoice_number },
                     { type: 'Customer', value: inv.customer_name },
                     { type: 'Phone', value: inv.customer_phone },
+                    { type: 'Driver', value: inv.driver_name },
+                    { type: 'Vehicle', value: inv.vehicle_number },
                   ];
                   for (const f of fields) {
-                    if (f.value && f.value.toLowerCase().includes(query) && !seen.has(f.value)) {
-                      seen.add(f.value);
+                    if (f.value && f.value.toLowerCase().includes(query) && !seen.has(f.type + ':' + f.value)) {
+                      seen.add(f.type + ':' + f.value);
                       suggestions.push({ label: f.value, type: f.type, inv });
+                    }
+                  }
+                }
+                // 2. Search suppliers (name + phone/contact numbers)
+                if (suggestions.length < 8 && suppliers && suppliers.length > 0) {
+                  for (const sup of suppliers) {
+                    if (suggestions.length >= 8) break;
+                    const supName = sup.name || '';
+                    const supPhone = sup.phone || '';
+                    if (supName.toLowerCase().includes(query) && !seen.has('Supplier:' + supName)) {
+                      seen.add('Supplier:' + supName);
+                      suggestions.push({ label: supName, type: 'Supplier', inv: null, supplierId: sup._id });
+                    }
+                    if (supPhone && supPhone.includes(query) && !seen.has('Supplier Ph:' + supPhone)) {
+                      seen.add('Supplier Ph:' + supPhone);
+                      suggestions.push({ label: supPhone, type: 'Supplier Ph', inv: null, supplierId: sup._id, extra: supName });
+                    }
+                    for (const cn of (sup.contact_numbers || [])) {
+                      if (suggestions.length >= 8) break;
+                      if (cn.number && cn.number.includes(query) && !seen.has('Supplier Ph:' + cn.number)) {
+                        seen.add('Supplier Ph:' + cn.number);
+                        suggestions.push({ label: cn.number, type: 'Supplier Ph', inv: null, supplierId: sup._id, extra: supName + (cn.note ? ` (${cn.note})` : '') });
+                      }
                     }
                   }
                 }
@@ -2919,35 +3936,35 @@ Thank you!`,
                     <div style={{ fontSize: 11.5, fontWeight: 700, color: '#475569', letterSpacing: 0.5, marginBottom: 6 }}>SEARCH</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, padding: '9px 12px', flex: 1 }}>
-                        <Search size={16} color="#64748b" />
-                        <input
-                          type="text"
-                          placeholder="Customer name, phone, invoice number..."
-                          value={salesSearch}
-                          style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 14, flex: 1, fontFamily: 'inherit', color: '#334155' }}
-                          onFocus={() => {
-                            setSalesSearchFocused(true);
-                            setSalesSuggestions(buildSuggestions(salesSearch.trim().toLowerCase()));
-                          }}
-                          onBlur={() => setTimeout(() => setSalesSearchFocused(false), 180)}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setSalesSearch(val);
-                            setSalesSuggestions(buildSuggestions(val.trim().toLowerCase()));
-                          }}
-                        />
-                        {salesSearch && (
-                          <button
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1 }}
-                            onClick={() => { setSalesSearch(''); setSalesSuggestions([]); }}
-                          >✕</button>
-                        )}
-                        {/* Result count badge */}
-                        {salesSearch && (
-                          <span style={{ fontSize: 11, background: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            {filtered.length} result{filtered.length !== 1 ? 's' : ''}
-                          </span>
-                        )}
+                      <Search size={16} color="#64748b" />
+                      <input
+                        type="text"
+                        placeholder="Customer name, phone, invoice number..."
+                        value={salesSearch}
+                        style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 14, flex: 1, fontFamily: 'inherit', color: '#334155' }}
+                        onFocus={() => {
+                          setSalesSearchFocused(true);
+                          setSalesSuggestions(buildSuggestions(salesSearch.trim().toLowerCase()));
+                        }}
+                        onBlur={() => setTimeout(() => setSalesSearchFocused(false), 180)}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setSalesSearch(val);
+                          setSalesSuggestions(buildSuggestions(val.trim().toLowerCase()));
+                        }}
+                      />
+                      {salesSearch && (
+                        <button
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1 }}
+                          onClick={() => { setSalesSearch(''); setSalesSuggestions([]); }}
+                        >✕</button>
+                      )}
+                      {/* Result count badge */}
+                      {salesSearch && (
+                        <span style={{ fontSize: 11, background: 'var(--primary-light)', color: 'var(--primary)', padding: '2px 8px', borderRadius: 20, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
                       </div>
                       <div style={{ flexShrink: 0 }}>
                         <SortDropdown
@@ -3003,10 +4020,13 @@ Thank you!`,
                                 })()}
                               </span>
                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                {s.inv.customer_name !== s.label ? `· ${s.inv.customer_name}` : ''}
+                                {s.inv ? (s.inv.customer_name !== s.label ? `· ${s.inv.customer_name}` : '') : (s.extra ? `· ${s.extra}` : '')}
                               </span>
                             </div>
-                            <span style={{ fontSize: 10, background: '#f3f4f6', padding: '2px 7px', borderRadius: 20, color: 'var(--text-muted)', fontWeight: 600 }}>
+                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 20, fontWeight: 600,
+                              background: s.type === 'Driver' ? '#dbeafe' : s.type === 'Vehicle' ? '#fef3c7' : s.type === 'Supplier' || s.type === 'Supplier Ph' ? '#f0fdf4' : '#f3f4f6',
+                              color: s.type === 'Driver' ? '#1d4ed8' : s.type === 'Vehicle' ? '#b45309' : s.type === 'Supplier' || s.type === 'Supplier Ph' ? '#166534' : 'var(--text-muted)'
+                            }}>
                               {s.type}
                             </span>
                           </div>
@@ -3029,6 +4049,7 @@ Thank you!`,
                           <tr style={{ background: '#f8fafc' }}>
                             <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Invoice #</th>
                             <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Customer</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Vehicle</th>
                             <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Time</th>
                             <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Total</th>
                             <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1.5px solid var(--border)' }}>Status</th>
@@ -3059,6 +4080,12 @@ Thank you!`,
                                   <Link to={`/invoices/${inv._id}`} style={{ color: 'var(--primary)', fontWeight: 700, fontFamily: 'monospace' }}>
                                     {highlight(inv.invoice_number)}
                                   </Link>
+                                  {inv.created_by && (
+                                    <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                      <User size={10} /> {inv.created_by.display_name || inv.created_by.username} 
+                                      <span style={{ fontSize: 9, opacity: 0.8, textTransform: 'uppercase' }}>({inv.created_by.role?.replace('_', ' ')})</span>
+                                    </div>
+                                  )}
                                 </td>
                                 <td style={{ padding: '10px 14px' }}>
                                   <div style={{ fontWeight: 500 }}>{highlight(inv.customer_name)}</div>
@@ -3067,6 +4094,14 @@ Thank you!`,
                                       {highlight(inv.customer_phone)}
                                     </div>
                                   )}
+                                </td>
+                                <td style={{ padding: '10px 14px' }}>
+                                  {(inv.driver_name || inv.vehicle_number) ? (
+                                    <>
+                                      {inv.driver_name && <div style={{ fontWeight: 500, fontSize: 12.5 }}>{highlight(inv.driver_name)}</div>}
+                                      {inv.vehicle_number && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{highlight(inv.vehicle_number)}</div>}
+                                    </>
+                                  ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                                 </td>
                                 <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>
                                   {inv.ist_formatted ? inv.ist_formatted.split(' ').slice(1).join(' ') : '—'}
@@ -3147,82 +4182,67 @@ Thank you!`,
                           </td>
                         </tr>
                       ))}
-                  </tbody>
-                </table>
-              </div>
+                    </tbody>
+                  </table>
+                </div>
             )}
           </div>
         </div>
 
         {/* Low Stock — Redesigned, Responsive */}
-        {user?.role !== 'temp_manager' && user?.role !== 'walkin_manager' && (
         <div className="card" style={{ overflow: 'hidden' }}>
           {/* Card Header */}
-          <div className="card-header" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #fef3c7, #fde68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <AlertTriangle size={16} style={{ color: '#d97706' }} />
+          <div className="card-header" style={{ flexWrap: 'nowrap', gap: 6, alignItems: 'center', padding: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #fef3c7, #fde68a)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <AlertTriangle size={14} style={{ color: '#d97706' }} />
               </div>
-              <div>
-                <div className="card-title" style={{ margin: 0, lineHeight: 1.2 }}>{t('Low Stock Alerts', 'कम स्टॉक')}</div>
+              <div style={{ minWidth: 0 }}>
+                <div className="card-title" style={{ margin: 0, lineHeight: 1.2, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('Low Stock Alerts', 'कम स्टॉक')}</div>
                 {data.lowStockProducts?.length > 0 && (
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                    <span style={{ color: '#b45309', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  <div style={{ marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ color: '#b45309', fontSize: 11, fontWeight: 700 }}>
                       {data.lowStockProducts.length} item{data.lowStockProducts.length !== 1 ? 's' : ''} need restock
                     </span>
                   </div>
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap', alignItems: 'center', flexShrink: 0 }}>
               {data.lowStockProducts?.length > 0 && (
-                <>
-                  <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
-                    const threshold = parseInt(settings?.low_stock_threshold) || 10;
-                    const source = activeListFilter
-                      ? data.lowStockProducts.filter(p => {
-                          const lst = productLists.find(l => l._id === activeListFilter);
-                          return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
-                        })
-                      : data.lowStockProducts;
-                    const initialItems = source.map(p => ({
-                      ...p,
-                      orderQty: orderQty[p._id] !== undefined
-                        ? orderQty[p._id]
-                        : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
-                    }));
-                    const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
-                    customSaved.forEach(c => {
-                      initialItems.push({ _id: `custom-${Date.now()}-${Math.random()}`, name: c.name, stock: 0, unit: c.unit, orderQty: c.orderQty });
-                    });
-                    initialItems.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1 });
-                    setEditableLowStock(initialItems);
-                    setShowLowStockEditor(true);
-                  }}><Edit2 size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
-                  <button className="btn btn-success btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
-                    const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
-                    const source = activeListFilter
-                      ? data.lowStockProducts.filter(p => {
-                          const lst = productLists.find(l => l._id === activeListFilter);
-                          return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
-                        })
-                      : data.lowStockProducts;
-                    const lines = source.map(p => `● ${p.name} - ${getOrderQty(p)} ${p.unit || ''}`.trimEnd()).join('\n');
-                    const msg = encodeURIComponent(`Demand,
-Dated: ${today}
+                <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11 }} onClick={() => {
+                  const threshold = parseInt(settings?.low_stock_threshold) || 10;
+                  const source = activeListFilter
+                    ? data.lowStockProducts.filter(p => {
+                        const lst = productLists.find(l => l._id === activeListFilter);
+                        return lst ? lst.products?.some(lp => (lp._id || lp) === p._id) : true;
+                      })
+                    : data.lowStockProducts;
+                  const initialItems = source.map(p => ({
+                    ...p,
+                    selected: p.saved_order_qty !== -1,
+                    orderQty: p.saved_order_qty > 0
+                      ? p.saved_order_qty
+                      : Math.max(1, ((p.custom_low_stock != null && p.custom_low_stock >= 0 ? p.custom_low_stock : threshold) - p.stock)),
+                  }));
 
-${lines}`);
-                    window.open(`https://wa.me/?text=${msg}`, '_blank');
-                  }}><Phone size={13} /> <span style={{ whiteSpace: 'nowrap' }}>Send Order</span></button>
-                </>
+                  const customSaved = JSON.parse(localStorage.getItem('mk_custom_low_stock') || '[]');
+                  customSaved.forEach(c => {
+                    initialItems.push({ _id: `custom-${Date.now()}-${Math.random()}`, name: c.name, stock: 0, unit: c.unit, orderQty: c.orderQty, selected: true });
+                  });
+
+                  initialItems.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1, selected: false });
+                  setEditableLowStock(initialItems);
+                  setShowLowStockEditor(true);
+                }}><Edit2 size={12} /> <span style={{ whiteSpace: 'nowrap' }}>Edit & Send</span></button>
               )}
-              <Link to="/products" className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap' }}>{t('Manage', 'प्रबंधन')}</Link>
+              <Link to="/products" className="btn btn-outline btn-sm" style={{ padding: '4px 8px', fontSize: 11, whiteSpace: 'nowrap' }}>{t('Manage', 'प्रबंधन')}</Link>
             </div>
           </div>
 
           {/* List filter pills */}
           {productLists.length > 0 && data.lowStockProducts?.length > 0 && (
-            <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="hide-scrollbar" style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', gap: 6, overflowX: 'auto', whiteSpace: 'nowrap', alignItems: 'center' }}>
               <button
                 onClick={() => setActiveListFilter(null)}
                 style={{ height: 28, flexShrink: 0, padding: '0 14px', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', background: activeListFilter === null ? 'var(--primary)' : '#f1f5f9', color: activeListFilter === null ? '#ffffff' : '#64748b' }}
@@ -3277,6 +4297,7 @@ ${lines}`);
                   ];
                 }
               }
+
               if (!filteredLowStock?.length) return (
                 <div style={{ padding: '32px 20px', textAlign: 'center' }}>
                   <div style={{ color: '#d1d5db', marginBottom: 8 }}><Package size={36} /></div>
@@ -3320,27 +4341,17 @@ ${lines}`);
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><AlertTriangle size={11} strokeWidth={2.5} /> Out of Stock</span>
                             ) : `${p.stock} ${p.unit} left`}
                           </span>
+                          {p.last_updated_by && (
+                            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <Edit2 size={9} /> Edited by {p.last_updated_by.display_name || p.last_updated_by.username}
+                            </div>
+                          )}
                         </div>
-                        {/* Stepper control */}
-                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, borderRadius: 8, overflow: 'hidden', border: '1.5px solid var(--border)', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                          <button
-                            onClick={() => adjustOrderQty(p._id, -1)}
-                            style={{ background: '#f8fafc', border: 'none', cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                            onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-                          ><Minus size={12} /></button>
-                          <input
-                            type="number" min="0"
-                            value={toOrder}
-                            onChange={e => { const val = parseInt(e.target.value) || 0; setOrderQty(prev => ({ ...prev, [p._id]: Math.max(0, val) })); }}
-                            style={{ width: 44, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13.5, background: '#fff', padding: '0 2px' }}
-                          />
-                          <button
-                            onClick={() => adjustOrderQty(p._id, 1)}
-                            style={{ background: '#f8fafc', border: 'none', cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                            onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-                          ><Plus size={12} /></button>
+                        {/* Quantity display */}
+                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                          <span style={{ fontWeight: 800, color: 'var(--primary)', fontFamily: 'monospace', fontSize: 14, background: '#fff', border: '1.5px solid var(--border)', padding: '4px 12px', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                            {toOrder}
+                          </span>
                         </div>
                         <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 22, textAlign: 'left' }}>{p.unit}</span>
                       </div>
@@ -3351,10 +4362,145 @@ ${lines}`);
             })()}
           </div>
         </div>
+
+        {isAdmin && (
+          <>
+            {/* Today's Stock Movements */}
+            <div className="card">
+          <div className="card-header">
+            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Package size={18} className="text-primary" /> {t("Today's Stock Movements", 'आज का स्टॉक')}</div>
+            <Link to="/stock-movements" className="btn btn-outline btn-sm">{t('All Movements', 'सभी')}</Link>
+          </div>
+          <div className="card-body no-pad">
+            {!data.todayMovements?.length ? (
+              <div className="empty-state" style={{ padding: 24 }}>No stock movements today</div>
+            ) : (
+              <div className="table-wrap" style={{ border: 'none', borderRadius: 0, maxHeight: 350, overflowY: 'auto' }}>
+                <table>
+                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}><tr>
+                    <th style={{ width: '45%' }}>Product</th>
+                    <th>Type</th>
+                    <th className="tr">Qty</th>
+                    <th>Reference</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.todayMovements.map(m => (
+                      <tr key={m._id}>
+                        <td>{m.product_name}</td>
+                        <td>
+                          <span className={`badge ${m.type === 'incoming' ? 'badge-success' : 'badge-danger'}`}>
+                            {m.type === 'incoming' ? '↓ In' : '↑ Out'}
+                          </span>
+                        </td>
+                        <td className="tr mono">{m.qty}</td>
+                        <td>
+                          {m.vehicle_number ? (
+                            <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-muted)' }}>
+                              <><Truck size={14} style={{ marginRight: 4 }} /> {m.vehicle_number}</>
+                            </span>
+                          ) : m.invoice_id ? (
+                            <Link to={`/invoices/${m.invoice_id}`}
+                              style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, color: 'var(--primary)' }}>
+                              {m.invoice_number || 'INV'}
+                            </Link>
+                          ) : (
+                            <span className="text-muted">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sales last 7 days */}
+        <div className="card span-2">
+          <div className="card-header">
+            <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={18} className="text-success" /> {t('Sales — Last 7 Days', 'पिछले 7 दिन')}</div>
+            <button className="btn btn-outline btn-sm" onClick={() => setSalesSortDesc(d => !d)}>
+              {salesSortDesc ? '↓ Newest First' : '↑ Oldest First'}
+            </button>
+          </div>
+          <div className="card-body no-pad" style={{ maxHeight: 350, overflowY: 'auto' }}>
+            {!data.salesByDay?.length ? (
+              <div className="empty-state" style={{ padding: 24 }}>No sales in last 7 days</div>
+            ) : (
+              <div style={{ width: '100%', overflowX: 'auto' }}>
+                <table style={{ width: '100%', whiteSpace: 'nowrap' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ paddingLeft: 24, width: '100%' }}>Date</th>
+                      <th className="tr" style={{ whiteSpace: 'nowrap' }}>Bills</th>
+                      <th className="tr" style={{ paddingRight: 24, whiteSpace: 'nowrap' }}>Sales</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const sorted = [...data.salesByDay].sort((a, b) =>
+                        salesSortDesc ? b.day.localeCompare(a.day) : a.day.localeCompare(b.day)
+                      );
+                      return (
+                        <>
+                          {sorted.map(d => {
+                            const isToday = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
+                            const isYesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
+                            const isTodayMatch = d.day === isToday;
+                            const isYesterdayMatch = d.day === isYesterday;
+                            return (
+                              <tr key={d.day} style={{ background: isTodayMatch ? '#f0fdf4' : isYesterdayMatch ? '#eff6ff' : '' }}>
+                                <td style={{ paddingLeft: 24 }}>
+                                  {new Date(d.day + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}
+                                  {isTodayMatch && <span className="badge badge-success" style={{ marginLeft: 6, fontSize: 10 }}>Today</span>}
+                                  {isYesterdayMatch && <span className="badge badge-primary" style={{ marginLeft: 6, fontSize: 10 }}>Yesterday</span>}
+                                </td>
+                                <td className="tr">{d.count}</td>
+                                <td className="tr mono fw-600" style={{ paddingRight: 24 }}>{fc(d.sales)}</td>
+                              </tr>
+                            );
+                          })}
+                          {/* Removed Show More button per user request */}
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Top Products */}
+        <div className="card span-2">
+          <div className="card-header"><div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle size={18} className="text-warning" /> {t('Top Selling Products', 'टॉप उत्पाद')}</div></div>
+          <div className="card-body no-pad">
+            {!data.topProducts?.length ? (
+              <div className="empty-state" style={{ padding: 24 }}>No sales data yet</div>
+            ) : (
+              <div className="table-wrap" style={{ border: 'none', borderRadius: 0, maxHeight: 350, overflowY: 'auto' }}>
+                <table style={{ margin: 0 }}>
+                  <thead><tr><th>#</th><th>Product</th><th className="tr">Qty Sold</th><th className="tr">Revenue</th></tr></thead>
+                  <tbody>
+                    {data.topProducts.map((p, i) => (
+                      <tr key={i}>
+                        <td className="text-muted fw-600">{i + 1}</td>
+                        <td><strong>{p.product_name}</strong></td>
+                        <td className="tr">{p.total_qty}</td>
+                        <td className="tr mono fw-600">{fc(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+          </>
         )}
-
-
       </div>
+
       {/* Low Stock Edit & Send Modal — Redesigned, Fully Responsive */}
       {showLowStockEditor && (
         <div className="modal-overlay" onClick={() => setShowLowStockEditor(false)} style={{ padding: '12px' }}>
@@ -3362,7 +4508,7 @@ ${lines}`);
             onClick={e => e.stopPropagation()}
             style={{
               background: '#fff', borderRadius: 16, width: '100%', maxWidth: 660,
-              maxHeight: '92vh', display: 'flex', flexDirection: 'column',
+              height: '80vh', maxHeight: 800, display: 'flex', flexDirection: 'column',
               boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
             }}
           >
@@ -3378,7 +4524,7 @@ ${lines}`);
                 <div>
                   <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>Edit Order List</div>
                   <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24', padding: '1px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+                    <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {editableLowStock.length} item{editableLowStock.length !== 1 ? 's' : ''}
                     </span>
                     <span>Adjust quantities before sending</span>
@@ -3451,13 +4597,17 @@ ${lines}`);
               </div>
             )}
 
-            {/* List body — scrollable */}
-            <div style={{ overflowY: 'auto', flex: 1, padding: '0 0 8px 0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto', gap: 8, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)' }}>
+            {/* Table header */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 96px', gap: 12, padding: '8px 16px 6px', background: '#f8fafc', borderBottom: '1.5px solid var(--border)', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ width: 24, display: 'flex', justifyContent: 'center' }}>
+                  {/* Header checkbox removed as per request */}
+                </div>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Item Name</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right', paddingRight: 4 }}>Order Qty</span>
-                <span style={{ width: 32 }}></span>
               </div>
+
+              {/* List body — scrollable */}
+              <div style={{ overflowY: 'auto', flex: 1, padding: '0 0 8px 0' }}>
 
               {(() => {
                 let indices = editableLowStock.map((_, i) => i);
@@ -3479,7 +4629,7 @@ ${lines}`);
                 indices.sort((i, j) => {
                   const a = editableLowStock[i];
                   const b = editableLowStock[j];
-
+                  
                   const aEmpty = a._id?.startsWith('custom-') && (!a.name || a.name.trim() === '');
                   const bEmpty = b._id?.startsWith('custom-') && (!b.name || b.name.trim() === '');
                   if (aEmpty && !bEmpty) return 1;
@@ -3514,115 +4664,157 @@ ${lines}`);
                   return (
                     <div
                       key={p._id || idx}
-                      style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: renderedIndex % 2 === 0 ? '#fff' : '#fafbff' }}
+                      style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 96px', gap: 12, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid #f3f4f6', background: renderedIndex % 2 === 0 ? '#fff' : '#fafbff', opacity: p.selected === false ? 0.6 : 1 }}
                     >
+                      <div style={{ width: 24, display: 'flex', justifyContent: 'center' }}>
+                    <input type="checkbox" checked={p.selected !== false} onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], selected: e.target.checked }; return u; })} style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--primary)' }} />
+                  </div>
+                  {/* Item Info / Autocomplete */}
+                  <div style={{ position: 'relative' }}>
+                    {p._id?.startsWith('custom-') ? (
+                      <>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input
                           value={p.name}
-                          onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], name: e.target.value }; return u; })}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setEditableLowStock(prev => { 
+                              const u = [...prev]; 
+                              u[idx] = { ...u[idx], name: val }; 
+                              if (idx === u.length - 1 && val.trim() !== '') {
+                                u[idx].selected = true;
+                                u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1, selected: false });
+                              }
+                              return u; 
+                            });
+                          }}
                           placeholder="Item name"
                           style={{ flex: 1, border: '1.5px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13, fontWeight: 600, outline: 'none', background: '#f8fafc', color: 'var(--text)', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                          onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-                          onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                          onFocus={e => { e.target.style.borderColor = 'var(--primary)'; setFocusedItemIdx(idx); }}
+                          onBlur={e => {
+                            e.target.style.borderColor = 'var(--border)';
+                            setTimeout(() => setFocusedItemIdx(null), 200);
+                          }}
                         />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', width: 96, justifySelf: 'end' }}>
-                        <button
-                          onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, u[idx].orderQty - 1) }; return u; })}
-                          style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                          onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-                        ><Minus size={12} /></button>
-                        <input
-                          type="number" min="0"
-                          value={p.orderQty}
-                          onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, parseInt(e.target.value) || 0) }; return u; })}
-                          style={{ flex: 1, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13, background: '#fff', padding: '0 2px', minWidth: 0 }}
-                        />
-                        <button
-                          onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: u[idx].orderQty + 1 }; return u; })}
-                          style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                          onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-                        ><Plus size={12} /></button>
+                        {focusedItemIdx === idx && p.name && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', zIndex: 50, maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginTop: 4 }}>
+                            {data.allProducts?.filter(prod => prod.name.toLowerCase().includes(p.name.toLowerCase()) && !editableLowStock.some(ep => ep._id === prod._id)).map(prod => (
+                              <div key={prod._id}
+                                   onClick={() => {
+                                     setEditableLowStock(prev => {
+                                        const u = [...prev];
+                                        u[idx] = { _id: prod._id, name: prod.name, stock: prod.stock, unit: prod.unit, orderQty: prod.saved_order_qty > 0 ? prod.saved_order_qty : 1 };
+                                        if (idx === u.length - 1) {
+                                          u[idx].selected = true;
+                                          u.push({ _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1, selected: false });
+                                        }
+                                        return u;
+                                     });
+                                   }}
+                                   style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                                   onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                                   onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                              >
+                                <div style={{ fontWeight: 600, fontSize: 13 }}>{prod.name}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{prod.stock} {prod.unit} left</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ paddingLeft: 4 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: (p.is_custom || p.created_from_order) ? '#d97706' : (p.stock === 0 ? 'var(--danger)' : 'var(--text-muted)'), fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap' }}>
+                          {p.is_custom ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> New Item</span>
+                          ) : p.created_from_order ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Package size={11} strokeWidth={2.5} /> {t('Order from Customer', 'ग्राहक द्वारा ऑर्डर')}</span>
+                          ) : p.stock === 0 ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><AlertTriangle size={11} strokeWidth={2.5} /> {t('Out of Stock', 'स्टॉक खत्म')}</span>
+                          ) : (
+                            `${p.stock} ${p.unit} left`
+                          )}
+                        </div>
+                        {p.last_updated_by && (
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <Edit2 size={9} /> Edited by {p.last_updated_by.display_name || p.last_updated_by.username}
+                          </div>
+                        )}
                       </div>
-                      <button
-                        onClick={() => setEditableLowStock(prev => prev.filter((_, i) => i !== idx))}
-                        style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 7, cursor: 'pointer', color: 'var(--danger)', transition: 'all 0.15s', flexShrink: 0 }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#fecaca'; }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  );
-                });
+                    )}
+                  </div>
+                  {/* Stepper */}
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', width: 96, justifySelf: 'end' }}>
+                    <button
+                      onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, u[idx].orderQty - 1) }; return u; })}
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderRight: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                    ><Minus size={12} /></button>
+                    <input
+                      type="number" min="0"
+                      value={p.orderQty}
+                      onChange={e => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: Math.max(0, parseInt(e.target.value) || 0) }; return u; })}
+                      style={{ flex: 1, textAlign: 'center', fontWeight: 800, color: 'var(--primary)', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13, background: '#fff', padding: '0 2px', minWidth: 0 }}
+                    />
+                    <button
+                      onClick={() => setEditableLowStock(prev => { const u = [...prev]; u[idx] = { ...u[idx], orderQty: u[idx].orderQty + 1 }; return u; })}
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc', border: 'none', cursor: 'pointer', color: '#475569', borderLeft: '1px solid var(--border)', transition: 'background 0.15s', flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
+                    ><Plus size={12} /></button>
+                  </div>
+                </div>
+                );
+              });
               })()}
 
-              <div style={{ padding: '10px 16px' }}>
-                <button
-                  onClick={() => setEditableLowStock(prev => [...prev, { _id: `custom-${Date.now()}`, name: '', stock: 0, unit: 'unit', orderQty: 1 }])}
-                  style={{ width: '100%', padding: '9px', border: '1.5px dashed #cbd5e1', borderRadius: 9, background: 'transparent', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#64748b'; }}
-                >
-                  <Plus size={14} /> Add Item
-                </button>
-              </div>
             </div>
 
             {/* Modal Footer */}
-            <div style={{ padding: '14px 20px', borderTop: '1.5px solid var(--border)', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ padding: '14px 20px', borderTop: '1.5px solid var(--border)', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
               <button
                 onClick={() => setShowLowStockEditor(false)}
                 style={{ padding: '8px 18px', borderRadius: 8, border: '1.5px solid var(--border)', background: '#fff', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
               >Cancel</button>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {/* Save List */}
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--primary)' }}
+                  onClick={async () => {
+                    try {
+                      const customToSave = editableLowStock.filter(p => p._id?.startsWith('custom-') && p.name && p.name.trim() !== '' && p.selected !== false).map(p => ({
+                        name: p.name.trim(),
+                        orderQty: p.orderQty,
+                        unit: p.unit || 'unit'
+                      }));
+                      localStorage.setItem('mk_custom_low_stock', JSON.stringify(customToSave));
+
+                      const updates = editableLowStock.filter(p => p.name && p.name.trim() !== '' && !p._id?.startsWith('custom-')).map(p => ({ _id: p._id, saved_order_qty: p.selected === false ? -1 : p.orderQty }));
+                      await productApi.bulkOrderQty(updates);
+                      setShowLowStockEditor(false);
+                      dashboardApi.get(selectedDate).then(d => {
+                        setData(d);
+                        setOrderQty({});
+                      });
+                    } catch (e) { toast.error(e.message || 'Failed to save'); console.error(e); }
+                  }}
+                ><Save size={13} /> <span>Save</span></button>
+                {/* WhatsApp */}
                 <button
                   className="btn btn-success btn-sm"
                   style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                   onClick={() => {
                     const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
-                    const lines = editableLowStock.filter(p => p.orderQty > 0 && p.name).map(p => `● ${p.name} - ${p.orderQty} ${p.unit || ''}`.trimEnd()).join('\n');
-                    const msg = encodeURIComponent(`Demand,
-Dated: ${today}
-
-${lines}`);
+                    const validItems = editableLowStock.filter(p => p.selected !== false && p.orderQty > 0 && p.name);
+                    const lines = validItems.map(p => `● ${p.name} - ${p.orderQty} ${p.unit || ''}`.trimEnd()).join('\n');
+                    const msg = encodeURIComponent(`Demand,\nDated: ${today}\n\n${lines}`);
                     window.open(`https://wa.me/?text=${msg}`, '_blank');
                   }}
                 ><Phone size={13} /> <span>WhatsApp</span></button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                  onClick={() => {
-                    const prevTitle = document.title;
-                    document.title = `Stock-Order-${getTodayIST()}`;
-                    const rows = editableLowStock.filter(p => p.orderQty > 0 && p.name).map((p, i) =>
-                      `<tr style="border-bottom:1px solid #e5e7eb">
-                          <td style="padding:8px 12px">${i + 1}</td>
-                          <td style="padding:8px 12px;font-weight:600">${p.name}</td>
-                          <td style="padding:8px 12px;text-align:right;color:#2563eb;font-weight:800">${p.orderQty} ${p.unit || ''}</td>
-                        </tr>`).join('');
-                    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
-                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${document.title}</title>
-                        <style>@page{margin:12mm 10mm;size:A4;}body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;}
-                        table{width:100%;border-collapse:collapse;}thead tr{background:#1a1f2e;color:#fff;}
-                        th{padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}</style>
-                        </head><body>
-                        <div style="display:flex;justify-content:space-between;padding-bottom:14px;border-bottom:2px solid #1a1f2e;margin-bottom:18px">
-                          <div><h2 style="margin:0">${settings?.business_name || 'My Shop'}</h2>
-                          <p style="margin:4px 0;color:#6b7280">Low Stock Report — ${today}</p></div>
-                        </div>
-                        <table><thead><tr><th>#</th><th>Item Name</th>
-                          <th style="text-align:right;color:#93c5fd">Order Qty</th></tr></thead>
-                        <tbody>${rows}</tbody></table>
-                        </body></html>`;
-                    const win = window.open('', '_blank', 'width=900,height=700');
-                    win.document.write(html);
-                    win.document.close();
-                    win.onload = () => { win.focus(); win.print(); setTimeout(() => { win.close(); document.title = prevTitle; }, 500); };
-                  }}
-                ><FileText size={13} /> <span>PDF</span></button>
               </div>
             </div>
           </div>
@@ -3706,23 +4898,38 @@ ${lines}`);
       )}
 
       {payModal && (
-        <div className="modal-overlay" onClick={() => setPayModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={18} /> Collect Payment</div>
-              <button className="modal-close" onClick={() => setPayModal(null)}>✕</button>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setPayModal(null)} />
+          <div className="modal-content" style={{ position: 'relative', background: 'white', borderRadius: 20, width: '100%', maxWidth: 500, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 40px)' }}>
+            
+            {/* Header */}
+            <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ width: 48, height: 48, background: '#dcfce3', color: '#16a34a', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 6px -1px rgba(22,163,74,0.1)' }}>
+                  <Wallet size={24} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>Collect Payment</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b', fontWeight: 500 }}>
+                    Customer: {payModal.name}
+                    {payModal.invoice_number && <span><br />Invoice: {payModal.invoice_number}</span>}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setPayModal(null)} style={{ background: 'white', border: '1px solid #e2e8f0', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                <X size={16} />
+              </button>
             </div>
-            <div className="modal-body">
-              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Customer</div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{payModal.name}</div>
-                {payModal.invoice_number && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Invoice: {payModal.invoice_number}</div>
-                )}
+
+            {/* Body */}
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
+              <form id="collectForm" onSubmit={e => { e.preventDefault(); handleRecordPayment(); }}>
+                
+                {/* SELECT INVOICES TO CLEAR IF NEEDED */}
                 {payModal.hasMultipleUnpaid && payModal.unpaidInvoices && payModal.unpaidInvoices.length > 0 ? (
-                  <div style={{ marginTop: 12, marginBottom: 12 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Select Invoices to Clear:</div>
-                    <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }}>
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select Invoices to Clear:</div>
+                    <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, background: '#f8fafc' }}>
                       {payModal.unpaidInvoices.map((inv, idx) => {
                         const isSelected = payForm.selectedInvoices && payForm.selectedInvoices.includes(inv._id);
                         return (
@@ -3743,18 +4950,18 @@ ${lines}`);
                               setPayForm({ ...payForm, selectedInvoices: newSelected, amount: newAmount > 0 ? newAmount.toFixed(2) : '' });
                             }}
                             style={{ 
-                              display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: idx < payModal.unpaidInvoices.length - 1 ? '1px solid var(--border)' : 'none',
+                              display: 'flex', alignItems: 'center', padding: '12px', borderBottom: idx < payModal.unpaidInvoices.length - 1 ? '1px solid #e2e8f0' : 'none',
                               cursor: 'pointer', background: isSelected ? '#f0fdf4' : '#fff', transition: 'background 0.2s'
                             }}
                           >
-                            <div style={{ width: 18, height: 18, borderRadius: 10, border: `1px solid ${isSelected ? '#22c55e' : '#cbd5e1'}`, background: isSelected ? '#22c55e' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                            <div style={{ width: 20, height: 20, borderRadius: 10, border: `2px solid ${isSelected ? '#16a34a' : '#cbd5e1'}`, background: isSelected ? '#16a34a' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12, transition: 'all 0.2s' }}>
                               {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }}></div>}
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{inv.invoice_number || 'Walk-in Bill'}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{inv.ist_formatted ? inv.ist_formatted.split(',')[0] : 'Historical'}</div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{inv.invoice_number || 'Walk-in Bill'}</div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{inv.ist_formatted ? inv.ist_formatted.split(',')[0] : 'Historical'}</div>
                             </div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--danger)' }}>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: '#dc2626' }}>
                               {fc(inv.balance_due)}
                             </div>
                           </div>
@@ -3763,90 +4970,97 @@ ${lines}`);
                     </div>
                   </div>
                 ) : (
-                  <div style={{ marginTop: 6, fontSize: 16, fontWeight: 800, color: 'var(--danger)' }}>
-                    Due: {fc(payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance)}
+                  <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 12, padding: '16px', marginBottom: 20 }}>
+                     <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>Total Due</div>
+                     <div style={{ marginTop: 4, fontSize: 20, fontWeight: 800, color: '#dc2626' }}>
+                       {fc(payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance)}
+                     </div>
                   </div>
                 )}
-              </div>
-              <div className="form-group">
-                <label className="form-label">Amount Received ₹ *</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={payForm.amount}
-                  onChange={e => setPayForm({ ...payForm, amount: e.target.value })}
-                  autoFocus
-                />
-                <div className="form-hint">
-                  Due: {fc(payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance)} ·{' '}
-                  <span
-                    style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}
-                    onClick={() => setPayForm({ ...payForm, amount: (payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance).toFixed(2) })}
-                  >
-                    Full Amount
-                  </span>
-                </div>
-                {parseFloat(payForm.amount) > (payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance) && parseFloat(payForm.amount) > 0 && (
-                  <div style={{ marginTop: 6, padding: '7px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 12.5, color: '#1d4ed8' }}>
-                    Extra <strong>{fc(parseFloat(payForm.amount) - (payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance))}</strong> will be stored as advance credit for this customer.
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount Received ₹ *</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 20, color: '#16a34a', fontWeight: 600 }}>₹</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={payForm.amount}
+                      onChange={e => setPayForm({ ...payForm, amount: e.target.value })}
+                      style={{ width: '100%', padding: '16px 16px 16px 40px', fontSize: 24, fontWeight: 800, border: '2px solid #e2e8f0', borderRadius: 12, outline: 'none', color: '#0f172a', transition: 'border-color 0.2s', boxSizing: 'border-box' }}
+                      placeholder="0.00"
+                      autoFocus
+                    />
                   </div>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Payment Mode *</label>
-                <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
-                  {PAYMENT_MODES.map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`btn btn-sm ${payForm.mode === m ? 'btn-primary' : 'btn-outline'}`}
-                      onClick={() => setPayForm({ ...payForm, mode: m })}
-                    >
-                      {''} {m.toUpperCase()}
-                    </button>
-                  ))}
+                  <div style={{ marginTop: 8, fontSize: 13, color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                     <span>Due: {fc(payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance)}</span>
+                     <span style={{ color: '#16a34a', cursor: 'pointer', fontWeight: 700 }} onClick={() => setPayForm({ ...payForm, amount: (payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance).toFixed(2) })}>
+                       Full Amount
+                     </span>
+                  </div>
+                  {parseFloat(payForm.amount) > (payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance) && parseFloat(payForm.amount) > 0 && (
+                    <div style={{ marginTop: 8, padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, color: '#1e3a8a', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ marginTop: 2 }}>ℹ️</div>
+                      <div>
+                        Extra <strong>{fc(parseFloat(payForm.amount) - (payModal.hasMultipleUnpaid ? payModal.totalUnpaidBalance : payModal.balance))}</strong> will be stored as advance credit for this customer.
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              <div className="form-group">
-                <label className="form-label">Reference / UPI ID (optional)</label>
-                <input
-                  className="form-control"
-                  value={payForm.reference}
-                  onChange={e => setPayForm({ ...payForm, reference: e.target.value })}
-                  placeholder="Transaction ID or UPI ref"
-                />
-              </div>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Payment Mode *</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                    {PAYMENT_MODES.map(m => (
+                      <div 
+                        key={m} 
+                        onClick={() => setPayForm({ ...payForm, mode: m })}
+                        style={{ 
+                          padding: '10px 8px', border: `2px solid ${payForm.mode === m ? '#16a34a' : '#e2e8f0'}`, borderRadius: 10, cursor: 'pointer', textAlign: 'center', fontWeight: 600, fontSize: 12, color: payForm.mode === m ? '#16a34a' : '#64748b', background: payForm.mode === m ? '#f0fdf4' : 'white', transition: 'all 0.2s', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                        }}
+                      >
+                        {m.toUpperCase().replace('_', ' ')}
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="flex gap-2" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-                <button className="btn btn-outline" onClick={() => setPayModal(null)}>Cancel</button>
-                <button className="btn btn-success" onClick={handleRecordPayment} disabled={paying}>
-                  {paying ? <><span className="spinner"></span> Saving...</> : 'Record Payment'}
-                </button>
-              </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Reference / UPI ID <span style={{ color: '#94a3b8', fontWeight: 500 }}>(Optional)</span></label>
+                  <input
+                    type="text"
+                    value={payForm.reference}
+                    onChange={e => setPayForm({ ...payForm, reference: e.target.value })}
+                    className="form-control"
+                    placeholder="Transaction ID or UPI ref"
+                    style={{ padding: '14px 16px', borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 15, width: '100%', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </form>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Custom Deliver Confirm Modal */}
-      {confirmDeliveryId && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 16, width: '90%', maxWidth: 400, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, color: 'var(--text)' }}>Confirm Delivery</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
-              Are you sure you want to mark this vehicle as delivered?<br/><br/>
-              <strong>Stock and prices will be updated automatically</strong> for matched products.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-              <button className="btn btn-outline" onClick={() => setConfirmDeliveryId(null)}>Cancel</button>
-              <button className="btn btn-success" onClick={() => {
-                handleDeliveryStatus(confirmDeliveryId, 'delivered');
-                setConfirmDeliveryId(null);
-              }}>Yes, Mark Delivered</button>
+            {/* Footer */}
+            <div style={{ padding: '20px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 12 }}>
+              <button 
+                onClick={() => setPayModal(null)}
+                className="btn btn-outline"
+                style={{ flex: 1, padding: '12px', borderRadius: 10, fontWeight: 600, fontSize: 15 }}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit"
+                form="collectForm"
+                className="btn btn-primary"
+                disabled={paying}
+                style={{ flex: 2, padding: '12px', borderRadius: 10, fontWeight: 600, fontSize: 15, background: '#16a34a', borderColor: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              >
+                {paying ? <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> : <Wallet size={18} />}
+                Record Payment
+              </button>
             </div>
           </div>
         </div>

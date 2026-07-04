@@ -12,7 +12,8 @@ const EMPTY = { name: '', phone: '', contact_numbers: [], address: '', notes: ''
 
 export default function Suppliers() {
   const { t } = useApp();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'supervisor';
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -162,34 +163,32 @@ export default function Suppliers() {
   return (
     <div>
       {/* ── HEADER ── */}
-      <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', paddingBottom: '16px', marginBottom: '24px', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 16 }} className="no-print">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, flex: 1 }}>
-          <button 
-            onClick={() => navigate(-1)}
-            className="btn btn-outline" 
-            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            title="Back"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: '4px', minWidth: 0 }}>
-            <Building2 size={22} className="text-primary" style={{ flexShrink: 0, marginTop: isMobile ? 2 : 4 }} />
-            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <div className="page-title" style={{ margin: 0, lineHeight: 1.2 }}>
-                Suppliers{isMobile ? <br /> : ' '}Directory
-              </div>
-              <div className="page-subtitle" style={{ margin: 0, marginTop: '2px', color: 'var(--text-muted)', whiteSpace: 'normal', wordBreak: 'break-word', fontSize: isMobile ? 12 : 14, lineHeight: 1.3 }}>
-                {suppliers.length} suppliers · Manage contacts and payment history
-              </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', marginBottom: '24px' }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 auto', minWidth: 0 }}>
+            <button 
+              onClick={() => navigate(-1)}
+              className="btn btn-outline" 
+              style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              title="Back"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+              <Building2 size={22} className="text-primary" /> 
+              <div style={{ lineHeight: 1.2 }}>Suppliers{isMobile ? <br /> : ' '}Directory</div>
             </div>
           </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', flexShrink: 0 }}>
+            {isAdmin && (
+              <button className="btn btn-primary" onClick={openAdd} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : undefined, fontSize: isMobile ? 12 : undefined }}>
+                <Plus size={isMobile ? 12 : 14} /> Add Supplier
+              </button>
+            )}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: isMobile ? 6 : 12, flexShrink: 0, marginTop: isMobile ? 8 : 0 }}>
-          {isAdmin && (
-            <button className="btn btn-primary" onClick={openAdd} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : undefined, fontSize: isMobile ? 12 : undefined }}>
-              <Plus size={isMobile ? 12 : 14} /> Add Supplier
-            </button>
-          )}
+        <div className="page-subtitle" style={{ margin: 0, marginLeft: '52px', marginTop: isMobile ? '-8px' : '0' }}>
+          {suppliers.length} suppliers · Manage contacts and payment history
         </div>
       </div>
 

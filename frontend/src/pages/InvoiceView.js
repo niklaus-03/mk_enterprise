@@ -65,6 +65,10 @@ export default function InvoiceView() {
   const [isTransportFormat, setIsTransportFormat] = useState(user?.role === 'driver' || viewParam === 'csn');
   const containerRef = useRef(null);
   
+  useEffect(() => {
+    setIsTransportFormat(user?.role === 'driver' || viewParam === 'csn');
+  }, [viewParam, user?.role]);
+  
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const [editNameForm, setEditNameForm] = useState({ prefix: 'Shree', name: '', phone: '', address: '' });
   const [savingName, setSavingName] = useState(false);
@@ -280,7 +284,8 @@ export default function InvoiceView() {
             items: invoice.items.map(item => ({
               goods_type: `${item.product_name} x${item.qty}`,
               weight: item.weight ? parseFloat(item.weight) : 0
-            }))
+            })),
+            view_mode: isTransportFormat ? 'csn' : undefined
           }
         });
 
@@ -310,13 +315,15 @@ export default function InvoiceView() {
   };
 
   const handleSMS = () => {
-    let phone = invoice.customer_phone;
-    if (!phone || phone.trim() === '') {
+    let phone = isTransportFormat ? '' : invoice.customer_phone;
+    if (!isTransportFormat && (!phone || phone.trim() === '')) {
       toast.error('No customer phone number on file');
       return;
     }
-    phone = phone.replace(/\D/g, '');
-    if (phone.length === 10) phone = '91' + phone;
+    if (phone) {
+      phone = phone.replace(/\D/g, '');
+      if (phone.length === 10) phone = '91' + phone;
+    }
 
     // Build SMS text
     const settings = invoice.company_details || appSettings;
@@ -324,34 +331,50 @@ export default function InvoiceView() {
       .map(i => `${i.product_name} x${i.qty} = Rs.${i.total?.toFixed(2)}`)
       .join(', ');
 
-    const lines = lang ? [
-      `नमस्कार ${invoice.customer_name},`,
-      `${settings.business_name || 'हमारी दुकान'} से आपकी खरीद ${invoice.ist_formatted || ''}:`,
-      `सामान: ${itemLines}`,
-      `कुल: ₹${invoice.total?.toFixed(2)}`,
-      invoice.previous_balance > 0 ? `पिछला बकाया: ₹${invoice.previous_balance?.toFixed(2)}` : null,
-      `प्राप्त: ₹${invoice.amount_received?.toFixed(2)}`,
-      overallBalanceDue > 0.01
-        ? `बकाया: ₹${overallBalanceDue.toFixed(2)}`
-        : 'स्थिति: भुगतान पूर्ण',
-      `बिल नं: ${invoice.invoice_number}`,
-      `धन्यवाद! ${settings.business_phone ? '| ' + settings.business_phone : ''}`,
-    ] : [
-      `Hello ${invoice.customer_name},`,
-      `Your purchase at ${settings.business_name || 'our shop'} on ${invoice.ist_formatted || ''}:`,
-      `Items: ${itemLines}`,
-      `Total: Rs.${invoice.total?.toFixed(2)}`,
-      invoice.previous_balance > 0 ? `Previous Due: Rs.${invoice.previous_balance?.toFixed(2)}` : null,
-      `Received: Rs.${invoice.amount_received?.toFixed(2)}`,
-      overallBalanceDue > 0.01
-        ? `Balance Due: Rs.${overallBalanceDue.toFixed(2)}`
-        : 'Status: PAID',
-      `Invoice: ${invoice.invoice_number}`,
-      `Thank you! ${settings.business_phone ? '| ' + settings.business_phone : ''}`,
-    ].filter(Boolean).join('\n');
+    const lines = isTransportFormat 
+      ? (lang ? [
+          `नमस्कार ${invoice.customer_name},`,
+          `यह ${invoice.customer_name} के लिए ट्रांसपोर्टेशन चालान है।`,
+          `CON नंबर: ${invoice.invoice_number.replace('INV', 'CON')}`,
+          invoice.vehicle_number ? `वाहन: ${invoice.vehicle_number}` : null,
+          `लिंक: ${window.location.origin}/invoices/view/${invoice._id}?view=csn`,
+          `धन्यवाद! ${settings.business_phone ? '| ' + settings.business_phone : ''}`
+        ] : [
+          `Hello ${invoice.customer_name},`,
+          `This is transportation inv for ${invoice.customer_name}.`,
+          `CON Number: ${invoice.invoice_number.replace('INV', 'CON')}`,
+          invoice.vehicle_number ? `Vehicle: ${invoice.vehicle_number}` : null,
+          `Link: ${window.location.origin}/invoices/view/${invoice._id}?view=csn`,
+          `Thank you! ${settings.business_phone ? '| ' + settings.business_phone : ''}`
+        ]).filter(Boolean).join('\n')
+      : (lang ? [
+          `नमस्कार ${invoice.customer_name},`,
+          `${settings.business_name || 'हमारी दुकान'} से आपकी खरीद ${invoice.ist_formatted || ''}:`,
+          `सामान: ${itemLines}`,
+          `कुल: ₹${invoice.total?.toFixed(2)}`,
+          invoice.previous_balance > 0 ? `पिछला बकाया: ₹${invoice.previous_balance?.toFixed(2)}` : null,
+          `प्राप्त: ₹${invoice.amount_received?.toFixed(2)}`,
+          overallBalanceDue > 0.01
+            ? `बकाया: ₹${overallBalanceDue.toFixed(2)}`
+            : 'स्थिति: भुगतान पूर्ण',
+          `बिल नं: ${invoice.invoice_number}`,
+          `धन्यवाद! ${settings.business_phone ? '| ' + settings.business_phone : ''}`,
+        ] : [
+          `Hello ${invoice.customer_name},`,
+          `Your purchase at ${settings.business_name || 'our shop'} on ${invoice.ist_formatted || ''}:`,
+          `Items: ${itemLines}`,
+          `Total: Rs.${invoice.total?.toFixed(2)}`,
+          invoice.previous_balance > 0 ? `Previous Due: Rs.${invoice.previous_balance?.toFixed(2)}` : null,
+          `Received: Rs.${invoice.amount_received?.toFixed(2)}`,
+          overallBalanceDue > 0.01
+            ? `Balance Due: Rs.${overallBalanceDue.toFixed(2)}`
+            : 'Status: PAID',
+          `Invoice: ${invoice.invoice_number}`,
+          `Thank you! ${settings.business_phone ? '| ' + settings.business_phone : ''}`,
+        ]).filter(Boolean).join('\n');
 
     // Try native SMS intent (works on Android/iOS browsers)
-    const smsUri = `sms:+${phone}?body=${encodeURIComponent(lines)}`;
+    const smsUri = `sms:${phone ? '+' + phone : ''}?body=${encodeURIComponent(lines)}`;
     window.open(smsUri, '_blank');
     toast.success('📱 SMS app opened');
   };
@@ -397,29 +420,35 @@ export default function InvoiceView() {
       console.log("STEP 5: Opening WhatsApp...");
 
       const msgText = lang ? 
-        `नमस्कार ${invoice.customer_name},\n\nयह आपका ${isTransportFormat ? 'डिलीवरी चालान' : 'बिल'} है।\nकृपया यहाँ देखें:\n${window.location.origin}/invoices/view/${invoice._id}${isTransportFormat ? '?view=csn' : ''}\n\nधन्यवाद!` :
-        `Hello ${invoice.customer_name},\n\nPlease find your ${isTransportFormat ? 'consignment note' : 'invoice'} (${invoice.invoice_number}) link below:\n${window.location.origin}/invoices/view/${invoice._id}${isTransportFormat ? '?view=csn' : ''}\n` +
-        (!isTransportFormat && invoice.total ? `\nTotal: ₹${invoice.total.toFixed(2)}` : '') +
-        (invoice.vehicle_number ? `\nVehicle: ${invoice.vehicle_number}` : '') +
-        `\n\nThank you!`;
+        (isTransportFormat 
+          ? `नमस्कार ${invoice.customer_name},\n\nयह ${invoice.customer_name} के लिए ट्रांसपोर्टेशन चालान है।\nCON नंबर: ${invoice.invoice_number.replace('INV', 'CON')}\n\nलिंक: ${window.location.origin}/invoices/view/${invoice._id}?view=csn\n\nधन्यवाद!`
+          : `नमस्कार ${invoice.customer_name},\n\nयह आपका बिल है।\nकृपया यहाँ देखें:\n${window.location.origin}/invoices/view/${invoice._id}\n\nधन्यवाद!`) :
+        (isTransportFormat
+          ? `Hello ${invoice.customer_name},\n\nThis is transportation inv for ${invoice.customer_name}.\nCON Number: ${invoice.invoice_number.replace('INV', 'CON')}\n\nPlease find the link below:\n${window.location.origin}/invoices/view/${invoice._id}?view=csn\n` + (invoice.vehicle_number ? `\nVehicle: ${invoice.vehicle_number}` : '') + `\n\nThank you!`
+          : `Hello ${invoice.customer_name},\n\nPlease find your invoice (${invoice.invoice_number}) link below:\n${window.location.origin}/invoices/view/${invoice._id}\n` +
+          (invoice.total ? `\nTotal: ₹${invoice.total.toFixed(2)}` : '') +
+          (invoice.vehicle_number ? `\nVehicle: ${invoice.vehicle_number}` : '') +
+          `\n\nThank you!`);
 
       const msg = encodeURIComponent(msgText);
 
-      let phone = invoice.customer_phone;
+      let phone = isTransportFormat ? '' : invoice.customer_phone;
 
-      if (!phone || phone.trim() === "") {
+      if (!isTransportFormat && (!phone || phone.trim() === "")) {
         toast.error("No customer phone number found");
         return;
       }
 
-      phone = phone.replace(/\D/g, '');
+      if (phone) {
+        phone = phone.replace(/\D/g, '');
 
-      // add country code if missing
-      if (phone.length === 10) {
-        phone = "91" + phone;
+        // add country code if missing
+        if (phone.length === 10) {
+          phone = "91" + phone;
+        }
       }
 
-      window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+      window.open(`https://wa.me/${phone ? phone : ''}?text=${msg}`, '_blank');
 
     } catch (err) {
       console.error("FINAL ERROR:", err);
@@ -583,7 +612,7 @@ export default function InvoiceView() {
             <ArrowLeft size={18} />
           </button>
           <div>
-            <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> {invoice.invoice_number}</div>
+            <div className="page-title d-flex align-items-center gap-2"><FileText size={22} className="text-primary" /> {isTransportFormat ? invoice.invoice_number.replace('INV', 'CON') : invoice.invoice_number}</div>
           <div className="page-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {istDisplay}
             {!isTransportFormat && (
@@ -607,15 +636,16 @@ export default function InvoiceView() {
         </div>
         </div>
         <div className="page-actions">
-          <Link to="/invoices" className="btn btn-outline d-inline-flex align-items-center gap-1"><ArrowLeft size={14} /> All Invoices</Link>
-          <Link to={`/invoices/${id}/edit`} className="btn btn-warning d-inline-flex align-items-center gap-1"><Edit size={14} />{t('Edit', 'संपादित करें')}</Link>
+          {!isTransportFormat && (
+            <Link to={`/invoices/${id}/edit`} className="btn btn-warning d-inline-flex align-items-center gap-1"><Edit size={14} />{t('Edit', 'संपादित करें')}</Link>
+          )}
           {user?.role !== 'walkin_manager' && (
             <button className="btn btn-primary btn-lg d-inline-flex align-items-center gap-1" onClick={handlePrint}><Printer size={14} /> Print / PDF</button>
           )}
           {user?.role !== 'temp_manager' && user?.role !== 'walkin_manager' && (
             <>
               <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => setShowSendModal(true)} style={{ borderColor: '#6366f1', color: '#6366f1' }}>
-                <Send size={14} /> Send Invoice
+                <Send size={14} /> {isTransportFormat ? 'Send Dispatch' : 'Send Invoice'}
               </button>
               <button className="btn btn-outline d-inline-flex align-items-center gap-1" onClick={() => setShowShareModal(true)}><Share2 size={14} /> Share</button>
             </>
@@ -625,7 +655,7 @@ export default function InvoiceView() {
               <AlertTriangle size={14} /> Escalate to Admin
             </button>
           )}
-          {user?.role !== 'walkin_manager' && (
+          {!isTransportFormat && user?.role !== 'walkin_manager' && (
             <button className="btn btn-danger d-inline-flex align-items-center gap-1" onClick={handleDelete}><Trash2 size={14} />{t('Cancel', 'रद्द करें')}</button>
           )}
         </div>
@@ -653,6 +683,32 @@ export default function InvoiceView() {
       )}
 
       {/* ── INVOICE PAPER ── */}
+      {isTransportFormat && user?.role !== 'driver' && (
+        <div className="no-print" style={{ 
+          marginBottom: 12, 
+          fontSize: 13, 
+          color: '#1e40af', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          background: '#eff6ff',
+          padding: '12px 16px',
+          borderRadius: 8,
+          border: '1px solid #bfdbfe',
+          fontWeight: 500
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Truck size={16} /> <span>Viewing <strong>Consignment Note</strong> (Prices hidden).</span>
+          </div>
+          <button 
+            className="btn btn-primary btn-sm"
+            onClick={() => navigate('?')}
+            style={{ padding: '6px 16px', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            Back to Original Invoice
+          </button>
+        </div>
+      )}
       <div className="invoice-view-wrapper" ref={containerRef} style={{ width: '100%', overflowX: zoomIn ? 'auto' : 'hidden' }}>
         <div 
           className="invoice-paper" 
@@ -678,11 +734,12 @@ export default function InvoiceView() {
             </div>
             <table className="inv-meta-table" style={{ marginTop: 10, marginLeft: 'auto' }}>
               <tbody>
-                <tr><td className="label">Invoice No.</td><td className="value" style={{ fontFamily: 'monospace' }}>{invoice.invoice_number}</td></tr>
+                <tr><td className="label">{isTransportFormat ? 'Consignment No.' : 'Invoice No.'}</td><td className="value" style={{ fontFamily: 'monospace' }}>{isTransportFormat ? invoice.invoice_number.replace('INV', 'CON') : invoice.invoice_number}</td></tr>
                 <tr><td className="label">Date & Time</td><td className="value">{istDisplay}</td></tr>
                 {invoice.manual_bill_ref && <tr><td className="label">Manual Ref.</td><td className="value">{invoice.manual_bill_ref}</td></tr>}
-                {invoice.vehicle_number && <tr><td className="label">Vehicle No.</td><td className="value">{(invoice.vehicle_number || '').toUpperCase()}</td></tr>}
-                {invoice.driver_name && <tr><td className="label">Driver</td><td className="value">{invoice.driver_name}</td></tr>}
+                {invoice.vehicle_number && <tr><td className="label" style={isTransportFormat ? {color: '#1d4ed8', fontWeight: 700} : {}}>Vehicle No.</td><td className="value" style={isTransportFormat ? {color: '#1d4ed8', fontWeight: 800, fontSize: 13, background: '#eff6ff', padding: '2px 6px', borderRadius: 4} : {}}>{(invoice.vehicle_number || '').toUpperCase()}</td></tr>}
+                {invoice.driver_name && <tr><td className="label" style={isTransportFormat ? {color: '#1d4ed8', fontWeight: 700} : {}}>Driver</td><td className="value" style={isTransportFormat ? {color: '#1d4ed8', fontWeight: 800, fontSize: 13, background: '#eff6ff', padding: '2px 6px', borderRadius: 4} : {}}>{invoice.driver_name}</td></tr>}
+                {isTransportFormat && invoice.customer_address && <tr><td className="label" style={{color: '#1d4ed8', fontWeight: 700}}>Destination</td><td className="value" style={{color: '#1d4ed8', fontWeight: 800, fontSize: 13, background: '#eff6ff', padding: '2px 6px', borderRadius: 4}}>{invoice.customer_address}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -747,12 +804,14 @@ export default function InvoiceView() {
 
         {/* Items Table */}
         <div className="inv-table-wrapper" style={{ width: '100%', marginBottom: 16 }}>
-          <table className="inv-table" style={{ marginBottom: 0, tableLayout: 'fixed', width: '100%' }}>
+          <table className="inv-table" style={{ marginBottom: 0, tableLayout: 'fixed', width: '100%', fontSize: 12 }}>
             <thead>
               <tr>
                 <th style={{ width: invoice.gst_enabled ? '3%' : '4%' }}>#</th>
-                <th style={{ width: invoice.gst_enabled ? '40%' : '40%', textAlign: 'left' }}>{t('Item Description', 'आइटम विवरण')}</th>
-                <th style={{ width: invoice.gst_enabled ? '5%' : '8%', textAlign: 'center' }}>{t('Qty', 'मात्रा')}</th>
+                <th style={{ width: invoice.gst_enabled ? '37%' : '38%', textAlign: 'left' }}>{t('Item Description', 'आइटम विवरण')}</th>
+                <th style={{ width: invoice.gst_enabled ? '8%' : '10%', textAlign: 'center' }}>{t('Qty', 'मात्रा')}</th>
+                {isTransportFormat && <th style={{ width: '12%', textAlign: 'center' }}>{t('Unit Wt', 'इकाई वजन')}</th>}
+                {isTransportFormat && <th style={{ width: '15%', textAlign: 'center' }}>{t('Total Wt', 'कुल वजन')}</th>}
                 {!isTransportFormat && <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Rate', 'दर')}</th>}
                 {!isTransportFormat && <th style={{ width: invoice.gst_enabled ? '8%' : '16%', textAlign: 'right' }}>{t('Taxable', 'कर योग्य')}</th>}
                 {!isTransportFormat && invoice.gst_enabled && <>
@@ -770,13 +829,15 @@ export default function InvoiceView() {
                   if (item.is_header) {
                     return (
                       <tr key={item._id || i} style={{ background: '#f8fafc' }}>
-                        <td colSpan={invoice.gst_enabled ? (isTransportFormat ? 3 : 7) : (isTransportFormat ? 3 : 4)} style={{ textAlign: 'center', fontWeight: 800, color: '#334155', padding: '12px', fontSize: 13, letterSpacing: '0.5px' }}>
+                        <td colSpan={invoice.gst_enabled ? (isTransportFormat ? 5 : 7) : (isTransportFormat ? 5 : 4)} style={{ textAlign: 'center', fontWeight: 800, color: '#334155', padding: '12px', fontSize: 13, letterSpacing: '0.5px' }}>
                           {item.product_name}
                         </td>
                       </tr>
                     );
                   }
                   const currentIndex = rowIndex++;
+                  const unitStr = item.unit || 'bag';
+                  const displayUnit = item.qty === 1 ? unitStr : (unitStr.endsWith('s') ? unitStr : unitStr + 's');
                   return (
                     <tr key={item._id || i}>
                       <td style={{ color: '#9ca3af' }}>{currentIndex}</td>
@@ -785,13 +846,38 @@ export default function InvoiceView() {
                       {item.returned_qty > 0 && <span className="badge badge-warning" style={{ marginLeft: 6, fontSize: 10 }}>Returned: {item.returned_qty}</span>}
                       {item.is_defective && <span className="badge badge-danger" style={{ marginLeft: 6, fontSize: 10 }}>Defective</span>}
                     </td>
-                    <td style={{ textAlign: 'center' }}>{item.qty} {item.unit || 'bag'}</td>
-                    {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.price)}</td>}
-                    {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.taxable_amount)}</td>}
+                    <td style={{ whiteSpace: 'nowrap', padding: '4px 0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <div style={{ width: '40%', textAlign: 'right' }}>{item.qty}</div>
+                        <div style={{ width: '60%', textAlign: 'left' }}>&nbsp;{displayUnit}</div>
+                      </div>
+                    </td>
+                    {isTransportFormat && (
+                      <td style={{ whiteSpace: 'nowrap', color: '#475569', fontWeight: 500, padding: '4px 0' }}>
+                        {item.weight ? (
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <div style={{ width: '40%', textAlign: 'right' }}>{String(item.weight_per_unit ? item.weight_per_unit : parseFloat((parseFloat(item.weight) / parseFloat(item.qty)).toFixed(3))).split('.')[0]}</div>
+                            <div style={{ width: '60%', textAlign: 'left' }}>{String(item.weight_per_unit ? item.weight_per_unit : parseFloat((parseFloat(item.weight) / parseFloat(item.qty)).toFixed(3))).includes('.') ? '.' + String(item.weight_per_unit ? item.weight_per_unit : parseFloat((parseFloat(item.weight) / parseFloat(item.qty)).toFixed(3))).split('.')[1] : ''} kg</div>
+                          </div>
+                        ) : <div style={{ textAlign: 'center' }}>-</div>}
+                      </td>
+                    )}
+                    {isTransportFormat && (
+                      <td style={{ whiteSpace: 'nowrap', color: '#475569', fontWeight: 700, padding: '4px 0' }}>
+                        {item.weight ? (
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <div style={{ width: '40%', textAlign: 'right' }}>{String(item.weight).split('.')[0]}</div>
+                            <div style={{ width: '60%', textAlign: 'left' }}>{String(item.weight).includes('.') ? '.' + String(item.weight).split('.')[1] : ''} kg</div>
+                          </div>
+                        ) : <div style={{ textAlign: 'center' }}>-</div>}
+                      </td>
+                    )}
+                    {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.price).replace('₹', '').trim()}</td>}
+                    {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.taxable_amount).replace('₹', '').trim()}</td>}
                     {!isTransportFormat && invoice.gst_enabled && <>
                       <td style={{ textAlign: 'center' }}>{item.gst}%</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.cgst)}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.sgst)}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.cgst).replace('₹', '').trim()}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(item.sgst).replace('₹', '').trim()}</td>
                     </>}
                     {!isTransportFormat && <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fc(item.total)}</td>}
                   </tr>
@@ -799,58 +885,139 @@ export default function InvoiceView() {
               });
             })()}
             </tbody>
+            {isTransportFormat && (
+              <tfoot style={{ borderTop: '2px solid #e2e8f0' }}>
+                {invoice.total_weight > 0 && (
+                  <tr>
+                    <td colSpan={3} style={{ borderBottom: 'none' }}></td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, color: '#475569', padding: '20px 4px 8px 4px', borderBottom: 'none', whiteSpace: 'nowrap' }}>{t('Total Weight', 'कुल वजन')}</td>
+                    <td style={{ fontWeight: 700, color: '#475569', padding: '20px 0 8px 0', borderBottom: 'none', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <div style={{ width: '40%', textAlign: 'right' }}>{String(parseFloat(Number(invoice.total_weight).toFixed(3))).split('.')[0]}</div>
+                        <div style={{ width: '60%', textAlign: 'left' }}>{String(parseFloat(Number(invoice.total_weight).toFixed(3))).includes('.') ? '.' + String(parseFloat(Number(invoice.total_weight).toFixed(3))).split('.')[1] : ''} kg</div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                <tr>
+                  <td colSpan={3} style={{ borderBottom: '1px dashed #cbd5e1' }}></td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, color: '#475569', padding: invoice.total_weight > 0 ? '8px 4px' : '20px 4px 8px 4px', borderBottom: '1px dashed #cbd5e1', whiteSpace: 'nowrap' }}>{t('Total Qty', 'कुल मात्रा')}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, color: '#475569', padding: invoice.total_weight > 0 ? '8px 4px' : '20px 4px 8px 4px', borderBottom: '1px dashed #cbd5e1' }}>{invoice.items.reduce((sum, item) => sum + (item.is_header ? 0 : (Number(item.qty) || 0)), 0)}</td>
+                </tr>
+                {((invoice.total_with_prev_balance || invoice.total) - (invoice.amount_received || 0)) > 0.01 && (
+                  <tr>
+                    <td colSpan={3} style={{ borderBottom: 'none' }}></td>
+                    <td style={{ textAlign: 'center', fontWeight: 800, fontSize: 16, color: '#0f172a', padding: '12px 4px', borderBottom: 'none', whiteSpace: 'nowrap' }}>{t('Total Amount', 'कुल राशि')}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 800, fontSize: 16, color: '#0f172a', borderBottom: 'none', whiteSpace: 'nowrap' }}>{fc(invoice.total_with_prev_balance || invoice.total)}</td>
+                  </tr>
+                )}
+              </tfoot>
+            )}
           </table>
         </div>
 
         {/* GST Summary + Totals */}
-            {invoice.previous_balance > 0 && <div className="inv-total-row" style={{ fontWeight: 800 }}><span>{t('Net Payable', 'कुल देय')}</span><span className="mono">{fc(invoice.total_with_prev_balance)}</span></div>}
-            {(invoice.amount_received > 0) && (
-              <>
-                <div className="inv-total-row rcvd" style={{ marginBottom: invoice.payments?.length ? 4 : 0 }}>
-                  <span>{t('Amount Received', 'प्राप्त राशि')}</span>
-                  <span className="mono">{fc(invoice.amount_received)}</span>
-                </div>
-                {invoice.payments && invoice.payments.length > 0 && (
-                  <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', marginTop: 4 }}>
-                    <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Payment Breakdown</div>
-                    {invoice.payments.map((p, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#334155', padding: '2px 0' }}>
-                        <span>
-                          {p.date_string ? <strong style={{ color: '#0f172a' }}>({p.date_string}) </strong> : ''}
-                          <span style={{ textTransform: 'capitalize' }}>{(p.mode || 'cash').replace('_', ' ')}</span>
-                          {p.reference ? ` - ${p.reference}` : ''}
-                        </span>
-                        <span className="mono" style={{ fontWeight: 600 }}>{fc(p.amount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-            
-            {invoice.ledger_payments && invoice.ledger_payments.length > 0 && (
-              <div style={{ marginTop: 12, padding: '6px 8px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Account History</div>
-                <div className="inv-total-row" style={{ padding: '2px 0' }}><span>{t('Starting Balance', 'शुरुआती बकाया')}</span><span className="mono">{fc(invoice.starting_balance)}</span></div>
-                {invoice.ledger_payments.map((lp, idx) => {
-                  const d = lp.ist_formatted ? lp.ist_formatted.split(',')[0] : (lp.date ? new Date(lp.date).toLocaleDateString() : '...');
-                  return (
-                    <div key={idx} className="inv-total-row text-success" style={{ padding: '2px 0', fontSize: 11 }}>
-                      <span>{t('Received', 'प्राप्त')} ({d})</span>
-                      <span className="mono">- {fc(lp.amount)}</span>
-                    </div>
-                  );
-                })}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 24 }}>
+          {/* GST Summary (Left Side) */}
+          <div style={{ flex: 1 }}>
+            {!isTransportFormat && invoice.gst_enabled && Object.keys(gstSummary).length > 0 && (
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 8, textTransform: 'uppercase' }}>{t('GST Summary', 'जीएसटी सारांश')}</div>
+                <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#475569' }}>
+                      <th style={{ textAlign: 'left', padding: '4px 0' }}>{t('Rate', 'दर')}</th>
+                      <th style={{ textAlign: 'right', padding: '4px 0' }}>{t('Taxable', 'कर योग्य')}</th>
+                      <th style={{ textAlign: 'right', padding: '4px 0' }}>{t('CGST', 'सीजीएसटी')}</th>
+                      <th style={{ textAlign: 'right', padding: '4px 0' }}>{t('SGST', 'एसजीएसटी')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.keys(gstSummary).map(rate => {
+                       if (!rate || rate === 'undefined' || gstSummary[rate].taxable === 0) return null;
+                       return (
+                        <tr key={rate} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '4px 0', fontWeight: 600 }}>{rate}%</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(gstSummary[rate].taxable).replace('₹', '').trim()}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(gstSummary[rate].cgst).replace('₹', '').trim()}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fc(gstSummary[rate].sgst).replace('₹', '').trim()}</td>
+                        </tr>
+                       );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
-        {/* Amount in words */}
-        <div className="inv-words">
-          <span style={{ color: '#6b7280', fontWeight: 600 }}>{t('Amount in Words:', 'शब्दों में राशि:')} </span>
-          <span style={{ fontWeight: 600 }}>{numToWords(invoice.total, lang)}</span>
+          </div>
+
+          {/* Totals (Right Side) */}
+          {!isTransportFormat && (
+            <div style={{ width: '35%', minWidth: 240 }}>
+              {invoice.vehicle_charge > 0 && <div className="inv-total-row"><span>{t('Vehicle Charge', 'वाहन शुल्क')}</span><span className="mono">{fc(invoice.vehicle_charge)}</span></div>}
+              {invoice.labour_charge > 0 && <div className="inv-total-row"><span>{t('Labour Charge', 'श्रम शुल्क')}</span><span className="mono">{fc(invoice.labour_charge)}</span></div>}
+              
+              {(invoice.vehicle_charge > 0 || invoice.labour_charge > 0 || invoice.previous_balance > 0) && (
+                <div className="inv-total-row" style={{ fontWeight: 600 }}><span>{t('Invoice Total', 'बिल का कुल')}</span><span className="mono">{fc(invoice.total)}</span></div>
+              )}
+              
+              {invoice.previous_balance > 0 && (
+                <div className="inv-total-row" style={{ color: 'var(--danger)' }}><span>{t('Previous Due', 'पिछला बकाया')}</span><span className="mono">{fc(invoice.previous_balance)}</span></div>
+              )}
+              
+              <div className="inv-total-row" style={{ fontWeight: 800, fontSize: 16 }}>
+                <span>{t('Net Payable', 'कुल देय')}</span>
+                <span className="mono">{fc(invoice.total_with_prev_balance || invoice.total)}</span>
+              </div>
+              {(invoice.amount_received > 0) && (
+                <>
+                  <div className="inv-total-row rcvd" style={{ marginBottom: 4 }}>
+                    <span>{t('Amount Received', 'प्राप्त राशि')}</span>
+                    <span className="mono">{fc(invoice.amount_received)}</span>
+                  </div>
+                  {((invoice.total_with_prev_balance || invoice.total) - invoice.amount_received) > 0.01 ? (
+                    <div className="inv-total-row" style={{ fontWeight: 800, fontSize: 16, color: 'var(--danger)', paddingTop: 4, borderTop: '1px dashed #cbd5e1' }}>
+                      <span>{t('Grand Total', 'कुल बकाया')}</span>
+                      <span className="mono">{fc((invoice.total_with_prev_balance || invoice.total) - invoice.amount_received)}</span>
+                    </div>
+                  ) : (
+                    <div className="inv-total-row" style={{ fontWeight: 800, fontSize: 16, color: 'var(--success)', paddingTop: 4, borderTop: '1px dashed #cbd5e1' }}>
+                      <span>{t('Status', 'स्थिति')}</span>
+                      <span style={{ textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        {t('Paid', 'पूर्ण भुगतान')}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              {invoice.ledger_payments && invoice.ledger_payments.length > 0 && (
+                <div style={{ marginTop: 12, padding: '6px 8px', background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' }}>Account History</div>
+                  <div className="inv-total-row" style={{ padding: '2px 0' }}><span>{t('Starting Balance', 'शुरुआती बकाया')}</span><span className="mono">{fc(invoice.starting_balance)}</span></div>
+                  {invoice.ledger_payments.map((lp, idx) => {
+                    const d = lp.ist_formatted ? lp.ist_formatted.split(',')[0] : (lp.date ? new Date(lp.date).toLocaleDateString() : '...');
+                    return (
+                      <div key={idx} className="inv-total-row text-success" style={{ padding: '2px 0', fontSize: 11 }}>
+                        <span>{t('Received', 'प्राप्त')} ({d})</span>
+                        <span className="mono">- {fc(lp.amount)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+        {!isTransportFormat && (
+          <div className="inv-words">
+            <span style={{ color: '#6b7280', fontWeight: 600 }}>{t('Current Invoice Amount (in words):', 'वर्तमान बिल राशि (शब्दों में):')} </span>
+            <span style={{ fontWeight: 600 }}>{numToWords(invoice.total, lang)}</span>
+          </div>
+        )}
 
         {/* Payment modes */}
-        {invoice.payments?.length > 0 && (
+        {!isTransportFormat && invoice.payments?.length > 0 && (
           <div style={{ marginBottom: 14, fontSize: 13 }}>
             <div className="inv-section-title" style={{ marginBottom: 6 }}>{t('Payment Received Via', 'भुगतान प्राप्त हुआ')}</div>
             <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
@@ -935,26 +1102,18 @@ export default function InvoiceView() {
         <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <div className="modal-header">
-              <div className="modal-title d-flex align-items-center gap-2"><Share2 size={18} /> Share {isTransportFormat ? 'CSN' : 'Invoice'} {invoice.invoice_number}</div>
+              <div className="modal-title d-flex align-items-center gap-2"><Share2 size={18} /> Share {isTransportFormat ? 'CSN' : 'Invoice'} {isTransportFormat ? invoice.invoice_number.replace('INV', 'CON') : invoice.invoice_number}</div>
               <button className="modal-close" onClick={() => setShowShareModal(false)}>✕</button>
             </div>
             <div className="modal-body">
 
-              <div style={{ marginBottom: 18, background: 'var(--bg-light)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, cursor: 'pointer', fontWeight: 600 }}>
-                  <input type="checkbox" checked={isTransportFormat} onChange={e => setIsTransportFormat(e.target.checked)} style={{ width: 16, height: 16 }} />
-                  Share as Transportation Copy (Hide Prices)
-                </label>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginLeft: 24 }}>
-                  Generates a Consignment Note format suitable for drivers
-                </div>
-              </div>
+
 
               {/* ── WhatsApp ── */}
               <div style={{ marginBottom: 18 }}>
                 <label className="form-label d-flex align-items-center gap-1"><MessageSquare size={14} /> WhatsApp</label>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  {invoice.customer_phone
+                  {(!isTransportFormat && invoice.customer_phone)
                     ? `Sends PDF link to +91 ${invoice.customer_phone}`
                     : 'No phone on file — opens WhatsApp with message ready'}
                 </p>
@@ -973,15 +1132,15 @@ export default function InvoiceView() {
               <div style={{ marginBottom: 18 }}>
                 <label className="form-label d-flex align-items-center gap-1"><Smartphone size={14} /> Send via SMS</label>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  {invoice.customer_phone
+                  {(!isTransportFormat && invoice.customer_phone)
                     ? `Opens SMS app for ${invoice.customer_phone} with invoice summary`
-                    : <span style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> No phone number on file</span>}
+                    : (isTransportFormat ? 'Opens SMS app with message ready' : <span style={{ color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> No phone number on file</span>)}
                 </p>
                 <button
                   className="btn btn-outline btn-block d-inline-flex align-items-center gap-2"
                   style={{ justifyContent: 'center', borderColor: '#6b7280' }}
                   onClick={() => { handleSMS(); setShowShareModal(false); }}
-                  disabled={!invoice.customer_phone}
+                  disabled={!isTransportFormat && !invoice.customer_phone}
                 >
                   <Smartphone size={14} /> Send SMS
                 </button>
@@ -1027,13 +1186,28 @@ export default function InvoiceView() {
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
                   Opens browser print dialog — choose "Save as PDF"
                 </p>
-                <button
-                  className="btn btn-outline btn-block d-inline-flex align-items-center gap-2"
-                  style={{ justifyContent: 'center' }}
-                  onClick={() => { handlePrint(); setShowShareModal(false); }}
-                >
-                  <Download size={14} /> Download PDF
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+                  <button
+                    className="btn btn-outline btn-block d-inline-flex align-items-center gap-2"
+                    style={{ justifyContent: 'center' }}
+                    onClick={() => { handlePrint(); setShowShareModal(false); }}
+                  >
+                    <Download size={14} /> {isTransportFormat ? 'Download Consignment Note' : 'Download Original Invoice'}
+                  </button>
+                  {!isTransportFormat && (
+                    <button
+                      className="btn btn-outline btn-block d-inline-flex align-items-center gap-2"
+                      style={{ justifyContent: 'center' }}
+                      onClick={() => { 
+                        setShowShareModal(false); 
+                        navigate(`?view=csn`);
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg> 
+                      View Consignment Note (CON)
+                    </button>
+                  )}
+                </div>
               </div>
 
             </div>

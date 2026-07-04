@@ -210,6 +210,15 @@ router.patch('/:id/status', checkProductEditPermission, async (req, res) => {
     if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
 
     delivery.status = status;
+    const now = new Date();
+    if (status === 'arrived' && !delivery.arrived_at) {
+      delivery.arrived_at = now;
+      delivery.arrived_at_ist = formatISTDateTime(now);
+    }
+    if (status === 'delivered' && !delivery.delivered_at) {
+      delivery.delivered_at = now;
+      delivery.delivered_at_ist = formatISTDateTime(now);
+    }
 
     // When marked delivered — update stock for each item
     // On delivery: create new products, update stock & price
@@ -531,6 +540,120 @@ router.delete('/:id', checkProductEditPermission, async (req, res) => {
     await Delivery.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// --- POST /api/deliveries/:id/dispatch-walkin -----------------------------
+// Assigns a delivery (vehicle) to a walkin_manager and converts it to a trip
+router.post('/:id/dispatch-walkin', checkProductEditPermission, async (req, res) => {
+  try {
+    const { manager_id, items } = req.body;
+    if (!manager_id) return res.status(400).json({ error: 'manager_id is missing from request body' });
+    
+    const delivery = await Delivery.findById(req.params.id);
+    if (!delivery) return res.status(404).json({ error: `Delivery not found for id: ${req.params.id}` });
+    if (delivery.status === 'delivered') return res.status(400).json({ error: 'Already delivered.' });
+
+    const Admin = require('../models/Admin');
+    const VehicleTrip = require('../models/VehicleTrip');
+    const Product = require('../models/Product');
+
+    const manager = await Admin.findById(manager_id);
+    if (!manager) return res.status(404).json({ error: `Manager not found for id: ${manager_id}` });
+    if (manager.role !== 'walkin_manager') return res.status(400).json({ error: `Manager has role ${manager.role}, not walkin_manager` });
+    if (manager.is_trip_active) return res.status(400).json({ error: 'Manager already has an active trip' });
+
+    // Update global products and manager stock
+    for (const item of items) {
+      let p;
+      if (item.product_id) {
+        p = await Product.findById(item.product_id);
+      }
+      
+      if (!p && item.item_name) {
+        // If it's a new item (no product_id or product deleted), create a new Product in global inventory
+        p = new Product({
+          name: item.item_name,
+          price: parseFloat(item.final_price || item.base_price || 0),
+          stock: 0,
+          loose_stock: 0,
+          manager_stock: [],
+          created_by: req.user.id
+        });
+      }
+
+      if (p) {
+        p.price = parseFloat(item.final_price || item.base_price || p.price || 0);
+        p.last_delivery_final_price = p.price;
+        p.last_updated_by = req.user.id;
+        p.last_manual_edit_at = new Date();
+        
+        const qtyToAdd = parseFloat(item.quantity) || 0;
+        
+        // Add to global stock
+        if (item.is_loose) {
+           p.loose_stock = (p.loose_stock || 0) + qtyToAdd;
+        } else {
+           p.stock = (p.stock || 0) + qtyToAdd;
+        }
+        
+        // Add to manager stock
+        let msIndex = p.manager_stock.findIndex(m => m.manager_id.toString() === manager_id.toString());
+        if (msIndex > -1) {
+           p.manager_stock[msIndex].stock = (p.manager_stock[msIndex].stock || 0) + qtyToAdd;
+        } else {
+           p.manager_stock.push({ manager_id: manager_id, stock: qtyToAdd });
+        }
+        
+        await p.save();
+        
+        // Assign the new product_id back to the item so it gets saved correctly in the delivery and trip
+        item.product_id = p._id;
+        item.temp_qty_added = qtyToAdd; // Keep track of what we added
+      }
+    }
+
+    // Update delivery
+    delivery.items = items;
+    // We leave it as 'arrived' instead of 'delivered' so Admin can still edit prices
+    // We change the type to 'outgoing' so it shows up in the Outgoing (Trips) tab as requested by the user
+    delivery.delivery_type = 'outgoing'; 
+    delivery.status = 'arrived';
+    delivery.stock_updated = true; // Mark as updated so it doesn't double-add on Mark Delivered
+    
+    // Append manager name to driver name for UI display
+    const displayMgrName = manager.display_name || manager.username || 'Manager';
+    if (!delivery.driver_name || !delivery.driver_name.includes('(Mgr:')) {
+      delivery.driver_name = delivery.driver_name ? `${delivery.driver_name} (Mgr: ${displayMgrName})` : `Mgr: ${displayMgrName}`;
+    }
+    await delivery.save();
+
+    // Start active trip for manager
+    manager.is_trip_active = true;
+    manager.active_vehicle_number = delivery.vehicle_number;
+    manager.active_driver_name = delivery.driver_name;
+    manager.active_destination = delivery.destination || 'Walk-in Sales';
+    await manager.save();
+
+    // Create VehicleTrip
+    await VehicleTrip.create({
+      manager_id: manager._id,
+      vehicle_number: delivery.vehicle_number,
+      driver_name: delivery.driver_name,
+      destination: delivery.destination || 'Walk-in Sales',
+      status: 'active',
+      initial_stock: items.map(i => ({
+        product_id: i.product_id,
+        product_name: i.item_name, // Map item_name to product_name
+        item_name: i.item_name,    // Keep item_name for backward compatibility if needed
+        quantity: i.quantity,
+        price: parseFloat(i.final_price || i.base_price || 0),
+        unit: i.unit || 'pcs'
+      }))
+    });
+
+    res.json({ success: true, message: 'Dispatched to manager successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

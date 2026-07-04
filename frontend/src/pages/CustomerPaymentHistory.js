@@ -290,46 +290,48 @@ export default function CustomerPaymentHistory() {
   return (
     <div style={{ paddingBottom: 60 }}>
       
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: isMobile ? '8px' : '16px', marginBottom: isMobile ? '12px' : '24px', overflowX: 'auto', whiteSpace: 'nowrap', flexDirection: isMobile ? 'column' : 'row' }} className="no-print">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', paddingBottom: isMobile ? '8px' : '16px', marginBottom: isMobile ? '12px' : '24px', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 16 }} className="no-print">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0, flex: 1 }}>
           <button 
             onClick={() => navigate('/customers')}
             className="btn btn-outline" 
-            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ padding: '8px 12px', borderRadius: '50%', minWidth: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
             title="Back to Customers"
           >
             <ArrowLeft size={18} />
           </button>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, marginTop: '4px' }}>
-              <Users size={22} className="text-primary" /> {customer?.name || 'Customer'}
-            </div>
-            <div className="page-subtitle" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              Ledger statement & payment history
-              {linkedSupplier && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600 }}>
-                  🔗 Linked to Supplier: {linkedSupplier.name}
-                </div>
-              )}
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: '4px', minWidth: 0 }}>
+            <Users size={22} className="text-primary" style={{ flexShrink: 0, marginTop: isMobile ? 2 : 4 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div className="page-title" style={{ margin: 0, lineHeight: 1.2 }}>
+                {customer?.name || 'Customer'}
+              </div>
+              <div className="page-subtitle" style={{ margin: 0, marginTop: '2px', color: 'var(--text-muted)', whiteSpace: 'normal', wordBreak: 'break-word', fontSize: isMobile ? 12 : 14, lineHeight: 1.3 }}>
+                Ledger statement & payment history
+                {linkedSupplier && (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                    🔗 Linked to Supplier: {linkedSupplier.name}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'auto auto', gap: isMobile ? 8 : 12, alignItems: 'center', flexShrink: 0, width: isMobile ? '100%' : 'auto' }}>
+        <div style={{ display: 'flex', gap: isMobile ? 6 : 12, alignItems: 'center', flexShrink: 0, marginTop: isMobile ? 2 : 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button 
             className="btn" 
             onClick={() => setShowCollectModal(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : '8px 14px', fontSize: isMobile ? 12 : 13, background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', width: isMobile ? '100%' : 'auto', fontWeight: 600 }}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 8, padding: isMobile ? '5px 8px' : '8px 14px', fontSize: isMobile ? 12 : 13, background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', fontWeight: 600 }}
           >
-            <Wallet size={14} /> Record Payment
+            <Wallet size={isMobile ? 12 : 14} /> Record Payment
           </button>
           {linkedSupplier && (
             <button 
               className="btn" 
               onClick={() => navigate(`/suppliers/${linkedSupplier._id}/master-ledger`)}
-              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 8, padding: isMobile ? '6px 10px' : '8px 14px', fontSize: isMobile ? 12 : 13, background: '#ffedd5', border: '1px solid #fdba74', color: '#c2410c', width: isMobile ? '100%' : 'auto', fontWeight: 600, gridColumn: isMobile ? '1 / -1' : 'auto', marginTop: isMobile ? 12 : 0 }}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 8, padding: isMobile ? '5px 8px' : '8px 14px', fontSize: isMobile ? 12 : 13, background: '#ffedd5', border: '1px solid #fdba74', color: '#c2410c', fontWeight: 600 }}
             >
-              <FileText size={14} /> View Master Ledger
+              <FileText size={isMobile ? 12 : 14} /> {isMobile ? 'Master Ledger' : 'View Master Ledger'}
             </button>
           )}
         </div>

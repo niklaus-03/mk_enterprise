@@ -124,7 +124,7 @@ export default function NotificationsPage() {
 
     if (notification.entity_type === 'invoice' && notification.entity_id) {
       if (user?.role === 'driver') navigate('/', { state: { dispatchNotif: notification } });
-      else navigate(`/invoices/${notification.entity_id}`);
+      else navigate(`/invoices/${notification.entity_id}${notification.metadata?.view_mode === 'csn' ? '?view=csn' : ''}`);
     } else if (notification.entity_type === 'trip' && notification.entity_id) {
       if (user?.role === 'driver') navigate('/', { state: { dispatchNotif: notification } });
       else navigate(`/trip/${notification.entity_id}`);

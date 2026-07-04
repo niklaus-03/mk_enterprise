@@ -24,8 +24,13 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    const msg = err.response?.data?.error || err.message || 'Network error';
-    return Promise.reject(new Error(msg));
+    
+    // Attempt to extract the backend error message if it exists
+    if (err.response && err.response.data && err.response.data.error) {
+      err.message = err.response.data.error;
+    }
+    
+    return Promise.reject(err);
   }
 );
 
@@ -40,6 +45,7 @@ export const authApi = {
   checkUser: (identifier) => api.get('/auth/check-user', { params: { identifier } }),
   getRecoveryRequests: () => api.get('/auth/recovery-requests'),
   resolveRecoveryRequest: (id, new_password) => api.put(`/auth/recovery-requests/${id}/resolve`, { new_password }),
+  getVacantWalkinManagers: () => api.get('/auth/vacant-walkin-managers'),
 };
 
 // ── Manager Admin (Supervisor only) ──────────────────────────────────────────────────
@@ -167,7 +173,7 @@ export const invoiceApi = {
 };
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const dashboardApi = {
-  get: (date) => api.get('/dashboard', { params: date ? { date } : {} }),
+  get: (date, manager_id) => api.get('/dashboard', { params: { ...(date ? { date } : {}), ...(manager_id ? { manager_id } : {}) } }),
   recordPayment: (data) => api.post('/dashboard/record-payment', data),
   createWalkinDue: (data) => api.post('/dashboard/walkin-due', data),
   checkPhone: (phone) => api.get('/dashboard/check-phone', { params: { phone } }),
@@ -181,6 +187,7 @@ export const deliveryApi = {
       ...(params.date ? { date: params.date } : {}),
       ...(params.all ? { all: 'true' } : {}),
       ...(params.status ? { status: params.status } : {}),
+      ...(params.manager_id ? { manager_id: params.manager_id } : {}),
     }
   }),
   create: (data) => api.post('/deliveries', data),
@@ -188,6 +195,7 @@ export const deliveryApi = {
   updatePayment: (id, payment_status, payment_mode, notes, actual_paid_amount, payment_action) => api.patch(`/deliveries/${id}/payment`, { payment_status, payment_mode, notes, actual_paid_amount, payment_action }),
   update: (id, data) => api.put(`/deliveries/${id}`, data),
   delete: (id) => api.delete(`/deliveries/${id}`),
+  dispatchWalkin: (id, data) => api.post(`/deliveries/${id}/dispatch-walkin`, data),
 };
 
 // ── Orders ────────────────────────────────────────────────────────────────────
@@ -221,6 +229,7 @@ export const settlementApi = {
       ...(params.party ? { party: params.party } : {}),
       ...(params.sort_amount ? { sort_amount: params.sort_amount } : {}),
       ...(params.sort_date ? { sort_date: params.sort_date } : {}),
+      ...(params.manager_id ? { manager_id: params.manager_id } : {}),
     }
   }),
   create: (data) => api.post('/settlements', data),
@@ -264,6 +273,7 @@ export const walkinApi = {
   adminAssignVehicle: (data) => api.post('/walkin/admin-assign-vehicle', data),
   adminAssignItems: (data) => api.post('/walkin/admin-assign-items', data),
   assignReinforcement: (data) => api.post('/walkin/assign-reinforcement', data),
+  getTripLiveStats: (tripId) => api.get(`/walkin/trip-live-stats/${tripId}`),
 };
 
 // ── Daily Reports ─────────────────────────────────────────────────────────────

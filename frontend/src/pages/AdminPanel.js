@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { managerApi, driverApi, activityLogApi, authApi, deliveryApi, supplierApi, walkinApi } from '../utils/api';
-import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock, PauseCircle, PlayCircle, Eye, UserCheck, Copy, ArrowLeft } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Key, Shield, CheckCircle, XCircle, Activity, Truck, Unlock, PauseCircle, PlayCircle, Eye, UserCheck, Copy, ArrowLeft, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import HawkEye from '../components/HawkEye';
@@ -20,6 +20,7 @@ export default function AdminPanel() {
   const [showEditManager, setShowEditManager] = useState(null);
   const [mgrForm, setMgrForm] = useState({ username: '', phone: '', password: '', display_name: '', can_edit_products: false, role: 'manager', assigned_managers: [] });
   const [mgrCreating, setMgrCreating] = useState(false);
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [mgrResetModal, setMgrResetModal] = useState(null);
   const [mgrResetPw, setMgrResetPw] = useState('');
   const [cloneModal, setCloneModal] = useState(null);
@@ -571,7 +572,10 @@ export default function AdminPanel() {
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#1e293b', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
                       {mgr.display_name || '-'}
                       {mgr.role?.toLowerCase() === 'temp_manager' && (
-                        <span style={{ fontSize: 9, background: 'rgba(245,158,11,0.15)', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>TEMP MGR</span>
+                        <span style={{ fontSize: 9, background: 'rgba(245,158,11,0.15)', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>ASSISTANT</span>
+                      )}
+                      {mgr.role?.toLowerCase() === 'walkin_manager' && (
+                        <span style={{ fontSize: 9, background: 'rgba(234,179,8,0.15)', color: '#ca8a04', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>SUPPLY MGR</span>
                       )}
                       {mgr.role?.toLowerCase() === 'supervisor' && (
                         <span style={{ fontSize: 9, background: 'rgba(147,51,234,0.15)', color: '#9333ea', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>SUPERVISOR</span>
@@ -582,7 +586,7 @@ export default function AdminPanel() {
                       {mgr.role?.toLowerCase() === 'admin' && (
                         <span style={{ fontSize: 9, background: 'rgba(220,38,38,0.15)', color: '#dc2626', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>ADMIN</span>
                       )}
-                      {(mgr.role && !['manager', 'temp_manager', 'supervisor', 'admin'].includes(mgr.role.toLowerCase())) && (
+                      {(mgr.role && !['manager', 'temp_manager', 'walkin_manager', 'supervisor', 'admin'].includes(mgr.role.toLowerCase())) && (
                         <span style={{ fontSize: 9, background: 'rgba(71,85,105,0.15)', color: '#475569', padding: '2px 6px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>{mgr.role.toUpperCase()}</span>
                       )}
                     </div>
@@ -993,11 +997,43 @@ export default function AdminPanel() {
 
                 <div className="form-group mb-0">
                   <label className="form-label" style={{ fontWeight: 600, color: '#334155' }}>Role</label>
-                  <select className="form-control" value={mgrForm.role} onChange={e => setMgrForm({ ...mgrForm, role: e.target.value })} style={{ borderRadius: 8, border: '1px solid #cbd5e1' }}>
-                    <option value="manager">Manager</option>
-                    <option value="temp_manager">Temporary Manager</option>
-                    <option value="walkin_manager">Walk-in Delivery Manager</option>
-                  </select>
+                  <div 
+                    tabIndex={0} 
+                    onBlur={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget)) {
+                        setRoleDropdownOpen(false);
+                      }
+                    }}
+                    style={{ position: 'relative', outline: 'none' }}
+                  >
+                    <div 
+                      onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+                      className="form-control"
+                      style={{ borderRadius: 8, border: roleDropdownOpen ? '1px solid #3b82f6' : '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#fff', boxShadow: roleDropdownOpen ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none', transition: 'all 0.2s' }}
+                    >
+                      <span>{mgrForm.role === 'manager' ? 'Manager' : mgrForm.role === 'temp_manager' ? 'Assistant' : 'Supply Manager'}</span>
+                      <ChevronDown size={18} style={{ color: '#64748b', transform: roleDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+                    </div>
+                    {roleDropdownOpen && (
+                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', borderRadius: 8, border: '1px solid #cbd5e1', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden' }}>
+                        {[
+                          { value: 'manager', label: 'Manager' },
+                          { value: 'temp_manager', label: 'Assistant' },
+                          { value: 'walkin_manager', label: 'Supply Manager' }
+                        ].map(opt => (
+                          <div
+                            key={opt.value}
+                            onClick={() => { setMgrForm({ ...mgrForm, role: opt.value }); setRoleDropdownOpen(false); }}
+                            style={{ padding: '10px 14px', cursor: 'pointer', background: mgrForm.role === opt.value ? '#eff6ff' : '#fff', color: mgrForm.role === opt.value ? '#1d4ed8' : '#334155', fontWeight: mgrForm.role === opt.value ? 600 : 400, transition: 'background 0.1s' }}
+                            onMouseEnter={e => { if (mgrForm.role !== opt.value) e.currentTarget.style.background = '#f8fafc' }}
+                            onMouseLeave={e => { if (mgrForm.role !== opt.value) e.currentTarget.style.background = '#fff' }}
+                          >
+                            {opt.label}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {mgrForm.role === 'temp_manager' && (

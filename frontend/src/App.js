@@ -23,6 +23,7 @@ import TripView from './pages/TripView';
 import Suppliers from './pages/Suppliers';
 import SupplierPaymentHistory from './pages/SupplierPaymentHistory';
 import CustomerPaymentHistory from './pages/CustomerPaymentHistory';
+import MasterLedger from './pages/MasterLedger';
 import Settings from './pages/Settings';
 import './App.css';
 import Orders from './pages/Orders';
@@ -37,7 +38,7 @@ import NotificationDropdown from './components/NotificationDropdown';
 import MobileGlobalSearch from './components/MobileGlobalSearch';
 import TopNavDateTime from './components/TopNavDateTime';
 import { ThemeProvider } from './context/ThemeContext';
-import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search, Home, ShoppingCart, Plus } from 'lucide-react';
+import { Calendar, User, BarChart3, FileText, ClipboardList, Package, Users, Truck, UserCheck, Building2, ArrowLeftRight, Shield, Settings as SettingsIcon, Lock, Maximize2, LogOut, Bell, List, Moon, Search, Home, ShoppingCart, Plus, FileEdit } from 'lucide-react';
 import { tripApi, orderApi } from './utils/api';
 
 // ── Protected Route wrapper ────────────────────────────────────────────────────
@@ -127,10 +128,10 @@ function Sidebar({ open, onClose, isFullscreen }) {
     { to: '/products', label: lang ? hi.products : 'Products', icon: <Package size={16} /> },
     { to: '/customers', label: lang ? hi.customers : 'Customers', icon: <Users size={16} /> },
     ...(isWalkinManager ? [] : [{ to: '/suppliers', label: lang ? 'आपूर्तिकर्ता' : 'Suppliers', icon: <Building2 size={16} /> }]),
-    ...((!isWalkinManager && !isAdmin) ? [{ to: '/walkin-delivery', label: lang ? 'वॉक-इन डिलीवरी' : 'Walk-in Delivery', icon: <UserCheck size={16} /> }] : []),
+    { to: '/orders', label: lang ? 'ऑर्डर' : 'Pending Orders', icon: <ShoppingCart size={16} />, badge: pendingOrders > 0 ? pendingOrders : null },
+    { to: '/invoices/new?drafts=true', label: lang ? 'ड्राफ्ट' : 'Drafts', icon: <FileEdit size={16} /> },
     { to: '/daily-report', label: lang ? 'दैनिक रिपोर्ट' : 'Daily Report', icon: <Moon size={16} /> },
     ...(isAdmin ? [
-      { to: '/orders', label: lang ? 'ऑर्डर' : 'Orders', icon: <ShoppingCart size={16} />, badge: pendingOrders > 0 ? pendingOrders : null },
       { to: '/vehicle-incoming', label: lang ? 'वाहन' : 'Vehicles', icon: <Truck size={16} /> },
       { to: '/stock-movements', label: lang ? hi.stockMovements : 'Stock Movements', icon: <ArrowLeftRight size={16} /> },
       { to: '/admin', label: lang ? 'एडमिन पैनल' : 'Admin Panel', icon: <Shield size={16} /> },
@@ -156,7 +157,7 @@ function Sidebar({ open, onClose, isFullscreen }) {
 
       {/* Logout Confirmation Modal (Premium Design) */}
       {showLogoutConfirm && (
-        <div className="modal-overlay" style={{ zIndex: 2000, background: 'rgba(15, 23, 42, 0.60)', backdropFilter: 'blur(6px)' }}>
+        <div className="modal-overlay" style={{ zIndex: 99999, background: 'rgba(15, 23, 42, 0.60)', backdropFilter: 'blur(6px)' }}>
           <div className="modal premium-confirm-modal">
             <div className="premium-icon-container" style={{ color: '#ef4444' }}>
               <LogOut size={32} strokeWidth={2.5} />
@@ -228,7 +229,10 @@ function Sidebar({ open, onClose, isFullscreen }) {
               key={item.to}
               to={item.to}
               end={item.exact}
-              onClick={onClose}
+              onClick={(e) => {
+                setIsHovered(false);
+                if (onClose) onClose(e);
+              }}
               className={({ isActive }) =>
                 `nav-item ${isActive ? 'active' : ''} ${item.highlight ? 'new-bill' : ''} ${item.hideOnMobile ? 'hide-on-mobile' : ''}`
               }
@@ -357,9 +361,28 @@ function AppLayout() {
   const lang = settings?.language === 'hi';
   const isTempManager = user?.role === 'temp_manager';
   const isWalkinManager = user?.role === 'walkin_manager';
+  const isManager = !isAdmin && !isTempManager;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [managerPendingOrders, setManagerPendingOrders] = useState(0);
   const location = useLocation();
+
+  // Fetch pending orders count for manager bottom nav
+  useEffect(() => {
+    if (isManager) {
+      const fetchOrders = async () => {
+        try {
+          const res = await orderApi.getAll({ status: 'pending' });
+          if (Array.isArray(res)) setManagerPendingOrders(res.length);
+          else if (res.total !== undefined) setManagerPendingOrders(res.total);
+          else setManagerPendingOrders(res.orders?.length || 0);
+        } catch (e) {}
+      };
+      fetchOrders();
+      const iv = setInterval(fetchOrders, 60000);
+      return () => clearInterval(iv);
+    }
+  }, [isManager]);
   
   const isDraftingState = location.pathname.endsWith('/invoices/new') || location.pathname.endsWith('/orders/new') || location.pathname.endsWith('/edit');
   const hideTopNavActions = isDraftingState;
@@ -544,44 +567,76 @@ function AppLayout() {
       <Sidebar isFullscreen={isFullscreen} open={isOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="app-main">
-        {/* Facebook Style Top Nav — Manager only, mobile only */}
+        {/* Manager Bottom Nav — Home | Drafts | New Invoice (+) | Orders | Settings */}
         {!isAdmin && !isTempManager && (
-          <div className={`fb-top-nav ${isFullscreen ? 'is-fullscreen' : ''}`}>
-            <NavLink to="/" end className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <BarChart3 size={24} strokeWidth={isActive ? 2.5 : 2} />}
+          <div className="yt-bottom-nav hide-on-desktop">
+            {/* Home */}
+            <NavLink to="/dashboard" end className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <Home size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
-            <NavLink to="/invoices/new" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <FileText size={24} strokeWidth={isActive ? 2.5 : 2} />}
+            {/* Drafts with badge */}
+            <NavLink to="/invoices/new?drafts=true" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <div style={{ position: 'relative' }}>
+                  <FileEdit size={24} strokeWidth={isActive ? 2.5 : 2} />
+                </div>
+              )}
             </NavLink>
-            <NavLink to="/products" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <Package size={24} strokeWidth={isActive ? 2.5 : 2} />}
+            {/* New Invoice — big + button */}
+            <NavLink to="/invoices/new" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <div className="yt-bottom-nav-add">
+                  <Plus size={28} strokeWidth={2.5} />
+                </div>
+              )}
             </NavLink>
-            <NavLink to="/customers" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <Users size={24} strokeWidth={isActive ? 2.5 : 2} />}
+            {/* Pending Orders with count */}
+            <NavLink to="/orders" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <div style={{ position: 'relative' }}>
+                  <ShoppingCart size={24} strokeWidth={isActive ? 2.5 : 2} />
+                  {managerPendingOrders > 0 && (
+                    <span style={{
+                      position: 'absolute', top: -6, right: -8,
+                      background: '#ef4444', color: '#fff',
+                      fontSize: 10, fontWeight: 800,
+                      minWidth: 16, height: 16,
+                      borderRadius: 8, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      padding: '0 3px', lineHeight: 1,
+                      border: '1.5px solid var(--bg-card)'
+                    }}>
+                      {managerPendingOrders > 9 ? '9+' : managerPendingOrders}
+                    </span>
+                  )}
+                </div>
+              )}
             </NavLink>
-            {!isWalkinManager && (
-              <NavLink to="/walkin-delivery" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
-                {({isActive}) => <UserCheck size={24} strokeWidth={isActive ? 2.5 : 2} />}
-              </NavLink>
-            )}
-            <NavLink to="/settings" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+            {/* Settings */}
+            <NavLink to="/settings" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
               {({isActive}) => <SettingsIcon size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
           </div>
         )}
 
+        {/* Temp Manager Bottom Nav — Home | Customers | New Invoice (+) | Settings */}
         {isTempManager && (
-          <div className={`fb-top-nav ${isFullscreen ? 'is-fullscreen' : ''}`}>
-            <NavLink to="/" end className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <BarChart3 size={24} strokeWidth={isActive ? 2.5 : 2} />}
+          <div className="yt-bottom-nav hide-on-desktop">
+            <NavLink to="/dashboard" end className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => <Home size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
-            <NavLink to="/customers" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+            <NavLink to="/customers" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
               {({isActive}) => <Users size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
-            <NavLink to="/invoices/new" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
-              {({isActive}) => <FileText size={24} strokeWidth={isActive ? 2.5 : 2} />}
+            <NavLink to="/invoices/new" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
+              {({isActive}) => (
+                <div className="yt-bottom-nav-add">
+                  <Plus size={28} strokeWidth={2.5} />
+                </div>
+              )}
             </NavLink>
-            <NavLink to="/settings" className={({isActive}) => `fb-top-nav-item ${isActive ? 'active' : ''}`}>
+            <div className="yt-bottom-nav-item" style={{ pointerEvents: 'none', opacity: 0 }} />
+            <NavLink to="/settings" className={({isActive}) => `yt-bottom-nav-item ${isActive ? 'active' : ''}`}>
               {({isActive}) => <SettingsIcon size={24} strokeWidth={isActive ? 2.5 : 2} />}
             </NavLink>
           </div>
@@ -681,7 +736,13 @@ function InnerApp() {
   if (isDriver) {
     return (
       <Routes>
-        <Route path="/" element={<ProtectedRoute><DriverLayout /></ProtectedRoute>}>
+        <Route path="/" element={
+          <ProtectedRoute>
+            <AppProvider>
+              <DriverLayout />
+            </AppProvider>
+          </ProtectedRoute>
+        }>
           <Route index element={<DriverDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -718,6 +779,7 @@ function InnerApp() {
         <Route path="/trip/:id" element={<TripView />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/suppliers/:id/history" element={<SupplierPaymentHistory />} />
+        <Route path="/suppliers/:id/master-ledger" element={<MasterLedger />} />
         <Route path="/daily-report" element={<DailyReport />} />
         <Route path="settings" element={<Settings />} />
         <Route path="orders" element={<Orders />} />

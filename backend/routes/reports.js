@@ -112,8 +112,10 @@ router.get('/daily', async (req, res) => {
     const query = {};
 
     // Managers can only see their own reports
-    if (['manager', 'temp_manager', 'walkin_manager'].includes(req.user.role)) {
+    if (req.user.role !== 'supervisor') {
       query.manager_id = req.user.id;
+    } else if (req.query.manager_id) {
+      query.manager_id = req.query.manager_id;
     }
 
     if (date) {
@@ -376,7 +378,7 @@ router.post('/daily', async (req, res) => {
                   qty: localProduct.stock,
                   stock_before: globalStockBefore,
                   stock_after: globalProduct.stock,
-                  reference: `Returned by Walk-in Manager (${req.user.username || req.user.display_name})`,
+                  reference: `Returned by Supply Manager (${req.user.username || req.user.display_name})`,
                   notes: `Unsold stock returned from vehicle ${admin.active_vehicle_number}`,
                   source: 'Supply Return',
                   vehicle_number: admin.active_vehicle_number,

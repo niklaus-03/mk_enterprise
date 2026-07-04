@@ -1155,4 +1155,70 @@ router.delete('/:id', checkProductEditPermission, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-module.exports = router;, 'i') } }, {
+// --- POST /api/deliveries/:id/dispatch-walkin -----------------------------
+// Assigns a delivery (vehicle) to a walkin_manager and converts it to a trip
+router.post('/:id/dispatch-walkin', checkProductEditPermission, async (req, res) => {
+  try {
+    const { manager_id, items } = req.body;
+    const delivery = await Delivery.findById(req.params.id);
+    if (!delivery) return res.status(404).json({ error: 'Delivery not found' });
+    if (delivery.status === 'delivered') return res.status(400).json({ error: 'Already delivered.' });
+
+    const Admin = require('../models/Admin');
+    const VehicleTrip = require('../models/VehicleTrip');
+    const Product = require('../models/Product');
+
+    const manager = await Admin.findOne({ _id: manager_id, role: 'walkin_manager' });
+    if (!manager) return res.status(404).json({ error: 'Walk-in manager not found' });
+    if (manager.is_trip_active) return res.status(400).json({ error: 'Manager already has an active trip' });
+
+    // Update global products
+    for (const item of items) {
+      if (item.product_id) {
+        const p = await Product.findById(item.product_id);
+        if (p) {
+          p.price = parseFloat(item.final_price || item.base_price || 0);
+          p.last_delivery_final_price = p.price;
+          p.last_updated_by = req.user.id;
+          p.last_manual_edit_at = new Date();
+          await p.save();
+        }
+      }
+    }
+
+    // Update delivery
+    delivery.items = items;
+    delivery.status = 'delivered'; // Finish the inward phase
+    delivery.stock_updated = true;
+    await delivery.save();
+
+    // Start active trip for manager
+    manager.is_trip_active = true;
+    manager.active_vehicle_number = delivery.vehicle_number;
+    manager.active_driver_name = delivery.driver_name;
+    manager.active_destination = delivery.destination || 'Walk-in Sales';
+    await manager.save();
+
+    // Create VehicleTrip
+    await VehicleTrip.create({
+      manager_id: manager._id,
+      vehicle_number: delivery.vehicle_number,
+      driver_name: delivery.driver_name,
+      destination: delivery.destination || 'Walk-in Sales',
+      status: 'active',
+      initial_stock: items.map(i => ({
+        product_id: i.product_id,
+        item_name: i.item_name,
+        quantity: i.quantity,
+        price: parseFloat(i.final_price || i.base_price || 0),
+        unit: i.unit || 'pcs'
+      }))
+    });
+
+    res.json({ success: true, message: 'Dispatched to manager successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

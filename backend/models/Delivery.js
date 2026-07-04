@@ -47,7 +47,7 @@ const deliverySchema = new mongoose.Schema({
   items: [deliveryItemSchema],
   status: {
     type: String,
-    enum: ['pending', 'arriving_soon', 'on_the_way', 'delivered', 'not_delivered'],
+    enum: ['pending', 'arriving_soon', 'on_the_way', 'arrived', 'delivered', 'not_delivered'],
     default: 'pending',
   },
   delivery_type: { 
@@ -58,6 +58,8 @@ const deliverySchema = new mongoose.Schema({
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   notes: { type: String, default: '' },
   // When delivered, record actual time
+  arrived_at: { type: Date, default: null },
+  arrived_at_ist: { type: String, default: '' },
   delivered_at: { type: Date, default: null },
   // Whether stock was already updated on delivery
   stock_updated: { type: Boolean, default: false },

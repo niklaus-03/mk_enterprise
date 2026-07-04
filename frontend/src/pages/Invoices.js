@@ -6,7 +6,7 @@ import { invoiceApi, driverApi, managerApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useRegisterRefresh } from '../context/PullToRefreshContext';
 import { formatCurrency, formatIST } from '../utils/helpers';
-import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User, MapPin, Truck, ArrowLeft, Check, ChevronDown } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Edit, Trash2, ChevronLeft, ChevronRight, X, CheckCircle, Phone, Send, User, MapPin, Truck, ArrowLeft, Check, ChevronDown, Calendar } from 'lucide-react';
 
 export default function Invoices() {
   const { t } = useApp();
@@ -17,7 +17,8 @@ export default function Invoices() {
   const [page, setPage] = useState(1);
   const [searchParams] = useSearchParams();
   const customer_id = searchParams.get('customer_id');
-  const { isAdmin, token, user } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'supervisor';
   const LIMIT = 25;
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const location = useLocation();
@@ -251,19 +252,33 @@ export default function Invoices() {
       </div>
 
       <div className="card">
-        <div className="card-header" style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <div className="search-wrap" style={{ position: 'relative' }}>
+        <div className="card-header" style={{ display: 'flex', gap: isMobile ? '8px' : '12px', flexWrap: isMobile ? 'nowrap' : 'wrap' }}>
+          <div className="search-wrap" style={{ position: 'relative', flex: isMobile ? 1 : 'none', minWidth: 0 }}>
             <span className="search-icon" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}><Search size={14} style={{ color: '#94a3b8' }} /></span>
-            <input className="form-control" placeholder="Search by customer or invoice number..." value={search}
-              onChange={e => setSearch(e.target.value)} style={{ width: 320, paddingLeft: 36 }} />
+            <input className="form-control" placeholder={isMobile ? "Search..." : "Search by customer or invoice number..."} value={search}
+              onChange={e => setSearch(e.target.value)} style={{ width: isMobile ? '100%' : 320, paddingLeft: 36 }} />
           </div>
-          <input 
-            type="date" 
-            className="form-control" 
-            style={{ width: 'auto' }}
-            value={date} 
-            onChange={e => setDate(e.target.value)} 
-          />
+          {isMobile ? (
+            <div style={{ position: 'relative', width: 34, height: 34, flexShrink: 0 }}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: date ? '#16a34a' : '#64748b' }}>
+                <Calendar size={16} />
+              </div>
+              <input 
+                type="date" 
+                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                value={date} 
+                onChange={e => setDate(e.target.value)} 
+              />
+            </div>
+          ) : (
+            <input 
+              type="date" 
+              className="form-control" 
+              style={{ width: 'auto', flexShrink: 0 }}
+              value={date} 
+              onChange={e => setDate(e.target.value)} 
+            />
+          )}
           {isAdmin && managers.length > 0 && (
             <div style={{ position: 'relative', width: isMobile ? 38 : 'auto', flexShrink: 0 }}>
               <div 

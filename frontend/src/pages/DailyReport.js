@@ -17,7 +17,8 @@ function getTodayIST() {
 export default function DailyReport() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAdmin, socket } = useAuth();
+  const { user, socket } = useAuth();
+  const isAdmin = user?.role === 'supervisor';
   const { t } = useApp();
   const [loading, setLoading] = useState(true);
   const [validationError, setValidationError] = useState(null);
@@ -87,6 +88,9 @@ export default function DailyReport() {
   
   const [realTimeReports, setRealTimeReports] = useState({});
   const [loadingRealTime, setLoadingRealTime] = useState({});
+  const [showBreakdownPopup, setShowBreakdownPopup] = useState(false);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [globalBreakdown, setGlobalBreakdown] = useState(null);
 
   const [managerSelectedDate, setManagerSelectedDate] = useState(getTodayIST());
   const today = managerSelectedDate; // Keep variable name "today" to avoid renaming everywhere
@@ -208,6 +212,64 @@ export default function DailyReport() {
       });
 
       setAllReports(combined);
+
+      // PRE-FETCH REAL TIME STATS FOR ALL PENDING MANAGERS
+      const pendingManagers = combined.filter(r => r.status === 'pending_submission');
+      if (pendingManagers.length > 0) {
+        const rtFetchPromises = pendingManagers.map(async (report) => {
+          try {
+            const [dash, dels, setts, pastReports] = await Promise.all([
+              dashboardApi.get(adminSelectedDate, report.manager_id).catch(() => null),
+              deliveryApi.getAll({ date: adminSelectedDate, manager_id: report.manager_id }).catch(() => []),
+              settlementApi.get({ date: adminSelectedDate, manager_id: report.manager_id }).catch(() => ({ settlements: [] })),
+              dailyReportApi.getAll({ manager_id: report.manager_id }).catch(() => [])
+            ]);
+            
+            const rSales = dash?.data?.todaySales || dash?.todaySales || 0;
+            const rMoney = dash?.data?.statementData?.totalReceived || dash?.statementData?.totalReceived || 0;
+            const rBills = dash?.data?.todayCount || dash?.todayCount || 0;
+            const rConcessions = dash?.data?.todayConcession || dash?.todayConcession || 0;
+            const rDels = Array.isArray(dels) ? dels.filter(d => d.status === 'delivered').length : 0;
+            const rSetts = setts?.settlements || [];
+            
+            const rSettExpenses = rSetts.filter(s => ['paid_to_supplier', 'other_expense', 'vehicle_expense'].includes(s.type)).reduce((s, x) => s + x.amount, 0);
+            const rSettIncome = rSetts.filter(s => ['other_income', 'due_cleared', 'advance_received', 'received_from_customer'].includes(s.type)).reduce((s, x) => s + x.amount, 0);
+            
+            let rtOpeningBalance = 0;
+            const pastReportsFiltered = Array.isArray(pastReports) ? pastReports.filter(r => r.date < adminSelectedDate) : [];
+            if (pastReportsFiltered.length > 0) {
+              rtOpeningBalance = pastReportsFiltered[0].actual_cash_reported || 0;
+            }
+
+            return {
+              manager_id: report.manager_id,
+              stats: {
+                system_sales_reported: rSales,
+                system_money_received: rMoney + rSettIncome,
+                system_concession_reported: rConcessions,
+                system_debt_reported: Math.max(0, rSales - rMoney),
+                system_bills_reported: rBills,
+                system_deliveries_reported: rDels,
+                system_expenses_reported: rSettExpenses,
+                total_paid_out: rSettExpenses,
+                opening_balance: rtOpeningBalance,
+                system_cash_reported: rtOpeningBalance + (rMoney + rSettIncome) - rSettExpenses,
+              }
+            };
+          } catch (e) {
+            console.error(e);
+            return null;
+          }
+        });
+        
+        const rtResults = await Promise.all(rtFetchPromises);
+        const newRtReports = {};
+        rtResults.forEach(res => {
+          if (res) newRtReports[res.manager_id] = res.stats;
+        });
+        
+        setRealTimeReports(prev => ({ ...prev, ...newRtReports }));
+      }
     } catch (err) {
       console.error('Failed to load admin reports:', err);
     } finally {
@@ -273,7 +335,7 @@ export default function DailyReport() {
   // Income from formal Settlements (e.g. collecting past due cash, advance, old invoice paid)
   // We approximate the previous trip's settlement income by seeing how much was subtracted from total money received
   const prevSettlementIncome = Math.max(0, prevReportsSum.received - prevReportsSum.sales);
-  const settlementIncome = Math.max(0, settlements.filter(s => ['other_income', 'by_invoice', 'due_cleared', 'advance_received', 'received_from_customer'].includes(s.type)).reduce((sum, s) => sum + s.amount, 0) - prevSettlementIncome);
+  const settlementIncome = Math.max(0, settlements.filter(s => ['other_income', 'due_cleared', 'advance_received', 'received_from_customer'].includes(s.type)).reduce((sum, s) => sum + s.amount, 0) - prevSettlementIncome);
 
   const totalMoneyReceived = moneyReceivedFromSales + settlementIncome + quickIncome;
 
@@ -441,6 +503,18 @@ export default function DailyReport() {
         const rSettExpenses = rSetts.filter(s => ['paid_to_supplier', 'other_expense', 'vehicle_expense'].includes(s.type)).reduce((s, x) => s + x.amount, 0);
         const rSettIncome = rSetts.filter(s => ['other_income', 'by_invoice', 'due_cleared', 'advance_received', 'received_from_customer'].includes(s.type)).reduce((s, x) => s + x.amount, 0);
         
+        // Fetch past reports to get Opening Balance
+        let rtOpeningBalance = 0;
+        try {
+          const pastReports = await dailyReportApi.getAll({ manager_id: report.manager_id });
+          const pastReportsFiltered = Array.isArray(pastReports) ? pastReports.filter(r => r.date < adminSelectedDate) : [];
+          if (pastReportsFiltered.length > 0) {
+            rtOpeningBalance = pastReportsFiltered[0].actual_cash_reported || 0;
+          }
+        } catch(err) {
+          console.error("Failed to load past reports for opening balance", err);
+        }
+
         setRealTimeReports(prev => ({
           ...prev,
           [report.manager_id]: {
@@ -451,8 +525,9 @@ export default function DailyReport() {
             system_bills_reported: rBills,
             system_deliveries_reported: rDels,
             system_expenses_reported: rSettExpenses,
-            // We don't have quick entries or opening balance here, but we show what we know
-            system_cash_reported: rMoney + rSettIncome - rSettExpenses,
+            total_paid_out: rSettExpenses, // we don't have quick entries, but we have settlements
+            opening_balance: rtOpeningBalance,
+            system_cash_reported: rtOpeningBalance + (rMoney + rSettIncome) - rSettExpenses,
           }
         }));
       } catch (e) {
@@ -462,6 +537,51 @@ export default function DailyReport() {
       }
     }
   };
+
+  const handleMoneyReceivedClick = async () => {
+    setShowBreakdownPopup(true);
+    setBreakdownLoading(true);
+    try {
+      const [dashRes, settsRes] = await Promise.all([
+        dashboardApi.get(adminSelectedDate).catch(() => ({ statementData: { byMode: {} } })),
+        settlementApi.get({ date: adminSelectedDate }).catch(() => ({ settlements: [] }))
+      ]);
+      const byMode = dashRes?.statementData?.byMode || {};
+      const setts = settsRes?.settlements || [];
+      
+      let b_cash = (byMode.cash || 0);
+      let b_upi = (byMode.upi || 0);
+      let b_cheque = (byMode.cheque || 0);
+      let b_bank = (byMode.bank_transfer || 0);
+      let b_other = (byMode.others || 0);
+
+      setts.filter(s => ['other_income', 'due_cleared', 'advance_received', 'received_from_customer'].includes(s.type)).forEach(s => {
+        if (s.mode === 'cash') b_cash += s.amount;
+        else if (s.mode === 'upi') b_upi += s.amount;
+        else if (s.mode === 'cheque') b_cheque += s.amount;
+        else if (s.mode === 'bank_transfer') b_bank += s.amount;
+        else b_other += s.amount;
+      });
+
+      allReports.forEach(r => {
+        if (r.quick_entries && r.status !== 'pending_submission') {
+           r.quick_entries.forEach(e => {
+             if (e.type === 'payment_in' || e.type === 'bill') {
+                b_cash += e.amount;
+             }
+           });
+        }
+      });
+
+      setGlobalBreakdown({ cash: b_cash, upi: b_upi, cheque: b_cheque, bank_transfer: b_bank, other: b_other });
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load breakdown');
+    } finally {
+      setBreakdownLoading(false);
+    }
+  };
+
 
   // ── Admin View ──
   if (isAdmin) {
@@ -562,15 +682,21 @@ export default function DailyReport() {
           <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
             <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('ACTUAL CASH', 'असली कैश')}</div>
             <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', marginTop: 2 }}>
-              {globalTotals.actual_cash === 0 && !allReports.some(r => r.actual_cash_reported !== undefined) ? '---' : `₹${globalTotals.actual_cash.toLocaleString('en-IN')}`}
+              {globalTotals.actual_cash === 0 && !allReports.some(r => r.actual_cash_reported !== undefined) && Object.keys(realTimeReports).length === 0 ? '---' : `₹${globalTotals.actual_cash.toLocaleString('en-IN')}`}
             </div>
           </div>
           <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
             <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('TOTAL SALES', 'कुल बिक्री')}</div>
             <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', marginTop: 2 }}>₹{globalTotals.sales.toLocaleString('en-IN')}</div>
           </div>
-          <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
-            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('MONEY RECEIVED', 'प्राप्त धन')}</div>
+          <div 
+            style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: showBreakdownPopup ? '1px solid var(--primary)' : '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.2s', boxShadow: showBreakdownPopup ? '0 2px 4px rgba(79,70,229,0.1)' : 'none' }}
+            onClick={handleMoneyReceivedClick}
+            title="Click to see breakdown"
+          >
+            <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: showBreakdownPopup ? 'var(--primary)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {t('MONEY RECEIVED', 'प्राप्त धन')}
+            </div>
             <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--success)', marginTop: 2 }}>₹{globalTotals.received.toLocaleString('en-IN')}</div>
           </div>
           <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
@@ -592,13 +718,13 @@ export default function DailyReport() {
           <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
             <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('OPENING BAL', 'ओपनिंग बैलेंस')}</div>
             <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--info)', marginTop: 2 }}>
-              {globalTotals.opening_balance === 0 && !allReports.some(r => r.opening_balance !== undefined) ? '---' : `₹${globalTotals.opening_balance.toLocaleString('en-IN')}`}
+              {globalTotals.opening_balance === 0 && !allReports.some(r => r.opening_balance !== undefined) && Object.keys(realTimeReports).length === 0 ? '---' : `₹${globalTotals.opening_balance.toLocaleString('en-IN')}`}
             </div>
           </div>
           <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
             <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{t('TOTAL PAID OUT', 'कुल भुगतान')}</div>
             <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--danger)', marginTop: 2 }}>
-              {globalTotals.paid_out === 0 && !allReports.some(r => r.total_paid_out !== undefined) ? '---' : `₹${globalTotals.paid_out.toLocaleString('en-IN')}`}
+              {globalTotals.paid_out === 0 && !allReports.some(r => r.total_paid_out !== undefined) && Object.keys(realTimeReports).length === 0 ? '---' : `₹${globalTotals.paid_out.toLocaleString('en-IN')}`}
             </div>
           </div>
           <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '8px 10px', border: '1px solid var(--border)' }}>
@@ -606,6 +732,62 @@ export default function DailyReport() {
             <div className="stat-value" style={{ fontSize: 16, fontWeight: 800, color: 'var(--warning)', marginTop: 2 }}>₹{globalTotals.expenses.toLocaleString('en-IN')}</div>
           </div>
         </div>
+
+        {showBreakdownPopup && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(3px)'
+          }} onClick={() => setShowBreakdownPopup(false)}>
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: 16, padding: 20,
+              width: '90%', maxWidth: 320, boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              animation: 'scaleIn 0.2s ease-out'
+            }} onClick={e => e.stopPropagation()}>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Money Received</h4>
+                <button onClick={() => setShowBreakdownPopup(false)} style={{ background: 'var(--bg)', border: 'none', cursor: 'pointer', padding: 6, borderRadius: '50%', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
+              </div>
+
+              {breakdownLoading ? (
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                  <Loader size={24} className="spin" style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)' }} />
+                </div>
+              ) : globalBreakdown ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '0 4px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Cash</span>
+                    <span style={{ fontWeight: 700 }}>₹{globalBreakdown.cash.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '0 4px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>UPI</span>
+                    <span style={{ fontWeight: 700 }}>₹{globalBreakdown.upi.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '0 4px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Cheque</span>
+                    <span style={{ fontWeight: 700 }}>₹{globalBreakdown.cheque.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '0 4px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Bank Transfer</span>
+                    <span style={{ fontWeight: 700 }}>₹{globalBreakdown.bank_transfer.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '0 4px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Other</span>
+                    <span style={{ fontWeight: 700 }}>₹{globalBreakdown.other.toLocaleString('en-IN')}</span>
+                  </div>
+                  
+                  <div style={{ borderTop: '2px dashed var(--border)', margin: '4px 0' }}></div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, padding: '10px 12px', background: 'var(--primary-light)', borderRadius: 8, color: 'var(--primary-dark)', fontWeight: 800 }}>
+                    <span>Total</span>
+                    <span>₹{(globalBreakdown.cash + globalBreakdown.upi + globalBreakdown.cheque + globalBreakdown.bank_transfer + globalBreakdown.other).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         {adminLoading ? (
           <div style={{ textAlign: 'center', padding: 60 }}>
@@ -718,8 +900,8 @@ export default function DailyReport() {
                             </div>
                             <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
                               <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('ACTUAL CASH', 'वास्तविक नकद')}</div>
-                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: report.status === 'pending_submission' ? 'var(--text-muted)' : (displayReport.actual_cash_reported === displayReport.system_cash_reported ? 'var(--success)' : 'var(--danger)') }}>
-                                {report.status === 'pending_submission' ? '---' : `₹${displayReport.actual_cash_reported?.toLocaleString('en-IN') || 0}`}
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: displayReport.actual_cash_reported === undefined ? 'var(--text-muted)' : (displayReport.actual_cash_reported === displayReport.system_cash_reported ? 'var(--success)' : 'var(--danger)') }}>
+                                {displayReport.actual_cash_reported === undefined ? '---' : `₹${displayReport.actual_cash_reported.toLocaleString('en-IN')}`}
                               </div>
                             </div>
                             <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
@@ -748,12 +930,14 @@ export default function DailyReport() {
                             </div>
                             <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
                               <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('OPENING BAL', 'प्रारंभिक शेष')}</div>
-                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--info)' }}>{report.status === 'pending_submission' ? '---' : `₹${displayReport.opening_balance?.toLocaleString('en-IN') || 0}`}</div>
+                              <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--info)' }}>
+                                {displayReport.opening_balance === undefined ? '---' : `₹${displayReport.opening_balance.toLocaleString('en-IN')}`}
+                              </div>
                             </div>
                             <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>
                               <div className="stat-label" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{t('TOTAL PAID OUT', 'कुल भुगतान')}</div>
                               <div className="stat-value" style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>
-                                {report.status === 'pending_submission' ? '---' : `₹${((displayReport.quick_entries || []).filter(e => e.type === 'payment_out').reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}`}
+                                {displayReport.total_paid_out !== undefined ? `₹${displayReport.total_paid_out.toLocaleString('en-IN')}` : (report.status === 'pending_submission' ? '---' : `₹${((displayReport.quick_entries || []).filter(e => e.type === 'payment_out').reduce((s, e) => s + e.amount, 0)).toLocaleString('en-IN')}`)}
                               </div>
                             </div>
                             <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 10px' }}>

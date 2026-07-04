@@ -15,7 +15,8 @@ export default function SupplierPaymentHistory() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const { t } = useApp();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'supervisor';
   const fc = formatCurrency;
 
   const [loading, setLoading] = useState(true);
@@ -223,9 +224,11 @@ export default function SupplierPaymentHistory() {
             <div style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>Ledger statement & payment history</div>
             {supplier?.linked_customer_ids?.length > 0 && (
               <div style={{ display: 'flex', flexWrap: isMobile ? 'nowrap' : 'wrap', alignItems: 'center', gap: 6, overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', paddingBottom: isMobile ? 4 : 0, maxWidth: '100%', marginTop: 4 }}>
+                {isAdmin && (
                 <button onClick={handleOpenLinkModal} style={{ background: '#f3e8ff', border: '1px dashed #d8b4fe', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#7e22ce', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', flexShrink: 0 }} title="Link Another Customer">
                   <Plus size={14} />
                 </button>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#4f46e5', fontSize: 12, fontWeight: 700, background: '#e0e7ff', padding: '4px 10px', borderRadius: 12, flexShrink: 0 }}>
                   <Link size={12} /> Linked to:
                 </div>
@@ -237,13 +240,15 @@ export default function SupplierPaymentHistory() {
                     </span>
                   </div>
                 ))}
+                {isAdmin && (
                 <button onClick={() => setShowUnlinkConfirm(true)} style={{ background: '#fee2e2', border: '1px solid #fecaca', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ef4444', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', flexShrink: 0 }} title="Unlink Account">
                   <Unlink size={12} />
                 </button>
+                )}
               </div>
             )}
           </div>
-          {isMobile && (!supplier?.linked_customer_ids || supplier.linked_customer_ids.length === 0) && (
+          {isMobile && isAdmin && (!supplier?.linked_customer_ids || supplier.linked_customer_ids.length === 0) && (
             <button onClick={handleOpenLinkModal} style={{ background: '#f3e8ff', border: '1px dashed #d8b4fe', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#7e22ce', transition: 'all 0.2s', flexShrink: 0, marginLeft: 'auto' }} title="Link Customer Account">
               <Link size={15} />
             </button>
@@ -251,7 +256,7 @@ export default function SupplierPaymentHistory() {
         </div>
         
         <div style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', overflowX: isMobile ? 'visible' : 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', gap: isMobile ? 8 : 12, alignItems: 'center', flexShrink: 0, width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'flex-start' : 'flex-end', paddingBottom: 4 }}>
-          {(!supplier?.linked_customer_ids || supplier.linked_customer_ids.length === 0) && !isMobile && (
+          {isAdmin && (!supplier?.linked_customer_ids || supplier.linked_customer_ids.length === 0) && !isMobile && (
             <button 
               className="btn" 
               onClick={handleOpenLinkModal}
@@ -274,7 +279,7 @@ export default function SupplierPaymentHistory() {
           >
             <Wallet size={14} /> Record Payment
           </button>
-          {supplier?.linked_customer_ids?.length > 0 && (
+          {isAdmin && supplier?.linked_customer_ids?.length > 0 && (
             <button 
               className="btn" 
               onClick={() => navigate(`/suppliers/${supplier._id}/master-ledger`)}

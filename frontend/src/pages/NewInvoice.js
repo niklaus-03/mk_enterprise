@@ -226,11 +226,11 @@ export default function NewInvoice() {
       items, customerMode, customerId, walkIn, payments, discount, discountType,
       concessionReason, notes, driverName, vehicleNumber, totalWeight, vehicleCharge,
       labourCharge, billDate, isManualBill, manualBillRef, savedAt: Date.now(),
-      customerName: draftCustomerName, step,
+      customerName: draftCustomerName, step, selectedManagerForBill,
     };
     localStorage.setItem(AUTO_DRAFT_KEY, JSON.stringify(draft));
   }, [items, customerMode, customerId, walkIn, payments, discount, discountType, notes,
-    driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge, billDate, isManualBill, manualBillRef, isDraftLoaded, customerSearch, step]);
+    driverName, vehicleNumber, totalWeight, vehicleCharge, labourCharge, billDate, isManualBill, manualBillRef, isDraftLoaded, customerSearch, step, selectedManagerForBill]);
 
   // Load customers and managers
   useEffect(() => {
@@ -537,6 +537,7 @@ export default function NewInvoice() {
     setBillDate(draft.billDate || getISTDateTime());
     setIsManualBill(draft.isManualBill || false);
     setManualBillRef(draft.manualBillRef || '');
+    if (draft.selectedManagerForBill) setSelectedManagerForBill(draft.selectedManagerForBill);
     setLoadedDraftId(draft.id);
     setShowDrafts(false);
     setStep(draft.step || 3); // restore the exact step where it was saved
@@ -862,8 +863,15 @@ export default function NewInvoice() {
                       <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--success)' }}>{formatCurrency(d.totalAmount || 0)}</span>
                     </div>
                     
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
-                      <Clock size={13} /> {savedDate}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                        <Clock size={13} /> {savedDate}
+                      </div>
+                      {d.selectedManagerForBill && (
+                        <div style={{ background: 'var(--bg-secondary)', color: 'var(--primary)', padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600 }}>
+                          For: {managers.find(m => m._id === d.selectedManagerForBill)?.display_name || managers.find(m => m._id === d.selectedManagerForBill)?.username || 'Unknown'}
+                        </div>
+                      )}
                     </div>
                   </div>
                   
@@ -1243,12 +1251,7 @@ export default function NewInvoice() {
                     <input className="form-control" type="number" min="0" step="0.01" value={labourCharge} onChange={e => setLabourCharge(e.target.value)} placeholder="0.00" style={{ height: '40px', padding: '8px 12px', fontSize: '14px', borderRadius: '6px' }} />
                   </div>
                 </div>
-                <div style={{ marginTop: '16px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#334155', fontWeight: 600 }}>
-                    <input type="checkbox" checked={isTransportationInvoice} onChange={e => setIsTransportationInvoice(e.target.checked)} style={{ width: '16px', height: '16px' }} />
-                    Is Transportation Invoice (CSN format)
-                  </label>
-                </div>
+
               </div>
 
             </div>

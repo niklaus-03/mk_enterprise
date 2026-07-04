@@ -327,15 +327,11 @@ router.post('/managers', auth, requireSupervisor, async (req, res) => {
     const Product = require('../models/Product');
     const ProductList = require('../models/ProductList');
     
-    // Fetch all existing product IDs
-    const allProducts = await Product.find({}, '_id');
-    const allProductIds = allProducts.map(p => p._id);
-
     await ProductList.create({
       name: manager.display_name || manager.username,
       created_by: req.user.id,
       auto_for_manager: manager._id,
-      products: allProductIds,
+      products: [], // Start with empty products, Admin must authorize manually
       shares: [{ manager_id: manager._id, overrides: [] }]
     });
 
@@ -535,7 +531,7 @@ router.post('/managers/:id/clone', auth, requireSupervisor, async (req, res) => 
     const sourceProductList = await ProductList.findOne({ auto_for_manager: sourceManager._id });
     const allProductIds = sourceProductList
       ? sourceProductList.products
-      : (await Product.find({}, '_id')).map(p => p._id);
+      : [];
     
     // Check if auto list already created by above steps
     const existingAutoList = await ProductList.findOne({ auto_for_manager: newId });
@@ -732,6 +728,21 @@ router.delete('/drivers/:id', auth, requireSupervisor, async (req, res) => {
 
     await Admin.deleteOne({ _id: req.params.id });
     res.json({ success: true, message: `Driver "${driver.display_name}" deleted.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/auth/vacant-walkin-managers ─────────────────────────────────────
+// Fetch all vacant (is_trip_active = false) walkin_managers
+router.get('/vacant-walkin-managers', auth, requireSupervisor, async (req, res) => {
+  try {
+    const managers = await Admin.find({ 
+      role: 'walkin_manager',
+      is_active: true,
+      is_trip_active: false
+    }).select('-password -secret_key -login_secret');
+    res.json({ success: true, managers });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

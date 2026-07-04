@@ -2106,6 +2106,7 @@ body:has(.modal-overlay), body:has(.cs-modal-overlay) {
 
   .no-print,
   .sidebar,
+  .top-navbar,
   .app-main>.no-print,
   nav,
   .page-header,
@@ -5096,3 +5097,11 @@ body.hide-bottom-nav .yt-bottom-nav, body.hide-bottom-nav .fb-top-nav { display:
   }
 }
 
+
+/* Hide scrollbar */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+@media (max-width: 600px) { .hide-on-mobile { display: none !important; } .icon-btn-mobile { padding: 8px !important; } }
+
+@media (min-width: 601px) { .hide-on-desktop { display: none !important; } }

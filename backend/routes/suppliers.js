@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Supplier = require('../models/Supplier');
 const Settlement = require('../models/Settlement');
 const Delivery = require('../models/Delivery');
@@ -16,8 +17,13 @@ router.get('/', async (req, res) => {
     const query = { is_active: true };
     if (q && q.trim()) query.name = { $regex: q.trim(), $options: 'i' };
 
-    // Removed manager scoping: all managers can see all suppliers as requested
-    // They will still only see their own payment history due to the limitation below
+    // Restrict for all non-admins (managers, drivers, etc)
+    if (req.user.role !== 'supervisor') {
+      query.$or = [
+        { created_by: new mongoose.Types.ObjectId(req.user.id) },
+        { assigned_managers: new mongoose.Types.ObjectId(req.user.id) }
+      ];
+    }
 
     let suppliers = await Supplier.find(query)
       .collation({ locale: 'hi', strength: 2 })
@@ -25,23 +31,51 @@ router.get('/', async (req, res) => {
 
     // Calculate true global balance dynamically
     const allSettlements = await Settlement.aggregate([
-      { $match: { type: 'paid_to_supplier', party_name: { $ne: null } } },
+      { $match: { type: { $in: ['paid_to_supplier', 'other_expense', 'walkin_delivery'] }, party_name: { $ne: null } } },
       { $group: { _id: { $toLower: "$party_name" }, total_paid: { $sum: "$amount" } } }
     ]);
+    const allDeliveries = await Delivery.find({ status: { $in: ['delivered'] } }).lean();
+    const globalPurchaseMap = {};
     const globalPaymentMap = {};
+    
     allSettlements.forEach(s => globalPaymentMap[s._id] = s.total_paid);
 
-    const allDeliveries = await Delivery.aggregate([
-      { $match: { supplier: { $ne: null }, status: { $in: ['delivered'] } } },
-      { $unwind: "$items" },
-      { $group: { 
-          _id: { $toLower: "$supplier" }, 
-          total_purchased: { $sum: { $cond: [ "$items.final_price", "$items.final_price", { $multiply: ["$items.quantity", "$items.base_price"] } ] } } 
-        } 
+    allDeliveries.forEach(d => {
+      // 1. Additional payments from suppliers_data
+      if (d.suppliers_data && Array.isArray(d.suppliers_data)) {
+        d.suppliers_data.forEach(sd => {
+          if (sd.supplier_name && sd.cash_given) {
+            const lowerName = sd.supplier_name.toLowerCase();
+            globalPaymentMap[lowerName] = (globalPaymentMap[lowerName] || 0) + sd.cash_given;
+          }
+        });
       }
-    ]);
-    const globalPurchaseMap = {};
-    allDeliveries.forEach(d => globalPurchaseMap[d._id] = d.total_purchased);
+
+      // 2. Purchases
+      // Group purchases by supplier name for this delivery
+      const deliveryPurchases = {};
+      
+      (d.items || []).forEach(i => {
+         const supName = i.supplier_name || d.supplier;
+         if (supName) {
+           const lowerName = supName.toLowerCase();
+           const base = parseFloat(i.base_price) || 0;
+           const extra = parseFloat(i.supplier_charge_per_item) || 0;
+           deliveryPurchases[lowerName] = (deliveryPurchases[lowerName] || 0) + (i.quantity * (base + extra));
+         }
+      });
+
+      // Override with grand_total if it's the primary supplier
+      if (d.supplier && d.grand_total != null) {
+        const lowerName = d.supplier.toLowerCase();
+        deliveryPurchases[lowerName] = d.grand_total;
+      }
+
+      // Add to global map
+      Object.keys(deliveryPurchases).forEach(lowerName => {
+        globalPurchaseMap[lowerName] = (globalPurchaseMap[lowerName] || 0) + deliveryPurchases[lowerName];
+      });
+    });
 
     suppliers = suppliers.map(s => {
       const obj = s.toObject();
@@ -53,9 +87,8 @@ router.get('/', async (req, res) => {
       return obj;
     });
 
-    // If manager, compute amount paid by them
-    if (['manager', 'temp_manager', 'walkin_manager'].includes(req.user.role)) {
-      const mongoose = require('mongoose');
+    // If non-admin, compute amount paid by them
+    if (req.user.role !== 'supervisor') {
       const managerId = req.user.id;
       
       const settlements = await Settlement.aggregate([
@@ -133,6 +166,8 @@ router.get('/:id/history', async (req, res) => {
       query.date = { $gte: start, $lt: end };
       deliveryQuery.delivered_at = { $gte: start, $lt: end };
     }
+
+    // Full history is needed to show accurate balance even if admin made the payment
 
     const settlements = await Settlement.find(query).sort({ date: -1 }).limit(100).populate('created_by', 'username display_name role').lean();
     const deliveries = await Delivery.find(deliveryQuery).sort({ delivered_at: -1 }).limit(100).populate('created_by', 'username display_name role').lean();

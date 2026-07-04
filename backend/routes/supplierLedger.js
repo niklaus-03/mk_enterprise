@@ -15,6 +15,172 @@ function toISTDateStr(d) {
   return istD.toISOString().slice(0, 10);
 }
 
+// GET /api/supplier-ledger/:supplier_id/master
+router.get('/:supplier_id/master', async (req, res) => {
+  try {
+    const { supplier_id } = req.params;
+    const Supplier = require('../models/Supplier');
+    const Settlement = require('../models/Settlement');
+    const Delivery = require('../models/Delivery');
+    const Customer = require('../models/Customer');
+    const Invoice = require('../models/Invoice');
+    const Payment = require('../models/Payment');
+
+    const supplier = await Supplier.findById(supplier_id)
+      .populate({ path: 'linked_customer_ids', select: 'name balance created_by', populate: { path: 'created_by', select: 'display_name username' } })
+      .lean();
+
+    if (!supplier) return res.status(404).json({ error: 'Supplier not found' });
+
+    const supplierName = supplier.name;
+    const customerIds = supplier.linked_customer_ids ? supplier.linked_customer_ids.map(c => c._id) : [];
+
+    // 1. Supplier Data
+    const settlementQuery = {
+      party_name: { $regex: new RegExp(`^${supplierName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      type: { $in: ['paid_to_supplier', 'other_expense', 'walkin_delivery'] },
+    };
+    const deliveryQuery = {
+      $or: [
+        { supplier: { $regex: new RegExp(`^${supplierName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        { "suppliers_data.supplier_name": { $regex: new RegExp(`^${supplierName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+      ],
+      status: { $in: ['delivered'] },
+    };
+
+    const [settlements, deliveries] = await Promise.all([
+      Settlement.find(settlementQuery).populate('created_by', 'username display_name').lean(),
+      Delivery.find(deliveryQuery).populate('created_by', 'username display_name').lean()
+    ]);
+
+    // 2. Customer Data
+    const [invoices, payments] = await Promise.all([
+      Invoice.find({ customer: { $in: customerIds } }).populate('created_by', 'username display_name').lean(),
+      Payment.find({ customer: { $in: customerIds } }).populate('collected_by', 'username display_name').lean()
+    ]);
+
+    const rawHistory = [];
+
+    settlements.forEach(s => {
+      rawHistory.push({
+        type: 'supplier_payment',
+        date: s.date,
+        amount: s.amount,
+        original: s
+      });
+    });
+
+    deliveries.forEach(d => {
+      let amount = 0;
+      const matchingItems = (d.items || []).filter(i => (i.supplier_name && i.supplier_name === supplierName) || (!i.supplier_name && d.supplier === supplierName));
+      matchingItems.forEach(i => {
+        const base = parseFloat(i.base_price) || 0; const extra = parseFloat(i.supplier_charge_per_item) || 0; amount += (i.quantity * (base + extra));
+      });
+      if (d.supplier === supplierName && d.grand_total != null) amount = d.grand_total;
+
+      rawHistory.push({
+        type: 'supplier_delivery',
+        date: d.delivered_at || d.createdAt,
+        amount: amount,
+        original: { ...d, amount }
+      });
+
+      if (d.suppliers_data && Array.isArray(d.suppliers_data)) {
+         const supData = d.suppliers_data.find(sd => sd.supplier_name === supplierName);
+         if (supData && supData.cash_given) {
+            rawHistory.push({
+              type: 'supplier_payment',
+              date: d.delivered_at || d.createdAt,
+              amount: supData.cash_given,
+              original: { mode: 'cash', amount: supData.cash_given, created_by: d.created_by }
+            });
+         }
+      }
+    });
+
+    invoices.forEach(inv => {
+      rawHistory.push({
+        type: 'customer_invoice',
+        date: inv.date,
+        amount: inv.total,
+        original: inv
+      });
+    });
+
+    payments.forEach(p => {
+      rawHistory.push({
+        type: 'customer_payment',
+        date: p.date,
+        amount: p.amount,
+        original: { ...p, created_by: p.collected_by }
+      });
+    });
+
+    rawHistory.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let totalCustomerBal = 0;
+    if (supplier.linked_customer_ids) {
+       supplier.linked_customer_ids.forEach(c => totalCustomerBal += (c.balance || 0));
+    }
+    let rb = totalCustomerBal - (supplier.balance || 0);
+    const ob = rb;
+
+    const ledger = [];
+    rawHistory.forEach(row => {
+       if (row.type === 'supplier_delivery') {
+         rb -= row.amount;
+       } else if (row.type === 'supplier_payment') {
+         rb += row.amount;
+       } else if (row.type === 'customer_invoice') {
+         rb += row.amount;
+       } else if (row.type === 'customer_payment') {
+         rb -= row.amount;
+       }
+       ledger.push({
+         ...row,
+         runningBalance: rb
+       });
+    });
+
+    let currentSupBal = supplier.balance || 0;
+    let supPurchases = 0;
+    let supPaid = 0;
+    rawHistory.forEach(r => {
+      if (r.type === 'supplier_delivery') supPurchases += r.amount;
+      if (r.type === 'supplier_payment') supPaid += r.amount;
+    });
+    currentSupBal = currentSupBal + supPurchases - supPaid;
+
+    let currentCustBal = totalCustomerBal;
+    let custPurchases = 0;
+    let custPaid = 0;
+    rawHistory.forEach(r => {
+      if (r.type === 'customer_invoice') custPurchases += r.amount;
+      if (r.type === 'customer_payment') custPaid += r.amount;
+    });
+    currentCustBal = currentCustBal + custPurchases - custPaid;
+
+    res.json({
+      supplier,
+      ledger,
+      openingBalance: ob,
+      currentSupplierBalance: currentSupBal,
+      currentCustomerBalance: currentCustBal,
+      summary: {
+         totalDue: rb > 0 ? rb : 0,
+         totalAdvance: rb < 0 ? -rb : 0,
+         totalPaid: supPaid + custPaid,
+         totalPurchases: supPurchases + custPurchases,
+         currentBalance: rb
+      }
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/supplier-ledger/:supplier_id
 // Returns a fully computed supplier ledger with running balances and payment-delivery merging
 router.get('/:supplier_id', async (req, res) => {
@@ -257,6 +423,9 @@ router.get('/:supplier_id', async (req, res) => {
            amt += (i.quantity * (base + extra));
          }
       });
+      if (d.supplier === supplierName && d.grand_total != null) {
+        amt = d.grand_total;
+      }
       return s + amt;
     }, 0);
 
